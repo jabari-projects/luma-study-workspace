@@ -313,6 +313,8 @@ export default function AdminPersonasPage() {
                     <img
                       src={previewUrl}
                       alt="Persona avatar preview"
+                      loading="lazy"
+                      decoding="async"
                       style={{
                         width: 72,
                         height: 72,
@@ -584,6 +586,8 @@ export default function AdminPersonasPage() {
                       <img
                         src={persona.avatar_url}
                         alt={persona.name}
+                        loading="lazy"
+                        decoding="async"
                         style={{
                           width: 52,
                           height: 52,

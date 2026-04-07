@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 type SignupValues = {
   username: string;
@@ -13,6 +14,47 @@ type SignupErrors = Partial<Record<keyof SignupValues, string>>;
 
 const lavenderAccent = "#b59bff";
 const lavenderAccentStrong = "#8c6fff";
+const signupResponsiveStyles = `
+  @media (max-width: 767px) {
+    .luma-signup-page {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .luma-signup-layout {
+      grid-template-columns: 1fr !important;
+      gap: 24px !important;
+    }
+
+    .luma-signup-card {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 767px) {
+    .luma-signup-page {
+      padding-left: 24px;
+      padding-right: 24px;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .luma-signup-page {
+      padding-left: 32px;
+      padding-right: 32px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .luma-signup-page {
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
+`;
 
 function validateEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -24,6 +66,7 @@ function validateUsername(username: string) {
 
 export default function SignupPage() {
   const { signup } = useAuth();
+  const { themeMode } = useTheme();
   const [values, setValues] = useState<SignupValues>({
     username: "",
     email: "",
@@ -67,6 +110,8 @@ export default function SignupPage() {
   }
 
   function getInputStyle(field: keyof SignupValues, hasError: boolean) {
+    const isDarkMode = themeMode === "dark";
+
     return {
       width: "100%",
       boxSizing: "border-box" as const,
@@ -77,17 +122,24 @@ export default function SignupPage() {
           ? "#e27891"
           : focusedField === field
             ? lavenderAccent
-            : "var(--border)"
+            : isDarkMode
+              ? "rgba(38, 38, 38, 0.92)"
+              : "var(--border)"
       }`,
-      background: "var(--card)",
+      background: isDarkMode
+        ? "rgba(26, 26, 26, 0.7)"
+        : "var(--card)",
       color: "var(--luma-text, #1d1730)",
       fontSize: 15,
       outline: "none",
       boxShadow:
         focusedField === field
-          ? "0 0 0 4px rgba(181, 155, 255, 0.12)"
+          ? isDarkMode
+            ? "0 0 0 1px rgba(140, 111, 255, 0.28)"
+            : "0 0 0 2px rgba(181, 155, 255, 0.08)"
           : "none",
-      transition: "border-color 180ms ease, box-shadow 180ms ease",
+      transition:
+        "border-color 180ms ease, box-shadow 180ms ease, background 180ms ease",
     };
   }
 
@@ -153,25 +205,30 @@ export default function SignupPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 16,
-      }}
-    >
+    <>
+      <style>{signupResponsiveStyles}</style>
       <div
+        className="luma-signup-page max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0"
         style={{
-          width: "100%",
-          maxWidth: 1100,
+          minHeight: "100vh",
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 430px) minmax(0, 1fr)",
-          gap: 16,
-          alignItems: "stretch",
+          placeItems: "center",
+          padding: 16,
         }}
       >
+        <div
+          className="luma-signup-layout flex flex-col gap-6 md:flex-row md:gap-10 max-w-full w-full"
+          style={{
+            width: "100%",
+            maxWidth: 1100,
+            display: "grid",
+            gridTemplateColumns: "minmax(320px, 430px) minmax(0, 1fr)",
+            gap: 16,
+            alignItems: "stretch",
+          }}
+        >
         <section
+          className="luma-signup-card w-full max-w-sm mx-auto px-4 sm:px-6 md:px-0"
           style={{
             borderRadius: 16,
             background: "var(--card)",
@@ -233,6 +290,7 @@ export default function SignupPage() {
                   Username
                 </span>
                 <input
+                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
                   type="text"
                   autoComplete="username"
                   value={values.username}
@@ -273,6 +331,7 @@ export default function SignupPage() {
                   Email
                 </span>
                 <input
+                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
@@ -302,6 +361,7 @@ export default function SignupPage() {
                   Password
                 </span>
                 <input
+                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
                   type="password"
                   autoComplete="new-password"
                   value={values.password}
@@ -332,6 +392,7 @@ export default function SignupPage() {
                   Confirm password
                 </span>
                 <input
+                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
                   type="password"
                   autoComplete="new-password"
                   value={values.confirmPassword}
@@ -374,6 +435,7 @@ export default function SignupPage() {
             ) : null}
 
             <button
+              className="w-full md:w-auto"
               type="submit"
               disabled={!canSubmit || isSubmitting}
               onMouseEnter={() => setIsCreateHovered(true)}
@@ -451,6 +513,7 @@ export default function SignupPage() {
         </section>
 
         <section
+          className="luma-signup-card w-full max-w-sm mx-auto px-4 sm:px-6 md:px-0"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -576,6 +639,7 @@ export default function SignupPage() {
           </div>
         </section>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

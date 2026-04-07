@@ -449,6 +449,13 @@ const onboardingStyles = `
     line-height: 1.6;
   }
 
+  .luma-onboarding__optionalLabel {
+    margin: -2px 0 0;
+    color: var(--foreground-muted);
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+
   .luma-onboarding__error {
     padding: 14px 16px;
     border-radius: 18px;
@@ -508,6 +515,34 @@ const onboardingStyles = `
   }
 
   .luma-onboarding__submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
+
+  .luma-onboarding__actionButtons {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .luma-onboarding__skipButton {
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: var(--foreground-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 180ms ease, transform 180ms ease;
+  }
+
+  .luma-onboarding__skipButton:hover:not(:disabled) {
+    color: var(--foreground);
+    transform: translateY(-1px);
+  }
+
+  .luma-onboarding__skipButton:disabled {
     cursor: not-allowed;
     opacity: 0.72;
   }
@@ -690,9 +725,10 @@ export default function OnboardingPage() {
     return true;
   }, [currentStep, displayName, selectedThemeColor, selectedThemeMode]);
 
-  async function saveProfile(values: {
+  async function submitProfile(values: {
     display_name?: string;
     theme_mode?: ThemeMode;
+    avatar_url?: string | null;
   }) {
     const response = await api.put<AuthUser>("/me/profile", values);
     await refreshUser();
@@ -713,7 +749,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    const refreshedUser = await saveProfile({
+    const refreshedUser = await submitProfile({
       display_name: trimmedName,
     });
 
@@ -727,7 +763,7 @@ export default function OnboardingPage() {
 
   async function handleThemeModeStep() {
     setNotice("");
-    await saveProfile({
+    await submitProfile({
       theme_mode: selectedThemeMode,
     });
     setCurrentStep(3);
@@ -735,7 +771,7 @@ export default function OnboardingPage() {
 
   async function handleAccentColorStep() {
     setNotice("");
-    await saveProfile({
+    await submitProfile({
       theme_mode: selectedThemeMode,
     });
 
@@ -754,7 +790,11 @@ export default function OnboardingPage() {
       return;
     }
 
-    if (avatarFile) {
+    if (!avatarFile) {
+      await submitProfile({
+        avatar_url: null,
+      });
+    } else {
       const formData = new FormData();
       formData.append("file", avatarFile);
 
@@ -770,9 +810,10 @@ export default function OnboardingPage() {
           "We couldn't upload that image right now, so Luma will keep your default letter avatar for now.",
         );
       }
+
+      await refreshUser();
     }
 
-    await refreshUser();
     trackOnboardingCompleted({
       subscriptionStatus: user?.subscription_status ?? null,
       metadata: {
@@ -785,6 +826,35 @@ export default function OnboardingPage() {
       window.setTimeout(resolve, 950);
     });
     navigate("/dashboard", { replace: true });
+  }
+
+  async function handleSkip() {
+    setError("");
+    setNotice("");
+    setIsSaving(true);
+
+    try {
+      setAvatarFile(null);
+      await submitProfile({
+        avatar_url: null,
+      });
+      trackOnboardingCompleted({
+        subscriptionStatus: user?.subscription_status ?? null,
+        metadata: {
+          with_avatar_upload: false,
+          used_letter_avatar: true,
+        },
+      });
+      setIsFinishing(true);
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 950);
+      });
+      navigate("/dashboard", { replace: true });
+    } catch (skipError) {
+      setError(getApiErrorMessage(skipError, "Unable to finish setup."));
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -825,7 +895,7 @@ export default function OnboardingPage() {
       <label className="luma-onboarding__field">
         <span className="luma-onboarding__fieldLabel">Display name</span>
         <input
-          className="luma-onboarding__input"
+          className="luma-onboarding__input w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
           type="text"
           value={displayName}
           onChange={(event) => {
@@ -902,21 +972,26 @@ export default function OnboardingPage() {
       </div>
     ) : (
       <div className="luma-onboarding__uploader">
-        <div className="luma-onboarding__avatarWrap">
+        <div className="luma-onboarding__avatarWrap mx-auto text-center md:text-left">
           {avatarPreview ? (
             <img
-              className="luma-onboarding__avatarPreview"
+              className="luma-onboarding__avatarPreview max-w-[160px] mx-auto mt-4 mb-6"
               src={avatarPreview}
               alt={`${displayName || user.username} avatar preview`}
+              loading="lazy"
+              decoding="async"
             />
           ) : (
-            <div className="luma-onboarding__avatarFallback">
+            <div className="luma-onboarding__avatarFallback max-w-[160px] mx-auto mt-4 mb-6">
               {getUsernameAvatarLetter(user.username)}
             </div>
           )}
 
           <div className="luma-onboarding__uploadCard">
-            <p className="luma-onboarding__featureTitle">Avatar</p>
+            <p className="luma-onboarding__featureTitle">Upload your avatar</p>
+            <p className="text-sm text-neutral-400 mt-1 luma-onboarding__optionalLabel">
+              Optional
+            </p>
             <p className="luma-onboarding__help">
               Add an image now, or finish with your letter avatar and update it
               any time later.
@@ -943,8 +1018,8 @@ export default function OnboardingPage() {
       <style>{onboardingStyles}</style>
 
       <div className="luma-onboarding">
-        <div className="luma-onboarding__shell">
-          <aside className="luma-onboarding__intro">
+        <div className="luma-onboarding__shell flex flex-col gap-6 md:flex-row md:gap-10 max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
+          <aside className="luma-onboarding__intro max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
             <span className="luma-onboarding__eyebrow">Luma Setup</span>
             <h1 className="luma-onboarding__title">
               Shape your workspace in a few calm steps.
@@ -987,7 +1062,7 @@ export default function OnboardingPage() {
             </div>
           </aside>
 
-          <section className="luma-onboarding__panel">
+          <section className="luma-onboarding__panel max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
             <div className="luma-onboarding__meta">
               <div>
                 <p className="luma-onboarding__metaLabel">
@@ -1085,17 +1160,32 @@ export default function OnboardingPage() {
                       : "Finish now with an uploaded image or your default letter avatar."}
                   </div>
 
-                  <button
-                    className="luma-onboarding__submit"
-                    type="submit"
-                    disabled={!canContinue || isSaving || isFinishing}
-                  >
-                    {isSaving
-                      ? "Saving..."
-                      : currentStep === totalSteps
-                        ? "Finish setup"
-                        : "Continue"}
-                  </button>
+                  <div className="luma-onboarding__actionButtons w-full md:w-auto">
+                    {currentStep === totalSteps ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleSkip();
+                        }}
+                        className="text-sm text-neutral-400 hover:text-neutral-200 transition luma-onboarding__skipButton w-full md:w-auto"
+                        disabled={isSaving || isFinishing}
+                      >
+                        Skip for now
+                      </button>
+                    ) : null}
+
+                    <button
+                      className="luma-onboarding__submit w-full md:w-auto"
+                      type="submit"
+                      disabled={!canContinue || isSaving || isFinishing}
+                    >
+                      {isSaving
+                        ? "Saving..."
+                        : currentStep === totalSteps
+                          ? "Finish setup"
+                          : "Continue"}
+                    </button>
+                  </div>
                 </div>
               </form>
             )}

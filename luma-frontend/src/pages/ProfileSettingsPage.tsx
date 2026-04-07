@@ -414,9 +414,12 @@ export default function ProfileSettingsPage() {
   return (
     <>
       <style>{styles}</style>
-      <div className="ps-page" style={vars}>
-        <div className="ps-wrap">
-          <header className="ps-header">
+      <div
+        className="ps-page max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0"
+        style={vars}
+      >
+        <div className="ps-wrap max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
+          <header className="ps-header flex-col md:flex-row">
             <div>
               <span className="ps-chip">Settings</span>
               <h1 className="ps-title">Shape your private Luma workspace</h1>
@@ -424,7 +427,7 @@ export default function ProfileSettingsPage() {
                 Manage your account, theme, plan, avatar, and sign-out flow in one place.
               </p>
             </div>
-            <div className="ps-actions">
+            <div className="ps-actions flex-col md:flex-row">
               <Link className="ps-link" to="/dashboard">
                 Back to dashboard
               </Link>
@@ -460,7 +463,13 @@ export default function ProfileSettingsPage() {
                 <div className="ps-preview">
                   <div className="ps-preview-top">
                     {shownAvatar ? (
-                      <img className="ps-avatar" src={shownAvatar} alt={`${previewName} avatar preview`} />
+                      <img
+                        className="ps-avatar"
+                        src={shownAvatar}
+                        alt={`${previewName} avatar preview`}
+                        loading="lazy"
+                        decoding="async"
+                      />
                     ) : (
                       <div className="ps-avatar-fallback">
                         {getUsernameAvatarLetter(formValues.username.trim() || profile.username)}
@@ -511,7 +520,7 @@ export default function ProfileSettingsPage() {
                   <label className="ps-field">
                     <span className="ps-label">Username</span>
                     <input
-                      className={`ps-input${formErrors.username ? " ps-input-error" : ""}`}
+                      className={`ps-input w-full dark:bg-neutral-900/60 dark:border-neutral-800${formErrors.username ? " ps-input-error" : ""}`}
                       type="text"
                       autoComplete="username"
                       value={formValues.username}
@@ -530,7 +539,7 @@ export default function ProfileSettingsPage() {
                   <label className="ps-field">
                     <span className="ps-label">Display name</span>
                     <input
-                      className={`ps-input${formErrors.display_name ? " ps-input-error" : ""}`}
+                      className={`ps-input w-full dark:bg-neutral-900/60 dark:border-neutral-800${formErrors.display_name ? " ps-input-error" : ""}`}
                       type="text"
                       value={formValues.display_name}
                       onChange={(event) => setField("display_name", event.target.value)}
@@ -548,7 +557,7 @@ export default function ProfileSettingsPage() {
                   <label className="ps-field">
                     <span className="ps-label">Timezone</span>
                     <input
-                      className="ps-input"
+                      className="ps-input w-full dark:bg-neutral-900/60 dark:border-neutral-800"
                       type="text"
                       list="luma-timezones"
                       value={formValues.timezone}
@@ -566,7 +575,7 @@ export default function ProfileSettingsPage() {
                   <label className="ps-field">
                     <span className="ps-label">Phone number</span>
                     <input
-                      className={`ps-input${formErrors.phone_number ? " ps-input-error" : ""}`}
+                      className={`ps-input w-full dark:bg-neutral-900/60 dark:border-neutral-800${formErrors.phone_number ? " ps-input-error" : ""}`}
                       type="tel"
                       autoComplete="tel"
                       value={formValues.phone_number}
@@ -581,7 +590,7 @@ export default function ProfileSettingsPage() {
                   <label className="ps-field">
                     <span className="ps-label">Birthday</span>
                     <input
-                      className={`ps-input${formErrors.birthday ? " ps-input-error" : ""}`}
+                      className={`ps-input w-full dark:bg-neutral-900/60 dark:border-neutral-800${formErrors.birthday ? " ps-input-error" : ""}`}
                       type="date"
                       value={formValues.birthday}
                       onChange={(event) => setField("birthday", event.target.value)}
@@ -621,8 +630,11 @@ export default function ProfileSettingsPage() {
                         </span>
                       </li>
                     </ul>
-                    <div className="ps-inline">
-                      <Link className={isPremium ? "ps-link" : "ps-primary"} to={isPremium ? "/pro" : "/subscribe"}>
+                    <div className="ps-inline flex-col md:flex-row">
+                      <Link
+                        className={`${isPremium ? "ps-link" : "ps-primary"} w-full md:w-auto`}
+                        to={isPremium ? "/pro" : "/subscribe"}
+                      >
                         {isPremium ? "View Pro benefits" : "Upgrade to Luma Pro"}
                       </Link>
                     </div>
@@ -634,10 +646,16 @@ export default function ProfileSettingsPage() {
                   <p className="ps-copy" style={{ marginBottom: 18 }}>
                     Upload a fresh image or keep the clean letter avatar tied to your username.
                   </p>
-                  <div className="ps-media">
+                    <div className="ps-media max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
                     <div className="ps-media-preview">
                       {shownAvatar ? (
-                        <img className="ps-avatar" src={shownAvatar} alt="Avatar preview" />
+                        <img
+                          className="ps-avatar"
+                          src={shownAvatar}
+                          alt="Avatar preview"
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         <div className="ps-avatar-fallback">
                           {getUsernameAvatarLetter(formValues.username.trim() || profile.username)}
@@ -647,15 +665,15 @@ export default function ProfileSettingsPage() {
                     <span className="ps-help">
                       If you do nothing here, Luma keeps your default letter avatar.
                     </span>
-                    <input
-                      className="ps-file"
+                      <input
+                        className="ps-file w-full dark:bg-neutral-900/60 dark:border-neutral-800"
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
                       onChange={handleAvatarChange}
                     />
-                    <div className="ps-inline">
+                      <div className="ps-inline flex-col md:flex-row">
                       <button
-                        className="ps-secondary"
+                          className="ps-secondary w-full md:w-auto"
                         type="button"
                         onClick={() => {
                           setAvatarFile(null);
@@ -666,7 +684,7 @@ export default function ProfileSettingsPage() {
                         Remove avatar
                       </button>
                       <button
-                        className="ps-secondary"
+                          className="ps-secondary w-full md:w-auto"
                         type="button"
                         onClick={() => {
                           setAvatarFile(null);
@@ -704,13 +722,15 @@ export default function ProfileSettingsPage() {
                       Save when you're ready and your theme mode will update across Luma.
                     </span>
                   </div>
-                  <div className="ps-media">
+                    <div className="ps-media max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
                     <div className="ps-media-preview">
                       {shownThemeImage ? (
                         <img
                           className="ps-theme-preview"
                           src={shownThemeImage}
                           alt="Theme preview"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <p className="ps-copy" style={{ padding: "0 20px", textAlign: "center" }}>
@@ -718,15 +738,15 @@ export default function ProfileSettingsPage() {
                         </p>
                       )}
                     </div>
-                    <input
-                      className="ps-file"
+                      <input
+                        className="ps-file w-full dark:bg-neutral-900/60 dark:border-neutral-800"
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
                       onChange={handleThemeImageChange}
                     />
-                    <div className="ps-inline">
+                      <div className="ps-inline flex-col md:flex-row">
                       <button
-                        className="ps-secondary"
+                          className="ps-secondary w-full md:w-auto"
                         type="button"
                         onClick={() => {
                           setThemeImageFile(null);
@@ -737,7 +757,7 @@ export default function ProfileSettingsPage() {
                         Delete theme image
                       </button>
                       <button
-                        className="ps-secondary"
+                          className="ps-secondary w-full md:w-auto"
                         type="button"
                         onClick={() => {
                           setThemeImageFile(null);
@@ -756,8 +776,12 @@ export default function ProfileSettingsPage() {
                   <p className="ps-copy" style={{ marginBottom: 18 }}>
                     Need a clean exit? You can log out without changing anything you've saved here.
                   </p>
-                  <div className="ps-inline">
-                    <button className="ps-danger-action" type="button" onClick={logout}>
+                    <div className="ps-inline flex-col md:flex-row">
+                      <button
+                        className="ps-danger-action w-full md:w-auto"
+                        type="button"
+                        onClick={logout}
+                      >
                       Log out
                     </button>
                   </div>
@@ -765,11 +789,11 @@ export default function ProfileSettingsPage() {
               </aside>
             </div>
 
-            <footer className="ps-footer">
+                <footer className="ps-footer flex-col md:flex-row">
               <p className="ps-copy" style={{ maxWidth: 640 }}>
                 Saving applies your account, avatar, and theme changes together so the whole workspace stays in sync.
               </p>
-              <button className="ps-primary" type="submit" disabled={saving}>
+                  <button className="ps-primary w-full md:w-auto" type="submit" disabled={saving}>
                 {saving ? "Saving changes..." : "Save changes"}
               </button>
             </footer>

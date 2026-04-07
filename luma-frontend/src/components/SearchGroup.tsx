@@ -62,7 +62,18 @@ export default function SearchGroup<T>({
       {items.length > 0 ? (
         <div style={{ display: "grid", gap: 12 }}>
           {items.map((item, index) => (
-            <div key={index}>{renderItem(item)}</div>
+            <div
+              key={
+                typeof item === "object" &&
+                item !== null &&
+                "id" in item &&
+                item.id != null
+                  ? String(item.id)
+                  : `${title}-${index}`
+              }
+            >
+              {renderItem(item)}
+            </div>
           ))}
         </div>
       ) : (

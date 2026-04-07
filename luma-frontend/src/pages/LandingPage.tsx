@@ -206,7 +206,13 @@ export default function LandingPage() {
                 Private Learning Platform
               </span>
 
-              <img src={LumaStar} alt="Luma Star" className="hero-star" />
+              <img
+                src={LumaStar}
+                alt="Luma Star"
+                className="hero-star"
+                loading="lazy"
+                decoding="async"
+              />
 
               <h1
                 style={{

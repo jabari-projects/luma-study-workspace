@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   emptySearchResults,
   searchAll,
@@ -97,7 +104,7 @@ function renderTagRow(tags: string[] | null | undefined) {
   );
 }
 
-function SearchResultCard({
+const SearchResultCard = memo(function SearchResultCard({
   title,
   meta,
   excerpt,
@@ -155,7 +162,7 @@ function SearchResultCard({
       {renderTagRow(tags)}
     </article>
   );
-}
+});
 
 export default function SearchBar({
   placeholder = "Search notes, flashcards, summaries, or transcripts",
@@ -245,6 +252,14 @@ export default function SearchBar({
     [results],
   );
 
+  const handleQueryChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setQuery(event.target.value);
+      setError("");
+    },
+    [],
+  );
+
   return (
     <div
       style={{
@@ -266,10 +281,7 @@ export default function SearchBar({
         <input
           type="search"
           value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setError("");
-          }}
+          onChange={handleQueryChange}
           placeholder={placeholder}
           style={{
             width: "100%",

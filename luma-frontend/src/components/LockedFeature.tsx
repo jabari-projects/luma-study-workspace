@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import LockIcon from "./LockIcon";
 import UpgradeModal from "./UpgradeModal";
 
@@ -131,7 +131,7 @@ const lockedFeatureStyles = `
   }
 `;
 
-export default function LockedFeature({
+const LockedFeature = memo(function LockedFeature({
   title = "This feature is for Premium members",
   description = "Upgrade your plan to unlock this premium experience inside Luma.",
   ctaLabel = "Upgrade to Luma Pro",
@@ -147,6 +147,14 @@ export default function LockedFeature({
       setAutoOpened(true);
     }
   }, [autoOpen, autoOpened]);
+
+  const handleOpenUpgradeModal = useCallback(() => {
+    setUpgradeModalOpen(true);
+  }, []);
+
+  const handleCloseUpgradeModal = useCallback(() => {
+    setUpgradeModalOpen(false);
+  }, []);
 
   return (
     <>
@@ -172,9 +180,7 @@ export default function LockedFeature({
           <button
             type="button"
             className="luma-locked-feature__button"
-            onClick={() => {
-              setUpgradeModalOpen(true);
-            }}
+            onClick={handleOpenUpgradeModal}
           >
             {ctaLabel}
           </button>
@@ -186,9 +192,11 @@ export default function LockedFeature({
 
       <UpgradeModal
         open={upgradeModalOpen}
-        onClose={() => setUpgradeModalOpen(false)}
+        onClose={handleCloseUpgradeModal}
         featureName={featureName}
       />
     </>
   );
-}
+});
+
+export default LockedFeature;

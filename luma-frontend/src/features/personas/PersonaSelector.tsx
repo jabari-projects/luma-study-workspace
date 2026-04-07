@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import LockedFeature from "../../components/LockedFeature";
 import { useAuth } from "../../context/AuthContext";
 import { getSupabaseConfigError, supabase } from "../../api/supabase";
@@ -144,8 +144,15 @@ function getInitials(value: string) {
   );
 }
 
-function PersonaAvatar({ persona }: { persona: PersonaDefinition }) {
+const PersonaAvatar = memo(function PersonaAvatar({
+  persona,
+}: {
+  persona: PersonaDefinition;
+}) {
   const [imageFailed, setImageFailed] = useState(false);
+  const handleImageError = useCallback(() => {
+    setImageFailed(true);
+  }, []);
 
   return (
     <div className="luma-personas__avatar" aria-hidden="true">
@@ -154,16 +161,16 @@ function PersonaAvatar({ persona }: { persona: PersonaDefinition }) {
           className="luma-personas__avatarImage"
           src={persona.avatar_url}
           alt=""
-          onError={() => {
-            setImageFailed(true);
-          }}
+          loading="lazy"
+          decoding="async"
+          onError={handleImageError}
         />
       ) : (
         getInitials(persona.name)
       )}
     </div>
   );
-}
+});
 
 export default function PersonaSelector() {
   const { refreshUser, user } = useAuth();

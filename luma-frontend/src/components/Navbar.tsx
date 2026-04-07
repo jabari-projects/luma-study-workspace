@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   STUDY_TOOLS,
@@ -437,24 +437,51 @@ export default function Navbar() {
 
   const displayName = user.display_name || user.username;
   const isPremium = user.subscription_status === "premium";
-  const studyTools = STUDY_TOOLS.filter((tool) => tool.premium);
-  const navItems = [
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/search", label: "Search" },
-    { to: "/settings", label: "Settings" },
-  ];
+  const studyTools = useMemo(
+    () => STUDY_TOOLS.filter((tool) => tool.premium),
+    [],
+  );
+  const navItems = useMemo(
+    () => [
+      { to: "/dashboard", label: "Dashboard" },
+      { to: "/search", label: "Search" },
+      { to: "/settings", label: "Settings" },
+    ],
+    [],
+  );
 
-  function openUpgradeModal(tool: StudyTool) {
+  const openUpgradeModal = useCallback((tool: StudyTool) => {
     setUpgradeFeatureName(tool.label);
     setUpgradeModalOpen(true);
     setStudyMenuOpen(false);
     setMobileOpen(false);
-  }
+  }, []);
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     await logout();
     navigate("/login", { replace: true });
-  }
+  }, [logout, navigate]);
+
+  const handleStudyMenuToggle = useCallback(() => {
+    setStudyMenuOpen((current) => !current);
+    setDropdownOpen(false);
+  }, []);
+
+  const handleAvatarMenuToggle = useCallback(() => {
+    setDropdownOpen((current) => !current);
+    setMobileOpen(false);
+    setStudyMenuOpen(false);
+  }, []);
+
+  const handleMobileMenuToggle = useCallback(() => {
+    setMobileOpen((current) => !current);
+    setDropdownOpen(false);
+    setStudyMenuOpen(false);
+  }, []);
+
+  const handleCloseUpgradeModal = useCallback(() => {
+    setUpgradeModalOpen(false);
+  }, []);
 
   return (
     <>
@@ -468,6 +495,8 @@ export default function Navbar() {
                 src={LumaStar}
                 alt="Luma Star"
                 className="luma-navbar__brandMark"
+                loading="lazy"
+                decoding="async"
                 style={{
                   borderRadius: 0,
                   background: "transparent",
@@ -496,10 +525,7 @@ export default function Navbar() {
                   className={`luma-navbar__link luma-navbar__studyTrigger${
                     studyMenuOpen ? " is-open" : ""
                   }`}
-                  onClick={() => {
-                    setStudyMenuOpen((current) => !current);
-                    setDropdownOpen(false);
-                  }}
+                  onClick={handleStudyMenuToggle}
                   aria-expanded={studyMenuOpen}
                   aria-haspopup="menu"
                 >
@@ -534,11 +560,7 @@ export default function Navbar() {
                 <button
                   type="button"
                   className="luma-navbar__avatarButton"
-                  onClick={() => {
-                    setDropdownOpen((current) => !current);
-                    setMobileOpen(false);
-                    setStudyMenuOpen(false);
-                  }}
+                  onClick={handleAvatarMenuToggle}
                   aria-haspopup="menu"
                   aria-expanded={dropdownOpen}
                 >
@@ -547,6 +569,8 @@ export default function Navbar() {
                       className="luma-navbar__avatarImage"
                       src={user.avatar_url}
                       alt={`${displayName} avatar`}
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <span className="luma-navbar__avatarFallback">
@@ -600,11 +624,7 @@ export default function Navbar() {
               <button
                 type="button"
                 className="luma-navbar__menuButton"
-                onClick={() => {
-                  setMobileOpen((current) => !current);
-                  setDropdownOpen(false);
-                  setStudyMenuOpen(false);
-                }}
+                onClick={handleMobileMenuToggle}
                 aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
                 aria-expanded={mobileOpen}
               >
@@ -664,9 +684,7 @@ export default function Navbar() {
 
       <UpgradeModal
         open={upgradeModalOpen}
-        onClose={() => {
-          setUpgradeModalOpen(false);
-        }}
+        onClose={handleCloseUpgradeModal}
         featureName={upgradeFeatureName}
       />
     </>

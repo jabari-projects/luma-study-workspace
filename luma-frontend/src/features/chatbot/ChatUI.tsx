@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import {
   createPersonaBot,
   sendMessage,
@@ -341,6 +349,7 @@ const chatUiStyles = `
     }
 
     .luma-chat__sidebar {
+      display: none;
       position: static;
     }
 
@@ -348,8 +357,19 @@ const chatUiStyles = `
       align-items: flex-start;
     }
 
+    .luma-chat__composer {
+      padding-bottom: 92px;
+    }
+
     .luma-chat__footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
       align-items: stretch;
+      padding: 0 16px 16px;
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      z-index: 20;
     }
 
     .luma-chat__button {
@@ -395,6 +415,79 @@ function buildInitialAssistantMessage(bot: ChatBot): ChatMessage {
   };
 }
 
+type ChatMessageItemProps = {
+  message: ChatMessage;
+  headerAvatarSrc: string;
+  headerDisplayName: string;
+  botInitials: string;
+  messageAvatarFailed: boolean;
+  onMessageAvatarError: () => void;
+  onPlayMessage: (content: string) => void;
+};
+
+const ChatMessageItem = memo(function ChatMessageItem({
+  message,
+  headerAvatarSrc,
+  headerDisplayName,
+  botInitials,
+  messageAvatarFailed,
+  onMessageAvatarError,
+  onPlayMessage,
+}: ChatMessageItemProps) {
+  const isUser = message.role === "user";
+  const authorLabel = isUser ? "You" : headerDisplayName;
+  const avatarLabel = isUser ? "You" : botInitials;
+  const messageClassName = isUser
+    ? "luma-chat__message is-user"
+    : "luma-chat__message";
+  const handlePlayMessage = useCallback(() => {
+    onPlayMessage(message.content);
+  }, [message.content, onPlayMessage]);
+
+  return (
+    <article className={messageClassName}>
+      <div className="luma-chat__messageRow">
+        <div className="luma-chat__bubbleAvatar" aria-hidden="true">
+          {!isUser && !messageAvatarFailed ? (
+            <img
+              className="avatar"
+              src={headerAvatarSrc}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              onError={onMessageAvatarError}
+            />
+          ) : (
+            avatarLabel
+          )}
+        </div>
+
+        <div className="luma-chat__bubble">
+          <div className="luma-chat__bubbleMeta">
+            <span className="luma-chat__bubbleAuthor">{authorLabel}</span>
+            <span className="luma-chat__bubbleTime">
+              {formatTimestamp(message.createdAt)}
+            </span>
+            {!isUser ? (
+              <>
+                <span className="luma-chat__bubbleMetaSpacer" />
+                <button
+                  className="luma-chat__playButton"
+                  type="button"
+                  onClick={handlePlayMessage}
+                >
+                  Play
+                </button>
+              </>
+            ) : null}
+          </div>
+          <p className="luma-chat__bubbleText">{message.content}</p>
+        </div>
+      </div>
+    </article>
+  );
+});
+
 export default function ChatUI({ bot }: ChatUIProps) {
   const { activePersona, user } = useAuth();
   const [draft, setDraft] = useState("");
@@ -406,8 +499,10 @@ export default function ChatUI({ bot }: ChatUIProps) {
   const [upgradeFeatureName, setUpgradeFeatureName] = useState(
     "Premium study tools",
   );
-  const resolvedBot =
-    bot ?? (activePersona ? createPersonaBot(activePersona) : StandardLumaBot);
+  const resolvedBot = useMemo(
+    () => bot ?? (activePersona ? createPersonaBot(activePersona) : StandardLumaBot),
+    [activePersona, bot],
+  );
   const headerAvatarSrc = activePersona?.avatar_url || LumaStar;
   const headerDisplayName = activePersona?.name || "Luma";
   const botSignature = useMemo(
@@ -451,15 +546,44 @@ export default function ChatUI({ bot }: ChatUIProps) {
     setSending(false);
   }, [botSignature]);
 
-  function handleToolOptionClick(tool: (typeof CONTEXTUAL_CHAT_STUDY_TOOLS)[number]) {
+  const handleHeaderAvatarError = useCallback(() => {
+    setHeaderAvatarFailed(true);
+  }, []);
+
+  const handleMessageAvatarError = useCallback(() => {
+    setMessageAvatarFailed(true);
+  }, []);
+
+  const handleToolOptionClick = useCallback((tool: (typeof CONTEXTUAL_CHAT_STUDY_TOOLS)[number]) => {
     setDraft((current) => {
       const trimmed = current.trim();
       return trimmed ? `${trimmed}\n\n${tool.prompt}` : tool.prompt;
     });
     setError("");
-  }
+  }, []);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const handleDraftChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(event.target.value);
+    setError("");
+  }, []);
+
+  const handleOpenUpgradeModal = useCallback((tool: (typeof CONTEXTUAL_CHAT_STUDY_TOOLS)[number]) => {
+    setUpgradeFeatureName(tool.label);
+    setUpgradeModalOpen(true);
+  }, []);
+
+  const handleCloseUpgradeModal = useCallback(() => {
+    setUpgradeModalOpen(false);
+  }, []);
+
+  const handlePlayMessage = useCallback(
+    (content: string) => {
+      void speak(content, resolvedBot.voice);
+    },
+    [resolvedBot.voice],
+  );
+
+  const handleSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const nextMessage = draft.trim();
@@ -499,14 +623,14 @@ export default function ChatUI({ bot }: ChatUIProps) {
     } finally {
       setSending(false);
     }
-  }
+  }, [draft, resolvedBot, user?.subscription_status]);
 
   return (
     <>
       <style>{chatUiStyles}</style>
 
-      <main className="luma-chat">
-        <div className="luma-chat__wrap">
+      <main className="luma-chat max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
+        <div className="luma-chat__wrap max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
           <section className="luma-chat__panel luma-chat__hero">
             <span className="luma-chat__eyebrow">Chatbot</span>
             <h1 className="luma-chat__title">Luma Chat</h1>
@@ -516,7 +640,7 @@ export default function ChatUI({ bot }: ChatUIProps) {
             </p>
           </section>
 
-          <div className="luma-chat__layout">
+          <div className="luma-chat__layout flex flex-col gap-6 md:flex-row md:gap-10">
             <section className="luma-chat__panel luma-chat__shell">
               <header className="luma-chat__header">
                 <div className="luma-chat__bot">
@@ -526,9 +650,9 @@ export default function ChatUI({ bot }: ChatUIProps) {
                         className="avatar"
                         src={headerAvatarSrc}
                         alt=""
-                        onError={() => {
-                          setHeaderAvatarFailed(true);
-                        }}
+                        loading="lazy"
+                        decoding="async"
+                        onError={handleHeaderAvatarError}
                       />
                     ) : (
                       botInitials
@@ -544,71 +668,25 @@ export default function ChatUI({ bot }: ChatUIProps) {
               </header>
 
               <div className="luma-chat__messages" aria-live="polite">
-                {messages.map((message) => {
-                  const isUser = message.role === "user";
-                  const authorLabel = isUser ? "You" : headerDisplayName;
-                  const avatarLabel = isUser ? "You" : botInitials;
-
-                  return (
-                    <article
-                      key={message.id}
-                      className={`luma-chat__message${isUser ? " is-user" : ""}`}
-                    >
-                      <div className="luma-chat__messageRow">
-                        <div className="luma-chat__bubbleAvatar" aria-hidden="true">
-                          {!isUser && !messageAvatarFailed ? (
-                            <img
-                              className="avatar"
-                              src={headerAvatarSrc}
-                              alt=""
-                              onError={() => {
-                                setMessageAvatarFailed(true);
-                              }}
-                            />
-                          ) : (
-                            avatarLabel
-                          )}
-                        </div>
-
-                        <div className="luma-chat__bubble">
-                          <div className="luma-chat__bubbleMeta">
-                            <span className="luma-chat__bubbleAuthor">
-                              {authorLabel}
-                            </span>
-                            <span className="luma-chat__bubbleTime">
-                              {formatTimestamp(message.createdAt)}
-                            </span>
-                            {!isUser ? (
-                              <>
-                                <span className="luma-chat__bubbleMetaSpacer" />
-                                <button
-                                  className="luma-chat__playButton"
-                                  type="button"
-                                  onClick={() => {
-                                    void speak(message.content, resolvedBot.voice);
-                                  }}
-                                >
-                                  Play
-                                </button>
-                              </>
-                            ) : null}
-                          </div>
-                          <p className="luma-chat__bubbleText">{message.content}</p>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
+                {messages.map((message) => (
+                  <ChatMessageItem
+                    key={message.id}
+                    message={message}
+                    headerAvatarSrc={headerAvatarSrc}
+                    headerDisplayName={headerDisplayName}
+                    botInitials={botInitials}
+                    messageAvatarFailed={messageAvatarFailed}
+                    onMessageAvatarError={handleMessageAvatarError}
+                    onPlayMessage={handlePlayMessage}
+                  />
+                ))}
               </div>
 
               <form className="luma-chat__composer" onSubmit={handleSubmit}>
                 <textarea
-                  className="luma-chat__input"
+                  className="luma-chat__input w-full dark:bg-neutral-900/60 dark:border-neutral-800"
                   value={draft}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    setError("");
-                  }}
+                  onChange={handleDraftChange}
                   placeholder={`Message ${resolvedBot.name}`}
                 />
 
@@ -618,12 +696,12 @@ export default function ChatUI({ bot }: ChatUIProps) {
                   </p>
                 ) : null}
 
-                <div className="luma-chat__footer">
+                <div className="luma-chat__footer fixed bottom-0 left-0 right-0 px-4 pb-4 md:static md:px-0 md:pb-0">
                   <p className="luma-chat__hint">
                     Architecture only for now. AI delivery can plug into the engine next.
                   </p>
                   <button
-                    className="luma-chat__button"
+                    className="luma-chat__button w-full md:w-auto"
                     type="submit"
                     disabled={sending}
                   >
@@ -633,7 +711,7 @@ export default function ChatUI({ bot }: ChatUIProps) {
               </form>
             </section>
 
-            <aside className="luma-chat__panel luma-chat__sidebar">
+            <aside className="luma-chat__panel luma-chat__sidebar hidden md:flex">
               <span className="luma-chat__sidebarEyebrow">Study</span>
               <StudyToolPanel
                 title="Study shortcuts"
@@ -641,10 +719,7 @@ export default function ChatUI({ bot }: ChatUIProps) {
                 tools={CONTEXTUAL_CHAT_STUDY_TOOLS}
                 isPremium={isPremium}
                 surface="chat-sidebar"
-                onLockedClick={(tool) => {
-                  setUpgradeFeatureName(tool.label);
-                  setUpgradeModalOpen(true);
-                }}
+                onLockedClick={handleOpenUpgradeModal}
                 onToolSelect={handleToolOptionClick}
               />
             </aside>
@@ -654,7 +729,7 @@ export default function ChatUI({ bot }: ChatUIProps) {
 
       <UpgradeModal
         open={upgradeModalOpen}
-        onClose={() => setUpgradeModalOpen(false)}
+        onClose={handleCloseUpgradeModal}
         featureName={upgradeFeatureName}
       />
     </>

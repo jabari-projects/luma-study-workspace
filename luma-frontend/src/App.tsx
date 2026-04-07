@@ -1,36 +1,41 @@
 ﻿import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Suspense, lazy, memo, useEffect } from "react";
 import type { AuthUser } from "./api/api";
 import DevFlowBadge from "./components/DevFlowBadge";
 import Navbar from "./components/Navbar";
 import RequireAdmin from "./components/RequireAdmin";
-import ChatUI from "./features/chatbot/ChatUI";
-import Flashcards from "./features/study/Flashcards";
-import ImageToNotes from "./features/study/ImageToNotes";
-import StudySession from "./features/study/StudySession";
-import VoiceInput from "./features/study/VoiceInput";
-import AdminPersonasPage from "./pages/AdminPersonas";
-import DashboardPage from "./pages/DashboardPage";
-import DevFlowTestPage from "./pages/DevFlowTestPage";
-import LandingPage from "./pages/LandingPage";
-import LoginPage from "./pages/LoginPage";
 import ThemeToggle from "./components/ThemeToggle";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-import NotFoundPage from "./pages/NotFoundPage";
-import OnboardingPage from "./pages/OnboardingPage";
-import ProfileSettingsPage from "./pages/ProfileSettingsPage";
-import ProPage from "./pages/ProPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import SearchPage from "./pages/SearchPage";
-import SignupPage from "./pages/SignupPage";
-import SubscribePage from "./pages/Subscribe";
-import VerifyEmailPage from "./pages/VerifyEmailPage";
 import { useAuth } from "./context/AuthContext";
 import { isDevFlowTestingEnabled } from "./context/DevFlowTestingContext";
 import { trackPageView } from "./lib/analytics";
 
-function FullScreenStatus({ message }: { message: string }) {
+const ChatUI = lazy(() => import("./features/chatbot/ChatUI"));
+const Flashcards = lazy(() => import("./features/study/Flashcards"));
+const ImageToNotes = lazy(() => import("./features/study/ImageToNotes"));
+const StudySession = lazy(() => import("./features/study/StudySession"));
+const VoiceInput = lazy(() => import("./features/study/VoiceInput"));
+const AdminPersonasPage = lazy(() => import("./pages/AdminPersonas"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const DevFlowTestPage = lazy(() => import("./pages/DevFlowTestPage"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
+const ProfileSettingsPage = lazy(() => import("./pages/ProfileSettingsPage"));
+const ProPage = lazy(() => import("./pages/ProPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const SearchPage = lazy(() => import("./pages/SearchPage"));
+const SignupPage = lazy(() => import("./pages/SignupPage"));
+const SubscribePage = lazy(() => import("./pages/Subscribe"));
+const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
+
+const FullScreenStatus = memo(function FullScreenStatus({
+  message,
+}: {
+  message: string;
+}) {
   return (
     <div
       style={{
@@ -75,7 +80,7 @@ function FullScreenStatus({ message }: { message: string }) {
       </div>
     </div>
   );
-}
+});
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { loading, isAuthenticated } = useAuth();
@@ -220,7 +225,8 @@ export default function App() {
         key={`${location.pathname}${location.search}${location.hash}`}
         className="luma-route-transition"
       >
-        <Routes>
+        <Suspense fallback={<FullScreenStatus message="Loading page..." />}>
+          <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/pro" element={<ProPage />} />
         {devFlowTestingEnabled ? (
@@ -344,7 +350,8 @@ export default function App() {
             }
           />
           <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </div>
       <footer
         style={{

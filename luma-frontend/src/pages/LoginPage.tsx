@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 type LoginValues = {
   email: string;
@@ -11,6 +12,47 @@ type LoginErrors = Partial<Record<keyof LoginValues, string>>;
 
 const lavenderAccent = "#b59bff";
 const lavenderAccentStrong = "#8c6fff";
+const loginResponsiveStyles = `
+  @media (max-width: 767px) {
+    .luma-login-page {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .luma-login-layout {
+      grid-template-columns: 1fr !important;
+      gap: 24px !important;
+    }
+
+    .luma-login-card {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 767px) {
+    .luma-login-page {
+      padding-left: 24px;
+      padding-right: 24px;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .luma-login-page {
+      padding-left: 32px;
+      padding-right: 32px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .luma-login-page {
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
+`;
 
 function validateEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -18,6 +60,7 @@ function validateEmail(email: string) {
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { themeMode } = useTheme();
   const [values, setValues] = useState<LoginValues>({
     email: "",
     password: "",
@@ -49,6 +92,8 @@ export default function LoginPage() {
   }
 
   function getInputStyle(field: keyof LoginValues, hasError: boolean) {
+    const isDarkMode = themeMode === "dark";
+
     return {
       width: "100%",
       boxSizing: "border-box" as const,
@@ -59,17 +104,24 @@ export default function LoginPage() {
           ? "#e27891"
           : focusedField === field
             ? lavenderAccent
-            : "var(--border)"
+            : isDarkMode
+              ? "rgba(38, 38, 38, 0.92)"
+              : "var(--border)"
       }`,
-      background: "var(--card)",
+      background: isDarkMode
+        ? "rgba(26, 26, 26, 0.7)"
+        : "var(--card)",
       color: "var(--luma-text, #1d1730)",
       fontSize: 15,
       outline: "none",
       boxShadow:
         focusedField === field
-          ? "0 0 0 4px rgba(181, 155, 255, 0.12)"
+          ? isDarkMode
+            ? "0 0 0 1px rgba(140, 111, 255, 0.28)"
+            : "0 0 0 2px rgba(181, 155, 255, 0.08)"
           : "none",
-      transition: "border-color 180ms ease, box-shadow 180ms ease",
+      transition:
+        "border-color 180ms ease, box-shadow 180ms ease, background 180ms ease",
     };
   }
 
@@ -112,25 +164,30 @@ export default function LoginPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 16,
-      }}
-    >
+    <>
+      <style>{loginResponsiveStyles}</style>
       <div
+        className="luma-login-page max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0"
         style={{
-          width: "100%",
-          maxWidth: 1080,
+          minHeight: "100vh",
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.1fr) minmax(320px, 420px)",
-          gap: 16,
-          alignItems: "stretch",
+          placeItems: "center",
+          padding: 16,
         }}
       >
+        <div
+          className="luma-login-layout flex flex-col gap-6 md:flex-row md:gap-10 max-w-full w-full"
+          style={{
+            width: "100%",
+            maxWidth: 1080,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.1fr) minmax(320px, 420px)",
+            gap: 16,
+            alignItems: "stretch",
+          }}
+        >
         <section
+          className="luma-login-card w-full max-w-sm mx-auto px-4 sm:px-6 md:px-0"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -237,6 +294,7 @@ export default function LoginPage() {
         </section>
 
         <section
+          className="luma-login-card w-full max-w-sm mx-auto px-4 sm:px-6 md:px-0"
           style={{
             borderRadius: 16,
             background: "var(--card)",
@@ -280,6 +338,7 @@ export default function LoginPage() {
                   Email
                 </span>
                 <input
+                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
@@ -309,6 +368,7 @@ export default function LoginPage() {
                   Password
                 </span>
                 <input
+                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
                   type="password"
                   autoComplete="current-password"
                   value={values.password}
@@ -348,6 +408,7 @@ export default function LoginPage() {
             ) : null}
 
             <button
+              className="w-full md:w-auto"
               type="submit"
               disabled={!canSubmit || isSubmitting}
               onMouseEnter={() => setIsSubmitHovered(true)}
@@ -422,6 +483,7 @@ export default function LoginPage() {
           </p>
         </section>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

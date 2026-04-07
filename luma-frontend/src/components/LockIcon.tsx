@@ -1,9 +1,11 @@
+import { memo } from "react";
+
 type LockIconProps = {
   size?: number;
   className?: string;
 };
 
-export default function LockIcon({
+const LockIcon = memo(function LockIcon({
   size = 16,
   className,
 }: LockIconProps) {
@@ -41,4 +43,6 @@ export default function LockIcon({
       />
     </svg>
   );
-}
+});
+
+export default LockIcon;

@@ -351,6 +351,8 @@ export default function DashboardPage() {
               <img
                 src={profile.avatar_url}
                 alt={`${displayName} avatar`}
+                loading="lazy"
+                decoding="async"
                 style={{
                   width: 72,
                   height: 72,

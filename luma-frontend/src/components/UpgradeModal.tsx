@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useCallback, useEffect, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import LockIcon from "./LockIcon";
 import { trackPremiumModalOpen } from "../lib/analytics";
@@ -355,7 +355,7 @@ const upgradeModalStyles = `
   }
 `;
 
-export default function UpgradeModal({
+const UpgradeModal = memo(function UpgradeModal({
   open,
   onClose,
   featureName = "this premium feature",
@@ -400,6 +400,19 @@ export default function UpgradeModal({
     };
   }, [open]);
 
+  const handleOverlayClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose],
+  );
+
+  const handleMaybeLaterClick = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
   if (!open) {
     return null;
   }
@@ -413,11 +426,7 @@ export default function UpgradeModal({
         aria-modal="true"
         role="dialog"
         aria-label="Upgrade to Luma Pro"
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            onClose();
-          }
-        }}
+        onClick={handleOverlayClick}
       >
         <div className="luma-upgrade-modal__card">
           <div className="luma-upgrade-modal__hero">
@@ -509,7 +518,7 @@ export default function UpgradeModal({
                 <div className="luma-upgrade-modal__actions">
                   <Link
                     to="/subscribe"
-                    onClick={onClose}
+                    onClick={handleMaybeLaterClick}
                     className="luma-upgrade-modal__primary"
                   >
                     Upgrade to Luma Pro
@@ -517,7 +526,7 @@ export default function UpgradeModal({
 
                   <button
                     type="button"
-                    onClick={onClose}
+                    onClick={handleMaybeLaterClick}
                     className="luma-upgrade-modal__secondary"
                   >
                     Maybe later
@@ -535,4 +544,6 @@ export default function UpgradeModal({
       </div>
     </>
   );
-}
+});
+
+export default UpgradeModal;

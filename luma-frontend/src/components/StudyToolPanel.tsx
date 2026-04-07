@@ -1,5 +1,5 @@
+import { memo, useCallback, useMemo, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import type { CSSProperties } from "react";
 import type { StudyTool } from "../features/study/studyTools";
 import LockIcon from "./LockIcon";
 import { trackStudyToolUsage } from "../lib/analytics";
@@ -203,7 +203,7 @@ const studyToolPanelStyles = `
   }
 `;
 
-function StudyToolIcon({ toolId }: { toolId: string }) {
+const StudyToolIcon = memo(function StudyToolIcon({ toolId }: { toolId: string }) {
   if (toolId === "flashcards") {
     return (
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -246,7 +246,7 @@ function StudyToolIcon({ toolId }: { toolId: string }) {
       <path d="M5 6h14M5 12h14M5 18h9" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
-}
+});
 
 function getTooltipText(
   tool: StudyTool,
@@ -276,7 +276,138 @@ type StudyToolPanelProps = {
   compact?: boolean;
 };
 
-export default function StudyToolPanel({
+type StudyToolPanelItemProps = {
+  tool: StudyTool;
+  index: number;
+  isPremium: boolean;
+  contextual: boolean;
+  surface: string;
+  onLockedClick: (tool: StudyTool) => void;
+  onToolSelect?: (tool: StudyTool) => void;
+  onToolNavigate?: (tool: StudyTool) => void;
+};
+
+function getPanelClassName(compact: boolean) {
+  return compact
+    ? "luma-study-panel luma-study-panel--compact"
+    : "luma-study-panel";
+}
+
+function getItemClassName(isLocked: boolean) {
+  return isLocked
+    ? "luma-study-panel__item is-locked"
+    : "luma-study-panel__item";
+}
+
+const StudyToolPanelItem = memo(function StudyToolPanelItem({
+  tool,
+  index,
+  isPremium,
+  contextual,
+  surface,
+  onLockedClick,
+  onToolSelect,
+  onToolNavigate,
+}: StudyToolPanelItemProps) {
+  const isLocked = tool.premium && !isPremium;
+  const tooltip = useMemo(
+    () => getTooltipText(tool, isLocked, contextual),
+    [contextual, isLocked, tool],
+  );
+  const itemStyle = useMemo(
+    () =>
+      ({
+        animationDelay: `${index * 35}ms`,
+      }) satisfies CSSProperties,
+    [index],
+  );
+  const itemClassName = useMemo(() => getItemClassName(isLocked), [isLocked]);
+  const metaLabel = contextual ? "Shortcut" : "Workspace tool";
+
+  const handleLockedClick = useCallback(() => {
+    trackStudyToolUsage(tool.id, "locked_click", {
+      surface,
+      subscriptionStatus: "free",
+    });
+    onLockedClick(tool);
+  }, [onLockedClick, surface, tool]);
+
+  const handleToolSelect = useCallback(() => {
+    trackStudyToolUsage(tool.id, "shortcut_insert", {
+      surface,
+      subscriptionStatus: isPremium ? "premium" : "free",
+    });
+    onToolSelect?.(tool);
+  }, [isPremium, onToolSelect, surface, tool]);
+
+  const handleToolNavigate = useCallback(() => {
+    trackStudyToolUsage(tool.id, "open", {
+      surface,
+      subscriptionStatus: isPremium ? "premium" : "free",
+    });
+    onToolNavigate?.(tool);
+  }, [isPremium, onToolNavigate, surface, tool]);
+
+  const content = useMemo(
+    () => (
+      <>
+        <span className="luma-study-panel__itemTop">
+          <span className="luma-study-panel__identity">
+            <span className="luma-study-panel__icon" aria-hidden="true">
+              <StudyToolIcon toolId={tool.id} />
+            </span>
+            <span className="luma-study-panel__labelGroup">
+              <span className="luma-study-panel__label">{tool.label}</span>
+              <span className="luma-study-panel__meta">{metaLabel}</span>
+            </span>
+          </span>
+
+          {isLocked ? (
+            <span className="luma-study-panel__premium">
+              <LockIcon size={14} />
+              <span>Premium</span>
+            </span>
+          ) : null}
+        </span>
+
+        <p className="luma-study-panel__summary">{tool.summary}</p>
+      </>
+    ),
+    [isLocked, metaLabel, tool.id, tool.label, tool.summary],
+  );
+
+  return (
+    <div className="luma-study-panel__itemWrap" style={itemStyle}>
+      {isLocked ? (
+        <button
+          type="button"
+          className={itemClassName}
+          onClick={handleLockedClick}
+        >
+          {content}
+        </button>
+      ) : onToolSelect ? (
+        <button
+          type="button"
+          className={itemClassName}
+          onClick={handleToolSelect}
+        >
+          {content}
+        </button>
+      ) : (
+        <Link className={itemClassName} to={tool.to} onClick={handleToolNavigate}>
+          {content}
+        </Link>
+      )}
+
+      <span className="luma-study-panel__tooltip" role="tooltip">
+        {tooltip}
+      </span>
+    </div>
+  );
+});
+
+const StudyToolPanel = memo(function StudyToolPanel({
   title,
   description,
   tools,
@@ -287,14 +418,14 @@ export default function StudyToolPanel({
   onToolNavigate,
   compact = false,
 }: StudyToolPanelProps) {
+  const contextual = Boolean(onToolSelect);
+  const panelClassName = useMemo(() => getPanelClassName(compact), [compact]);
+
   return (
     <>
       <style>{studyToolPanelStyles}</style>
 
-      <section
-        className={`luma-study-panel${compact ? " luma-study-panel--compact" : ""}`}
-        aria-label={title}
-      >
+      <section className={panelClassName} aria-label={title}>
         <div className="luma-study-panel__header">
           <p className="luma-study-panel__title">{title}</p>
           <p className="luma-study-panel__copy">{description}</p>
@@ -302,96 +433,24 @@ export default function StudyToolPanel({
 
         <div className="luma-study-panel__list">
           {tools.map((tool, index) => {
-            const isLocked = tool.premium && !isPremium;
-            const tooltip = getTooltipText(tool, isLocked, Boolean(onToolSelect));
-            const itemStyle = {
-              animationDelay: `${index * 35}ms`,
-            } satisfies CSSProperties;
-            const content = (
-              <>
-                <span className="luma-study-panel__itemTop">
-                  <span className="luma-study-panel__identity">
-                    <span className="luma-study-panel__icon" aria-hidden="true">
-                      <StudyToolIcon toolId={tool.id} />
-                    </span>
-                    <span className="luma-study-panel__labelGroup">
-                      <span className="luma-study-panel__label">{tool.label}</span>
-                      <span className="luma-study-panel__meta">
-                        {onToolSelect ? "Shortcut" : "Workspace tool"}
-                      </span>
-                    </span>
-                  </span>
-
-                  {isLocked ? (
-                    <span className="luma-study-panel__premium">
-                      <LockIcon size={14} />
-                      <span>Premium</span>
-                    </span>
-                  ) : null}
-                </span>
-
-                <p className="luma-study-panel__summary">{tool.summary}</p>
-              </>
-            );
-
             return (
-              <div
+              <StudyToolPanelItem
                 key={tool.id}
-                className="luma-study-panel__itemWrap"
-                style={itemStyle}
-              >
-                {isLocked ? (
-                  <button
-                    type="button"
-                    className="luma-study-panel__item is-locked"
-                    onClick={() => {
-                      trackStudyToolUsage(tool.id, "locked_click", {
-                        surface,
-                        subscriptionStatus: "free",
-                      });
-                      onLockedClick(tool);
-                    }}
-                  >
-                    {content}
-                  </button>
-                ) : onToolSelect ? (
-                  <button
-                    type="button"
-                    className="luma-study-panel__item"
-                    onClick={() => {
-                      trackStudyToolUsage(tool.id, "shortcut_insert", {
-                        surface,
-                        subscriptionStatus: isPremium ? "premium" : "free",
-                      });
-                      onToolSelect(tool);
-                    }}
-                  >
-                    {content}
-                  </button>
-                ) : (
-                  <Link
-                    className="luma-study-panel__item"
-                    to={tool.to}
-                    onClick={() => {
-                      trackStudyToolUsage(tool.id, "open", {
-                        surface,
-                        subscriptionStatus: isPremium ? "premium" : "free",
-                      });
-                      onToolNavigate?.(tool);
-                    }}
-                  >
-                    {content}
-                  </Link>
-                )}
-
-                <span className="luma-study-panel__tooltip" role="tooltip">
-                  {tooltip}
-                </span>
-              </div>
+                tool={tool}
+                index={index}
+                isPremium={isPremium}
+                contextual={contextual}
+                surface={surface}
+                onLockedClick={onLockedClick}
+                onToolSelect={onToolSelect}
+                onToolNavigate={onToolNavigate}
+              />
             );
           })}
         </div>
       </section>
     </>
   );
-}
+});
+
+export default StudyToolPanel;

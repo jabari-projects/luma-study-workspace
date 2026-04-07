@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { api, getApiErrorMessage } from "../../api/api";
 import RequireSubscription from "../../components/RequireSubscription";
 import { useAuth } from "../../context/AuthContext";
@@ -403,6 +403,17 @@ function ImageToNotesTool() {
     }
   }
 
+  const handleInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      handleSelectFile(event.target.files?.[0] ?? null);
+    },
+    [previewUrl],
+  );
+
+  const handleGenerateNotesClick = useCallback(() => {
+    void handleGenerateNotes();
+  }, [selectedFile, user?.subscription_status]);
+
   return (
     <>
       <style>{imageToNotesStyles}</style>
@@ -434,9 +445,7 @@ function ImageToNotesTool() {
                   className="luma-image-notes__input"
                   type="file"
                   accept="image/*"
-                  onChange={(event) => {
-                    handleSelectFile(event.target.files?.[0] ?? null);
-                  }}
+                  onChange={handleInputChange}
                 />
 
                 <label
@@ -450,6 +459,8 @@ function ImageToNotesTool() {
                           className="luma-image-notes__preview"
                           src={previewUrl}
                           alt={selectedFile?.name || "Uploaded study material"}
+                          loading="lazy"
+                          decoding="async"
                         />
                       </div>
                     ) : (
@@ -491,9 +502,7 @@ function ImageToNotesTool() {
                   <button
                     className="luma-image-notes__button"
                     type="button"
-                    onClick={() => {
-                      void handleGenerateNotes();
-                    }}
+                    onClick={handleGenerateNotesClick}
                     disabled={!selectedFile || isGenerating}
                   >
                     {isGenerating ? "Generating..." : "Generate Notes"}
