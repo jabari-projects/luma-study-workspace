@@ -141,8 +141,8 @@ const onboardingStyles = `
   .luma-onboarding__feature {
     display: grid;
     gap: 6px;
-    padding: 18px 18px 20px;
-    border-radius: 22px;
+    padding: 20px;
+    border-radius: 16px;
     background: rgba(255, 255, 255, 0.74);
     border: 1px solid rgba(181, 155, 255, 0.2);
   }
@@ -168,7 +168,7 @@ const onboardingStyles = `
   .luma-onboarding__panel {
     background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(18px);
-    padding: 30px;
+    padding: 32px;
   }
 
   html[data-theme="dark"] .luma-onboarding__panel {
@@ -282,32 +282,42 @@ const onboardingStyles = `
 
   .luma-onboarding__field {
     display: grid;
-    gap: 10px;
+    gap: 8px;
   }
 
   .luma-onboarding__fieldLabel {
     color: var(--foreground);
-    font-size: 0.92rem;
-    font-weight: 700;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  html[data-theme="dark"] .luma-onboarding__fieldLabel {
+    color: #e5e7eb;
   }
 
   .luma-onboarding__input {
     width: 100%;
-    padding: 15px 16px;
-    border-radius: 18px;
+    padding: 14px 16px;
+    border-radius: 12px;
     border: 1px solid var(--border);
     background: var(--card-muted);
     color: var(--foreground);
+    font-size: 1rem;
     outline: none;
     transition:
-      border-color 180ms ease,
-      box-shadow 180ms ease,
-      transform 180ms ease;
+      border-color 200ms ease,
+      box-shadow 200ms ease,
+      background-color 200ms ease;
+  }
+
+  html[data-theme="dark"] .luma-onboarding__input {
+    background: rgba(23, 23, 23, 0.6);
+    border-color: rgba(38, 38, 38, 0.96);
   }
 
   .luma-onboarding__input:focus {
-    border-color: rgba(181, 155, 255, 0.42);
-    box-shadow: 0 0 0 4px rgba(181, 155, 255, 0.12);
+    border-color: rgba(99, 102, 241, 0.44);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
   }
 
   .luma-onboarding__choiceGrid {
@@ -319,8 +329,8 @@ const onboardingStyles = `
   .luma-onboarding__choice {
     display: grid;
     gap: 10px;
-    padding: 18px;
-    border-radius: 22px;
+    padding: 20px;
+    border-radius: 16px;
     border: 1px solid var(--border);
     background: var(--card-muted);
     color: var(--foreground);
@@ -361,7 +371,7 @@ const onboardingStyles = `
   .luma-onboarding__swatch {
     width: 100%;
     height: 68px;
-    border-radius: 18px;
+    border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.28);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
   }
@@ -406,11 +416,19 @@ const onboardingStyles = `
   .luma-onboarding__uploadCard {
     flex: 1 1 280px;
     display: grid;
-    gap: 10px;
-    padding: 18px;
-    border-radius: 24px;
+    gap: 12px;
+    padding: 20px;
+    border-radius: 16px;
     border: 1px dashed rgba(181, 155, 255, 0.42);
     background: rgba(181, 155, 255, 0.08);
+  }
+
+  .luma-onboarding__uploadHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .luma-onboarding__uploadButton {
@@ -419,9 +437,9 @@ const onboardingStyles = `
     justify-content: center;
     min-height: 46px;
     padding: 0 18px;
-    border-radius: 16px;
+    border-radius: 12px;
     border: none;
-    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    background: #4f46e5;
     color: #ffffff;
     font-weight: 700;
     cursor: pointer;
@@ -434,12 +452,19 @@ const onboardingStyles = `
 
   .luma-onboarding__uploadButton:hover {
     transform: translateY(-1px);
-    box-shadow: 0 16px 32px rgba(140, 111, 255, 0.22);
-    filter: brightness(1.04);
+    box-shadow: 0 12px 28px rgba(79, 70, 229, 0.22);
+    background: #6366f1;
   }
 
   .luma-onboarding__uploadInput {
     display: none;
+  }
+
+  .luma-onboarding__uploadActions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .luma-onboarding__help {
@@ -450,15 +475,20 @@ const onboardingStyles = `
   }
 
   .luma-onboarding__optionalLabel {
-    margin: -2px 0 0;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(181, 155, 255, 0.12);
+    border: 1px solid rgba(181, 155, 255, 0.18);
     color: var(--foreground-muted);
     font-size: 0.82rem;
+    font-weight: 600;
     line-height: 1.4;
   }
 
   .luma-onboarding__error {
     padding: 14px 16px;
-    border-radius: 18px;
+    border-radius: 16px;
     background: rgba(226, 120, 145, 0.12);
     border: 1px solid rgba(226, 120, 145, 0.28);
     color: #b63d61;
@@ -468,7 +498,7 @@ const onboardingStyles = `
 
   .luma-onboarding__notice {
     padding: 14px 16px;
-    border-radius: 18px;
+    border-radius: 16px;
     background: rgba(181, 155, 255, 0.12);
     border: 1px solid rgba(181, 155, 255, 0.24);
     color: var(--foreground);
@@ -495,10 +525,10 @@ const onboardingStyles = `
     min-height: 54px;
     padding: 0 24px;
     border: none;
-    border-radius: 18px;
-    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    border-radius: 12px;
+    background: #4f46e5;
     color: #ffffff;
-    font-size: 0.96rem;
+    font-size: 1rem;
     font-weight: 800;
     cursor: pointer;
     box-shadow: 0 18px 38px rgba(140, 111, 255, 0.26);
@@ -510,8 +540,8 @@ const onboardingStyles = `
 
   .luma-onboarding__submit:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 22px 40px rgba(140, 111, 255, 0.3);
-    filter: brightness(1.04);
+    box-shadow: 0 14px 30px rgba(79, 70, 229, 0.24);
+    background: #6366f1;
   }
 
   .luma-onboarding__submit:disabled {
@@ -527,19 +557,37 @@ const onboardingStyles = `
   }
 
   .luma-onboarding__skipButton {
-    border: none;
-    background: transparent;
-    padding: 0;
-    color: var(--foreground-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0 18px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--card-muted);
+    color: var(--foreground);
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
-    transition: color 180ms ease, transform 180ms ease;
+    transition:
+      color 200ms ease,
+      transform 200ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease,
+      box-shadow 200ms ease;
   }
 
   .luma-onboarding__skipButton:hover:not(:disabled) {
-    color: var(--foreground);
     transform: translateY(-1px);
+    background: rgba(181, 155, 255, 0.12);
+    border-color: rgba(99, 102, 241, 0.22);
+    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.12);
+  }
+
+  .luma-onboarding__skipButton:focus-visible {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.44);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
   }
 
   .luma-onboarding__skipButton:disabled {
@@ -598,25 +646,192 @@ const onboardingStyles = `
     line-height: 1.7;
   }
 
-  @media (max-width: 960px) {
+  @media (max-width: 1366px) {
+    .luma-onboarding {
+      padding: 24px 20px 36px;
+    }
+
     .luma-onboarding__shell {
-      grid-template-columns: 1fr;
+      width: min(1040px, 100%);
+      grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    .luma-onboarding__intro,
+    .luma-onboarding__panel {
+      padding: 24px;
+    }
+
+    .luma-onboarding__featureList,
+    .luma-onboarding__form,
+    .luma-onboarding__stepPane {
+      gap: 20px;
+    }
+
+    .luma-onboarding__copy {
+      margin-bottom: 20px;
+    }
+
+    .luma-onboarding__title,
+    .luma-onboarding__subtitle {
+      max-width: 420px;
+    }
+
+    .luma-onboarding__uploadCard {
+      flex-basis: 240px;
+      max-width: 420px;
+      padding: 18px;
     }
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 1024px) {
+    .luma-onboarding__shell {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .luma-onboarding__intro,
+    .luma-onboarding__panel {
+      padding: 24px;
+    }
+
+    .luma-onboarding__avatarWrap {
+      align-items: flex-start;
+    }
+
+    .luma-onboarding__uploadCard {
+      width: 100%;
+      max-width: 100%;
+      flex-basis: auto;
+    }
+
+    .luma-onboarding__actions {
+      position: sticky;
+      bottom: 0;
+      padding-top: 16px;
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0),
+        rgba(255, 255, 255, 0.95) 18%
+      );
+      z-index: 2;
+    }
+
+    html[data-theme="dark"] .luma-onboarding__actions {
+      background: linear-gradient(
+        180deg,
+        rgba(17, 14, 29, 0),
+        rgba(17, 14, 29, 0.96) 18%
+      );
+    }
+  }
+
+  @media (max-width: 768px) {
     .luma-onboarding {
-      padding: 18px 14px 32px;
+      padding: 20px 16px 28px;
+    }
+
+    .luma-onboarding__shell {
+      gap: 16px;
     }
 
     .luma-onboarding__panel,
     .luma-onboarding__intro {
-      padding: 24px 20px;
+      padding: 20px;
       border-radius: 26px;
+    }
+
+    .luma-onboarding__meta {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .luma-onboarding__form,
+    .luma-onboarding__stepPane,
+    .luma-onboarding__featureList {
+      gap: 16px;
     }
 
     .luma-onboarding__steps {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .luma-onboarding__avatarWrap {
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .luma-onboarding__actions {
+      gap: 12px;
+      padding-top: 12px;
+    }
+
+    .luma-onboarding__actionsMeta {
+      width: 100%;
+    }
+
+    .luma-onboarding__actionButtons {
+      width: 100%;
+      justify-content: stretch;
+    }
+
+    .luma-onboarding__submit {
+      min-height: 50px;
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .luma-onboarding {
+      padding: 20px 14px 24px;
+    }
+
+    .luma-onboarding__panel,
+    .luma-onboarding__intro {
+      padding: 20px 16px;
+      border-radius: 22px;
+    }
+
+    .luma-onboarding__feature,
+    .luma-onboarding__choice,
+    .luma-onboarding__uploadCard {
+      padding: 16px;
+    }
+
+    .luma-onboarding__steps {
+      grid-template-columns: 1fr;
+    }
+
+    .luma-onboarding__step {
+      padding: 12px 12px 14px;
+    }
+
+    .luma-onboarding__title {
+      margin: 18px 0 12px;
+    }
+
+    .luma-onboarding__copy {
+      margin-bottom: 16px;
+    }
+
+    .luma-onboarding__avatarPreview,
+    .luma-onboarding__avatarFallback {
+      width: 88px;
+      height: 88px;
+    }
+
+    .luma-onboarding__uploadButton {
+      width: 100%;
+    }
+
+    .luma-onboarding__uploadActions {
+      width: 100%;
+    }
+
+    .luma-onboarding__skipButton {
+      width: 100%;
     }
   }
 `;
@@ -656,6 +871,12 @@ export default function OnboardingPage() {
     user?.theme_mode ? normalizeThemeMode(user.theme_mode) : themeMode,
   );
   const [selectedThemeColor, setSelectedThemeColor] = useState(themeColor);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    user?.avatar_url ?? null,
+  );
+  const [avatarInitial, setAvatarInitial] = useState(() =>
+    getUsernameAvatarLetter(user?.username ?? ""),
+  );
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -674,6 +895,11 @@ export default function OnboardingPage() {
       setSelectedThemeMode(normalizeThemeMode(user.theme_mode));
     }
   }, [user?.theme_mode]);
+
+  useEffect(() => {
+    setAvatarUrl(user?.avatar_url ?? null);
+    setAvatarInitial(getUsernameAvatarLetter(user?.username ?? ""));
+  }, [user?.avatar_url, user?.username]);
 
   useEffect(() => {
     recordDevFlowOnboardingStep(currentStep);
@@ -704,7 +930,7 @@ export default function OnboardingPage() {
     };
   }, [avatarFile]);
 
-  const avatarPreview = avatarPreviewUrl ?? user?.avatar_url ?? null;
+  const avatarPreview = avatarPreviewUrl ?? avatarUrl ?? user?.avatar_url ?? null;
   const stepSummaries = ["Name", "Theme", "Accent", "Avatar"];
   const totalSteps = stepSummaries.length;
 
@@ -733,6 +959,21 @@ export default function OnboardingPage() {
     const response = await api.put<AuthUser>("/me/profile", values);
     await refreshUser();
     return response.data;
+  }
+
+  async function completeOnboarding(withAvatarUpload: boolean) {
+    trackOnboardingCompleted({
+      subscriptionStatus: user?.subscription_status ?? null,
+      metadata: {
+        with_avatar_upload: withAvatarUpload,
+        used_letter_avatar: !withAvatarUpload,
+      },
+    });
+    setIsFinishing(true);
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 950);
+    });
+    navigate("/dashboard", { replace: true });
   }
 
   async function handleDisplayNameStep() {
@@ -814,18 +1055,7 @@ export default function OnboardingPage() {
       await refreshUser();
     }
 
-    trackOnboardingCompleted({
-      subscriptionStatus: user?.subscription_status ?? null,
-      metadata: {
-        with_avatar_upload: Boolean(avatarFile),
-        used_letter_avatar: !avatarFile,
-      },
-    });
-    setIsFinishing(true);
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 950);
-    });
-    navigate("/dashboard", { replace: true });
+    await completeOnboarding(Boolean(avatarFile));
   }
 
   async function handleSkip() {
@@ -834,22 +1064,12 @@ export default function OnboardingPage() {
     setIsSaving(true);
 
     try {
-      setAvatarFile(null);
+      setAvatarUrl(null);
+      setAvatarInitial(getUsernameAvatarLetter(user?.username ?? ""));
       await submitProfile({
         avatar_url: null,
       });
-      trackOnboardingCompleted({
-        subscriptionStatus: user?.subscription_status ?? null,
-        metadata: {
-          with_avatar_upload: false,
-          used_letter_avatar: true,
-        },
-      });
-      setIsFinishing(true);
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 950);
-      });
-      navigate("/dashboard", { replace: true });
+      await completeOnboarding(false);
     } catch (skipError) {
       setError(getApiErrorMessage(skipError, "Unable to finish setup."));
     } finally {
@@ -975,36 +1195,58 @@ export default function OnboardingPage() {
         <div className="luma-onboarding__avatarWrap mx-auto text-center md:text-left">
           {avatarPreview ? (
             <img
-              className="luma-onboarding__avatarPreview max-w-[160px] mx-auto mt-4 mb-6"
+              className="luma-onboarding__avatarPreview mx-auto mt-4 mb-6"
               src={avatarPreview}
               alt={`${displayName || user.username} avatar preview`}
               loading="lazy"
               decoding="async"
             />
           ) : (
-            <div className="luma-onboarding__avatarFallback max-w-[160px] mx-auto mt-4 mb-6">
-              {getUsernameAvatarLetter(user.username)}
+            <div className="luma-onboarding__avatarFallback mx-auto mt-4 mb-6">
+              {avatarInitial}
             </div>
           )}
 
           <div className="luma-onboarding__uploadCard">
-            <p className="luma-onboarding__featureTitle">Upload your avatar</p>
-            <p className="text-sm text-neutral-400 mt-1 luma-onboarding__optionalLabel">
-              Optional
-            </p>
+            <div className="luma-onboarding__uploadHeader">
+              <p className="luma-onboarding__featureTitle">Upload your avatar</p>
+              <p className="text-sm text-neutral-400 mt-1 luma-onboarding__optionalLabel">
+                Optional
+              </p>
+            </div>
             <p className="luma-onboarding__help">
               Add an image now, or finish with your letter avatar and update it
               any time later.
             </p>
-            <label className="luma-onboarding__uploadButton">
-              <span>{avatarFile ? "Change image" : "Choose image"}</span>
-              <input
-                className="luma-onboarding__uploadInput"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleAvatarChange}
-              />
-            </label>
+            <div className="luma-onboarding__uploadActions">
+              <label className="luma-onboarding__uploadButton">
+                <span>{avatarFile ? "Change image" : "Choose image"}</span>
+                <input
+                  className="luma-onboarding__uploadInput"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarChange}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSkip();
+                }}
+                className="luma-onboarding__skipButton"
+                disabled={isSaving || isFinishing}
+              >
+                Skip
+              </button>
+
+              <style>
+                {`
+                  @media (max-width: 768px) {
+                    .luma-onboarding__skipButton { width: 100%; }
+                  }
+                `}
+              </style>
+            </div>
             {avatarFile ? (
               <p className="luma-onboarding__help">Selected: {avatarFile.name}</p>
             ) : null}
@@ -1018,8 +1260,8 @@ export default function OnboardingPage() {
       <style>{onboardingStyles}</style>
 
       <div className="luma-onboarding">
-        <div className="luma-onboarding__shell flex flex-col gap-6 md:flex-row md:gap-10 max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
-          <aside className="luma-onboarding__intro max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
+        <div className="luma-onboarding__shell">
+          <aside className="luma-onboarding__intro">
             <span className="luma-onboarding__eyebrow">Luma Setup</span>
             <h1 className="luma-onboarding__title">
               Shape your workspace in a few calm steps.
@@ -1062,7 +1304,7 @@ export default function OnboardingPage() {
             </div>
           </aside>
 
-          <section className="luma-onboarding__panel max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-0">
+          <section className="luma-onboarding__panel">
             <div className="luma-onboarding__meta">
               <div>
                 <p className="luma-onboarding__metaLabel">
@@ -1161,19 +1403,6 @@ export default function OnboardingPage() {
                   </div>
 
                   <div className="luma-onboarding__actionButtons w-full md:w-auto">
-                    {currentStep === totalSteps ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleSkip();
-                        }}
-                        className="text-sm text-neutral-400 hover:text-neutral-200 transition luma-onboarding__skipButton w-full md:w-auto"
-                        disabled={isSaving || isFinishing}
-                      >
-                        Skip for now
-                      </button>
-                    ) : null}
-
                     <button
                       className="luma-onboarding__submit w-full md:w-auto"
                       type="submit"

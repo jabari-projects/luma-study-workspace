@@ -64,6 +64,7 @@ OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-s
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 FREE_AI_DAILY_LIMIT = int(os.getenv("FREE_AI_DAILY_LIMIT", "3"))
 AI_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("AI_RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MESSAGE = "Too many requests, please wait."
@@ -207,6 +208,7 @@ class AIServiceUnavailableError(RuntimeError):
 
 
 def build_public_api_url(path: str):
+    logger.info(f"API_BASE_URL = {API_BASE_URL}")
     return f"{API_BASE_URL}{path}"
 
 
@@ -720,6 +722,76 @@ def log_password_reset_link(token: str):
     relative_path = f"/auth/reset?token={token}"
     logger.info("Password reset link: %s", relative_path)
     logger.info("Password reset absolute URL: %s", build_public_api_url(relative_path))
+
+
+def send_email(to_email: str, subject: str, html_body: str):
+    logger.info("Entered send_email()")
+    resend_api_key = (os.getenv("RESEND_API_KEY") or "").strip()
+    email_from = (os.getenv("EMAIL_FROM") or "").strip()
+    logger.info(f"RESEND_API_KEY loaded? {bool(resend_api_key)}")
+    logger.info(f"EMAIL_FROM loaded? {bool(email_from)}")
+
+    if not resend_api_key:
+        raise RuntimeError("RESEND_API_KEY is not configured.")
+
+    if not email_from:
+        raise RuntimeError("EMAIL_FROM is not configured.")
+
+    logger.info("Calling Resend API now...")
+    response = httpx.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": email_from,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+        },
+        timeout=15.0,
+    )
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Resend email request failed with status {response.status_code}: {response.text}"
+        )
+
+    return response.json()
+
+
+def build_verification_email_html(verification_url: str):
+    return f"""
+    <div style="font-family: Arial, sans-serif; color: #171717; line-height: 1.6;">
+      <h2 style="margin-bottom: 12px;">Verify your Luma account</h2>
+      <p style="margin-bottom: 16px;">
+        Confirm your email address to finish setting up your Luma account.
+      </p>
+      <p style="margin-bottom: 24px;">
+        <a
+          href="{verification_url}"
+          style="
+            display: inline-block;
+            padding: 12px 20px;
+            background: #4f46e5;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 700;
+          "
+        >
+          Verify email
+        </a>
+      </p>
+      <p style="margin-bottom: 8px;">
+        If the button does not work, use this link:
+      </p>
+      <p>
+        <a href="{verification_url}">{verification_url}</a>
+      </p>
+    </div>
+    """
 
 
 def issue_email_verification_token(user_id: str):
@@ -1511,6 +1583,7 @@ def semantic_search_intelligence(payload: SemanticSearchRequest, user=Depends(ge
 
 @app.post("/signup", response_model=AuthSessionResponse)
 def signup(payload: SignupRequest):
+    logger.info("Entered signup route")
     existing_user = get_user_by_email(payload.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -1521,7 +1594,12 @@ def signup(payload: SignupRequest):
 
     user = create_user(payload.email, payload.password, payload.username)
     create_profile(user["id"], payload.username)
-    issue_email_verification_token_best_effort(user["id"])
+    verification_token = issue_email_verification_token_best_effort(user["id"])
+    if verification_token:
+        verification_url = build_public_api_url(f"/auth/verify?token={verification_token}")
+        html_body = build_verification_email_html(verification_url)
+        logger.info("Signup: about to call send_email()")
+        send_email(user["email"], "Verify your Luma account", html_body)
 
     access_token = create_access_token({"sub": user["id"]})
     return {
@@ -1555,6 +1633,7 @@ def login(request: LoginRequest):
 # verification email resend requests before exposing this flow broadly.
 @app.post("/auth/send-verification", response_model=VerificationStatusResponse)
 def send_verification_email(user=Depends(get_current_user)):
+    logger.info("Entered send_verification_email route")
     user_row = get_user_by_id(user["id"])
     if not user_row:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1562,7 +1641,11 @@ def send_verification_email(user=Depends(get_current_user)):
     if user_row.get("email_verified"):
         return {"success": True, "message": "Email is already verified"}
 
-    issue_email_verification_token(user["id"])
+    token = issue_email_verification_token(user["id"])
+    verify_url = build_public_api_url(f"/auth/verify?token={token}")
+    html_body = build_verification_email_html(verify_url)
+    logger.info("About to call send_email()")
+    send_email(user_row["email"], "Verify your Luma account", html_body)
     return {"success": True, "message": "Verification email sent"}
 
 
@@ -1861,8 +1944,32 @@ def search_users(query: str = Query(..., min_length=1, max_length=50)):
     return results
 
 
+@app.post("/internal/supabase/user-updated")
+async def supabase_user_updated(payload: dict, request: Request):
+    secret = request.headers.get("authorization")
+    if secret != f"Bearer {WEBHOOK_SECRET}":
+        raise HTTPException(status_code=401, detail="Unauthorized webhook")
+
+    logger.info("🔥 Supabase webhook fired")
+    logger.info("Headers: %s", dict(request.headers))
+    logger.info("Payload: %s", payload)
+    print("🔥 Supabase webhook fired:", payload)
+
+    return {"status": "ok"}
+
+
+@app.post("/internal/supabase/user-updated-test")
+async def supabase_user_updated_test(payload: dict):
+    logger.info("🧪 Test webhook hit with payload: %s", payload)
+    print("🧪 Test webhook hit:", payload)
+    return {"status": "test-ok"}
+
+
 # ---------- Protected test route ----------
 
 @app.get("/protected")
 def protected_route(user=Depends(get_current_user)):
     return {"message": f"Hello, user {user['id']}"}
+
+
+logger.info("MAIN.PY LOADED SUCCESSFULLY")

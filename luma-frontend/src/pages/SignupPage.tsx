@@ -15,10 +15,35 @@ type SignupErrors = Partial<Record<keyof SignupValues, string>>;
 const lavenderAccent = "#b59bff";
 const lavenderAccentStrong = "#8c6fff";
 const signupResponsiveStyles = `
+  .luma-signup-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--luma-text, #1d1730);
+  }
+
+  html[data-theme="dark"] .luma-signup-label {
+    color: #e5e7eb;
+  }
+
+  .luma-signup-submit,
+  .luma-signup-link {
+    transition:
+      background-color 200ms ease,
+      color 200ms ease,
+      box-shadow 200ms ease,
+      transform 200ms ease;
+  }
+
+  .luma-signup-submit:focus-visible,
+  .luma-signup-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
+  }
+
   @media (max-width: 767px) {
     .luma-signup-page {
-      padding-left: 16px;
-      padding-right: 16px;
+      padding-left: 16px !important;
+      padding-right: 16px !important;
     }
 
     .luma-signup-layout {
@@ -36,22 +61,22 @@ const signupResponsiveStyles = `
 
   @media (min-width: 640px) and (max-width: 767px) {
     .luma-signup-page {
-      padding-left: 24px;
-      padding-right: 24px;
+      padding-left: 16px !important;
+      padding-right: 16px !important;
     }
   }
 
   @media (min-width: 768px) and (max-width: 1023px) {
     .luma-signup-page {
-      padding-left: 32px;
-      padding-right: 32px;
+      padding-left: 32px !important;
+      padding-right: 32px !important;
     }
   }
 
   @media (min-width: 1024px) {
     .luma-signup-page {
-      padding-left: 0;
-      padding-right: 0;
+      padding-left: 32px !important;
+      padding-right: 32px !important;
     }
   }
 `;
@@ -115,31 +140,29 @@ export default function SignupPage() {
     return {
       width: "100%",
       boxSizing: "border-box" as const,
-      padding: 16,
-      borderRadius: 16,
+      padding: "14px 16px",
+      borderRadius: 12,
       border: `1px solid ${
         hasError
           ? "#e27891"
           : focusedField === field
             ? lavenderAccent
             : isDarkMode
-              ? "rgba(38, 38, 38, 0.92)"
+              ? "rgba(38, 38, 38, 0.96)"
               : "var(--border)"
       }`,
       background: isDarkMode
-        ? "rgba(26, 26, 26, 0.7)"
+        ? "rgba(23, 23, 23, 0.6)"
         : "var(--card)",
       color: "var(--luma-text, #1d1730)",
-      fontSize: 15,
+      fontSize: 16,
       outline: "none",
       boxShadow:
         focusedField === field
-          ? isDarkMode
-            ? "0 0 0 1px rgba(140, 111, 255, 0.28)"
-            : "0 0 0 2px rgba(181, 155, 255, 0.08)"
+          ? "0 0 0 4px rgba(99, 102, 241, 0.16)"
           : "none",
       transition:
-        "border-color 180ms ease, box-shadow 180ms ease, background 180ms ease",
+        "border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease",
     };
   }
 
@@ -223,7 +246,7 @@ export default function SignupPage() {
             maxWidth: 1100,
             display: "grid",
             gridTemplateColumns: "minmax(320px, 430px) minmax(0, 1fr)",
-            gap: 16,
+            gap: 24,
             alignItems: "stretch",
           }}
         >
@@ -234,11 +257,11 @@ export default function SignupPage() {
             background: "var(--card)",
             border: "1px solid var(--border)",
             boxShadow: "var(--shadow)",
-            padding: 16,
+            padding: 24,
             alignSelf: "center",
           }}
         >
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 16 }}>
             <span
               style={{
                 display: "inline-flex",
@@ -280,17 +303,9 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} noValidate>
             <div style={{ display: "grid", gap: 16 }}>
               <label style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--luma-text, #1d1730)",
-                  }}
-                >
-                  Username
-                </span>
+                <span className="luma-signup-label">Username</span>
                 <input
-                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
+                  className="w-full luma-signup-input dark:bg-neutral-900/60 dark:border-neutral-800"
                   type="text"
                   autoComplete="username"
                   value={values.username}
@@ -321,17 +336,9 @@ export default function SignupPage() {
               </label>
 
               <label style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--luma-text, #1d1730)",
-                  }}
-                >
-                  Email
-                </span>
+                <span className="luma-signup-label">Email</span>
                 <input
-                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
+                  className="w-full luma-signup-input dark:bg-neutral-900/60 dark:border-neutral-800"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
@@ -351,17 +358,9 @@ export default function SignupPage() {
               </label>
 
               <label style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--luma-text, #1d1730)",
-                  }}
-                >
-                  Password
-                </span>
+                <span className="luma-signup-label">Password</span>
                 <input
-                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
+                  className="w-full luma-signup-input dark:bg-neutral-900/60 dark:border-neutral-800"
                   type="password"
                   autoComplete="new-password"
                   value={values.password}
@@ -382,17 +381,9 @@ export default function SignupPage() {
               </label>
 
               <label style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--luma-text, #1d1730)",
-                  }}
-                >
-                  Confirm password
-                </span>
+                <span className="luma-signup-label">Confirm password</span>
                 <input
-                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
+                  className="w-full luma-signup-input dark:bg-neutral-900/60 dark:border-neutral-800"
                   type="password"
                   autoComplete="new-password"
                   value={values.confirmPassword}
@@ -435,34 +426,32 @@ export default function SignupPage() {
             ) : null}
 
             <button
-              className="w-full md:w-auto"
+              className="w-full md:w-auto luma-signup-submit"
               type="submit"
               disabled={!canSubmit || isSubmitting}
               onMouseEnter={() => setIsCreateHovered(true)}
               onMouseLeave={() => setIsCreateHovered(false)}
               style={{
                 width: "100%",
-                marginTop: 12,
+                marginTop: 16,
                 border: "none",
-                borderRadius: 16,
-                padding: 16,
-                background: `linear-gradient(135deg, ${
-                  isCreateHovered ? "#7d61f5" : lavenderAccentStrong
-                }, ${isCreateHovered ? "#c4b5ff" : lavenderAccent})`,
+                borderRadius: 12,
+                padding: "14px 16px",
+                background: isCreateHovered ? "#6366f1" : "#4f46e5",
                 color: "#ffffff",
-                fontSize: 15,
+                fontSize: 16,
                 fontWeight: 700,
                 cursor: !canSubmit || isSubmitting ? "not-allowed" : "pointer",
                 opacity: !canSubmit || isSubmitting ? 0.7 : 1,
                 boxShadow: isCreateHovered
-                  ? "0 18px 36px rgba(140, 111, 255, 0.22)"
+                  ? "0 12px 28px rgba(79, 70, 229, 0.22)"
                   : "var(--shadow)",
                 transform:
                   isCreateHovered && canSubmit && !isSubmitting
                     ? "translateY(-1px)"
                     : "translateY(0)",
                 transition:
-                  "background 180ms ease, box-shadow 180ms ease, transform 180ms ease",
+                  "background-color 200ms ease, box-shadow 200ms ease, transform 200ms ease",
               }}
             >
               {isSubmitting ? "Creating account..." : "Create account"}
@@ -480,6 +469,7 @@ export default function SignupPage() {
             Already have an account?{" "}
             <Link
               to="/login"
+              className="luma-signup-link"
               style={{
                 color: lavenderAccentStrong,
                 fontWeight: 700,
@@ -501,6 +491,7 @@ export default function SignupPage() {
             Forgot your password?{" "}
             <Link
               to="/forgot-password"
+              className="luma-signup-link"
               style={{
                 color: lavenderAccentStrong,
                 fontWeight: 700,
@@ -518,7 +509,7 @@ export default function SignupPage() {
             position: "relative",
             overflow: "hidden",
             borderRadius: 16,
-            padding: 16,
+            padding: 24,
             background: "var(--card)",
             border: "1px solid var(--border)",
             boxShadow: "var(--shadow)",
@@ -537,7 +528,15 @@ export default function SignupPage() {
             }}
           />
 
-          <div style={{ position: "relative", zIndex: 1, maxWidth: 520 }}>
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                maxWidth: 520,
+                display: "grid",
+                gap: 24,
+              }}
+            >
             <span
               style={{
                 display: "inline-flex",
@@ -582,9 +581,9 @@ export default function SignupPage() {
 
             <div
               style={{
-                marginTop: 12,
+                marginTop: 0,
                 display: "grid",
-                gap: 12,
+                gap: 16,
               }}
             >
               {[

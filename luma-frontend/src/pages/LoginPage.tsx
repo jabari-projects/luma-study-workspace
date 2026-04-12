@@ -13,10 +13,37 @@ type LoginErrors = Partial<Record<keyof LoginValues, string>>;
 const lavenderAccent = "#b59bff";
 const lavenderAccentStrong = "#8c6fff";
 const loginResponsiveStyles = `
+  .luma-login-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--luma-text, #1d1730);
+  }
+
+  html[data-theme="dark"] .luma-login-label {
+    color: #e5e7eb;
+  }
+
+  .luma-login-submit,
+  .luma-login-link,
+  .luma-login-forgot {
+    transition:
+      background-color 200ms ease,
+      color 200ms ease,
+      box-shadow 200ms ease,
+      transform 200ms ease;
+  }
+
+  .luma-login-submit:focus-visible,
+  .luma-login-link:focus-visible,
+  .luma-login-forgot:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
+  }
+
   @media (max-width: 767px) {
     .luma-login-page {
-      padding-left: 16px;
-      padding-right: 16px;
+      padding-left: 16px !important;
+      padding-right: 16px !important;
     }
 
     .luma-login-layout {
@@ -34,22 +61,22 @@ const loginResponsiveStyles = `
 
   @media (min-width: 640px) and (max-width: 767px) {
     .luma-login-page {
-      padding-left: 24px;
-      padding-right: 24px;
+      padding-left: 16px !important;
+      padding-right: 16px !important;
     }
   }
 
   @media (min-width: 768px) and (max-width: 1023px) {
     .luma-login-page {
-      padding-left: 32px;
-      padding-right: 32px;
+      padding-left: 32px !important;
+      padding-right: 32px !important;
     }
   }
 
   @media (min-width: 1024px) {
     .luma-login-page {
-      padding-left: 0;
-      padding-right: 0;
+      padding-left: 32px !important;
+      padding-right: 32px !important;
     }
   }
 `;
@@ -97,31 +124,29 @@ export default function LoginPage() {
     return {
       width: "100%",
       boxSizing: "border-box" as const,
-      padding: 16,
-      borderRadius: 16,
+      padding: "14px 16px",
+      borderRadius: 12,
       border: `1px solid ${
         hasError
           ? "#e27891"
           : focusedField === field
             ? lavenderAccent
             : isDarkMode
-              ? "rgba(38, 38, 38, 0.92)"
+              ? "rgba(38, 38, 38, 0.96)"
               : "var(--border)"
       }`,
       background: isDarkMode
-        ? "rgba(26, 26, 26, 0.7)"
+        ? "rgba(23, 23, 23, 0.6)"
         : "var(--card)",
       color: "var(--luma-text, #1d1730)",
-      fontSize: 15,
+      fontSize: 16,
       outline: "none",
       boxShadow:
         focusedField === field
-          ? isDarkMode
-            ? "0 0 0 1px rgba(140, 111, 255, 0.28)"
-            : "0 0 0 2px rgba(181, 155, 255, 0.08)"
+          ? "0 0 0 4px rgba(99, 102, 241, 0.16)"
           : "none",
       transition:
-        "border-color 180ms ease, box-shadow 180ms ease, background 180ms ease",
+        "border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease",
     };
   }
 
@@ -182,7 +207,7 @@ export default function LoginPage() {
             maxWidth: 1080,
             display: "grid",
             gridTemplateColumns: "minmax(0, 1.1fr) minmax(320px, 420px)",
-            gap: 16,
+            gap: 24,
             alignItems: "stretch",
           }}
         >
@@ -192,7 +217,7 @@ export default function LoginPage() {
             position: "relative",
             overflow: "hidden",
             borderRadius: 16,
-            padding: 16,
+            padding: 24,
             background: "var(--card)",
             border: "1px solid var(--border)",
             boxShadow: "var(--shadow)",
@@ -216,6 +241,8 @@ export default function LoginPage() {
               maxWidth: 520,
               position: "relative",
               zIndex: 1,
+              display: "grid",
+              gap: 24,
             }}
           >
             <span
@@ -262,10 +289,10 @@ export default function LoginPage() {
 
             <div
               style={{
-                marginTop: 12,
+                marginTop: 0,
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: 12,
+                gap: 16,
               }}
             >
               {[
@@ -300,11 +327,11 @@ export default function LoginPage() {
             background: "var(--card)",
             border: "1px solid var(--border)",
             boxShadow: "var(--shadow)",
-            padding: 16,
+            padding: 24,
             alignSelf: "center",
           }}
         >
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 16 }}>
             <h2
               style={{
                 margin: 0,
@@ -326,19 +353,11 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
-            <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 16 }}>
               <label style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--luma-text, #1d1730)",
-                  }}
-                >
-                  Email
-                </span>
+                <span className="luma-login-label">Email</span>
                 <input
-                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
+                  className="w-full luma-login-input dark:bg-neutral-900/60 dark:border-neutral-800"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
@@ -358,17 +377,9 @@ export default function LoginPage() {
               </label>
 
               <label style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--luma-text, #1d1730)",
-                  }}
-                >
-                  Password
-                </span>
+                <span className="luma-login-label">Password</span>
                 <input
-                  className="w-full dark:bg-[#1a1a1a]/70 dark:border-neutral-800"
+                  className="w-full luma-login-input dark:bg-neutral-900/60 dark:border-neutral-800"
                   type="password"
                   autoComplete="current-password"
                   value={values.password}
@@ -408,34 +419,32 @@ export default function LoginPage() {
             ) : null}
 
             <button
-              className="w-full md:w-auto"
+              className="w-full md:w-auto luma-login-submit"
               type="submit"
               disabled={!canSubmit || isSubmitting}
               onMouseEnter={() => setIsSubmitHovered(true)}
               onMouseLeave={() => setIsSubmitHovered(false)}
               style={{
                 width: "100%",
-                marginTop: 12,
+                marginTop: 16,
                 border: "none",
-                borderRadius: 16,
-                padding: 16,
-                background: `linear-gradient(135deg, ${
-                  isSubmitHovered ? "#7d61f5" : lavenderAccentStrong
-                }, ${isSubmitHovered ? "#c4b5ff" : lavenderAccent})`,
+                borderRadius: 12,
+                padding: "14px 16px",
+                background: isSubmitHovered ? "#6366f1" : "#4f46e5",
                 color: "#ffffff",
-                fontSize: 15,
+                fontSize: 16,
                 fontWeight: 700,
                 cursor: !canSubmit || isSubmitting ? "not-allowed" : "pointer",
                 opacity: !canSubmit || isSubmitting ? 0.7 : 1,
                 boxShadow: isSubmitHovered
-                  ? "0 18px 36px rgba(140, 111, 255, 0.22)"
+                  ? "0 12px 28px rgba(79, 70, 229, 0.22)"
                   : "var(--shadow)",
                 transform:
                   isSubmitHovered && canSubmit && !isSubmitting
                     ? "translateY(-1px)"
                     : "translateY(0)",
                 transition:
-                  "background 180ms ease, box-shadow 180ms ease, transform 180ms ease",
+                  "background-color 200ms ease, box-shadow 200ms ease, transform 200ms ease",
               }}
             >
               {isSubmitting ? "Signing in..." : "Continue"}
@@ -450,6 +459,7 @@ export default function LoginPage() {
           >
             <Link
               to="/forgot-password"
+              className="luma-login-forgot"
               style={{
                 color: lavenderAccentStrong,
                 fontSize: 14,
@@ -472,6 +482,7 @@ export default function LoginPage() {
             Need an account?{" "}
             <Link
               to="/signup"
+              className="luma-login-link"
               style={{
                 color: lavenderAccentStrong,
                 fontWeight: 700,

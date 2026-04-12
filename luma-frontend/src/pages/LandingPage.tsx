@@ -44,6 +44,22 @@ export default function LandingPage() {
             animation: float 4s ease-in-out infinite;
           }
 
+          .luma-landing-featureBubble {
+            background: rgba(255, 255, 255, 0.74);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: var(--foreground);
+            transition:
+              background-color 200ms ease,
+              color 200ms ease,
+              border-color 200ms ease;
+          }
+
+          html[data-theme="dark"] .luma-landing-featureBubble {
+            background: rgba(23, 23, 23, 0.6);
+            border: 1px solid rgba(38, 38, 38, 0.96);
+            color: #e5e7eb;
+          }
+
           @keyframes float {
             0% { transform: translateY(0px); }
             50% { transform: translateY(-6px); }
@@ -306,15 +322,14 @@ export default function LandingPage() {
               ].map((item) => (
                 <div
                   key={item}
+                  className="luma-landing-featureBubble"
                   style={{
                     padding: "18px 18px 20px",
                     borderRadius: 24,
-                    background: "rgba(255, 255, 255, 0.78)",
-                    border: "1px solid rgba(181, 155, 255, 0.18)",
                     boxShadow: "0 18px 40px rgba(72, 53, 121, 0.1)",
-                    color: "var(--foreground)",
                     fontWeight: 700,
                     lineHeight: 1.55,
+                    color: "inherit",
                   }}
                 >
                   {item}
