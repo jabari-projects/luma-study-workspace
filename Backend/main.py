@@ -1965,6 +1965,16 @@ async def supabase_user_updated_test(payload: dict):
     return {"status": "test-ok"}
 
 
+@app.get("/internal/debug/file")
+async def debug_file():
+    import os, inspect
+    return {
+        "cwd": os.getcwd(),
+        "file": inspect.getfile(app.__class__),
+        "listdir": os.listdir(),
+    }
+
+
 # ---------- Protected test route ----------
 
 @app.get("/protected")
