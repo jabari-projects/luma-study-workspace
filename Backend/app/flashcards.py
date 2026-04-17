@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from auth import get_current_user
-from supabase_client import get_supabase
+from .auth import get_current_user_id
+from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/flashcards", tags=["flashcards"])
 TABLE_NAME = "flashcards"
@@ -63,7 +63,7 @@ def _get_flashcard_or_404(user_id: str, flashcard_id: str) -> dict:
 
 
 @router.post("", response_model=FlashcardResponse, status_code=status.HTTP_201_CREATED)
-def create_flashcard(payload: FlashcardCreateRequest, user_id: str = Depends(get_current_user)):
+def create_flashcard(payload: FlashcardCreateRequest, user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -87,7 +87,7 @@ def create_flashcard(payload: FlashcardCreateRequest, user_id: str = Depends(get
 
 
 @router.get("", response_model=list[FlashcardResponse])
-def list_flashcards(user_id: str = Depends(get_current_user)):
+def list_flashcards(user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -103,7 +103,7 @@ def list_flashcards(user_id: str = Depends(get_current_user)):
 def update_flashcard(
     flashcard_id: str,
     payload: FlashcardUpdateRequest,
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user_id),
 ):
     _get_flashcard_or_404(user_id, flashcard_id)
 
@@ -117,7 +117,7 @@ def update_flashcard(
 
 
 @router.delete("/{flashcard_id}", response_model=FlashcardDeleteResponse)
-def delete_flashcard(flashcard_id: str, user_id: str = Depends(get_current_user)):
+def delete_flashcard(flashcard_id: str, user_id: str = Depends(get_current_user_id)):
     _get_flashcard_or_404(user_id, flashcard_id)
     get_supabase().table(TABLE_NAME).delete().eq("id", flashcard_id).eq("user_id", user_id).execute()
     return {"message": "Flashcard deleted successfully"}

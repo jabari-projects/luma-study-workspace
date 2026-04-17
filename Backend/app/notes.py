@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from auth import get_current_user
-from supabase_client import get_supabase
+from .auth import get_current_user_id
+from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 TABLE_NAME = "notes"
@@ -63,7 +63,7 @@ def _get_note_or_404(user_id: str, note_id: str) -> dict:
 
 
 @router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
-def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_user)):
+def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -84,7 +84,7 @@ def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_u
 
 
 @router.get("", response_model=list[NoteResponse])
-def list_notes(user_id: str = Depends(get_current_user)):
+def list_notes(user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -97,7 +97,7 @@ def list_notes(user_id: str = Depends(get_current_user)):
 
 
 @router.put("/{note_id}", response_model=NoteResponse)
-def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends(get_current_user)):
+def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends(get_current_user_id)):
     _get_note_or_404(user_id, note_id)
 
     updates = payload.model_dump(exclude_none=True)
@@ -110,7 +110,7 @@ def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends
 
 
 @router.delete("/{note_id}", response_model=NoteDeleteResponse)
-def delete_note(note_id: str, user_id: str = Depends(get_current_user)):
+def delete_note(note_id: str, user_id: str = Depends(get_current_user_id)):
     _get_note_or_404(user_id, note_id)
     get_supabase().table(TABLE_NAME).delete().eq("id", note_id).eq("user_id", user_id).execute()
     return {"message": "Note deleted successfully"}

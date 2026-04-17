@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from auth import get_current_user
-from supabase_client import get_supabase
+from .auth import get_current_user_id
+from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/transcripts", tags=["transcripts"])
 TABLE_NAME = "transcripts"
@@ -55,7 +55,7 @@ def _get_transcript_or_404(user_id: str, transcript_id: str) -> dict:
 
 
 @router.post("", response_model=TranscriptResponse, status_code=status.HTTP_201_CREATED)
-def create_transcript(payload: TranscriptCreateRequest, user_id: str = Depends(get_current_user)):
+def create_transcript(payload: TranscriptCreateRequest, user_id: str = Depends(get_current_user_id)):
     response = get_supabase().table(TABLE_NAME).insert({"user_id": user_id, "content": payload.content}).execute()
     rows = response.data or []
     if not rows:
@@ -67,7 +67,7 @@ def create_transcript(payload: TranscriptCreateRequest, user_id: str = Depends(g
 
 
 @router.get("", response_model=list[TranscriptResponse])
-def list_transcripts(user_id: str = Depends(get_current_user)):
+def list_transcripts(user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -83,7 +83,7 @@ def list_transcripts(user_id: str = Depends(get_current_user)):
 def update_transcript(
     transcript_id: str,
     payload: TranscriptUpdateRequest,
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user_id),
 ):
     _get_transcript_or_404(user_id, transcript_id)
 
@@ -97,7 +97,7 @@ def update_transcript(
 
 
 @router.delete("/{transcript_id}", response_model=TranscriptDeleteResponse)
-def delete_transcript(transcript_id: str, user_id: str = Depends(get_current_user)):
+def delete_transcript(transcript_id: str, user_id: str = Depends(get_current_user_id)):
     _get_transcript_or_404(user_id, transcript_id)
     get_supabase().table(TABLE_NAME).delete().eq("id", transcript_id).eq("user_id", user_id).execute()
     return {"message": "Transcript deleted successfully"}

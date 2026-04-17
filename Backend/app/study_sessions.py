@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from auth import get_current_user
-from supabase_client import get_supabase
+from .auth import get_current_user_id
+from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/study-sessions", tags=["study_sessions"])
 TABLE_NAME = "study_sessions"
@@ -67,7 +67,7 @@ def _get_study_session_or_404(user_id: str, session_id: str) -> dict:
 
 
 @router.post("", response_model=StudySessionResponse, status_code=status.HTTP_201_CREATED)
-def create_study_session(payload: StudySessionCreateRequest, user_id: str = Depends(get_current_user)):
+def create_study_session(payload: StudySessionCreateRequest, user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -92,7 +92,7 @@ def create_study_session(payload: StudySessionCreateRequest, user_id: str = Depe
 
 
 @router.get("", response_model=list[StudySessionResponse])
-def list_study_sessions(user_id: str = Depends(get_current_user)):
+def list_study_sessions(user_id: str = Depends(get_current_user_id)):
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -108,7 +108,7 @@ def list_study_sessions(user_id: str = Depends(get_current_user)):
 def update_study_session(
     session_id: str,
     payload: StudySessionUpdateRequest,
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_user_id),
 ):
     _get_study_session_or_404(user_id, session_id)
 
@@ -122,7 +122,7 @@ def update_study_session(
 
 
 @router.delete("/{session_id}", response_model=StudySessionDeleteResponse)
-def delete_study_session(session_id: str, user_id: str = Depends(get_current_user)):
+def delete_study_session(session_id: str, user_id: str = Depends(get_current_user_id)):
     _get_study_session_or_404(user_id, session_id)
     get_supabase().table(TABLE_NAME).delete().eq("id", session_id).eq("user_id", user_id).execute()
     return {"message": "Study session deleted successfully"}

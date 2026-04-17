@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
-from auth import _get_user_from_custom_jwt
-from supabase_client import get_supabase
+from .auth import _get_user_from_custom_jwt
+from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 TABLE_NAME = "analytics_events"
