@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, getApiErrorMessage } from "../api/api";
+import { API, api, getApiErrorMessage } from "../api/api";
 import { useAuth } from "../context/AuthContext";
 
 const premiumFeatures = [
@@ -37,7 +37,9 @@ export default function SubscribePage() {
     setMessage(null);
 
     try {
-      const response = await api.post<{ url: string }>("/api/create-checkout-session");
+      const response = await api.post<{ url: string }>(
+        `${API}/api/create-checkout-session`,
+      );
 
       if (!response.data?.url) {
         throw new Error("Unable to start checkout right now.");

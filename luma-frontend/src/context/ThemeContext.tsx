@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  API,
   api,
   AUTH_STORAGE_KEY,
   getApiErrorMessage,
@@ -221,7 +222,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setIsSaving(true);
 
     try {
-      await api.put("/me/profile", {
+      await api.put(`${API}/me/profile`, {
         theme_mode: normalizedMode,
       });
 

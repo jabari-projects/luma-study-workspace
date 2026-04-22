@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  API,
   api,
   AUTH_STORAGE_KEY,
   getApiErrorMessage,
@@ -390,7 +391,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function fetchProfile(emailVerifiedFallback = false) {
-    const response = await api.get<AuthUser>("/me/profile");
+    const response = await api.get<AuthUser>(`${API}/me/profile`);
     const baseUser = attachEmailVerification(
       response.data,
       emailVerifiedFallback,
@@ -409,7 +410,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fallbackUser: BasicAuthUser,
   ) {
     setApiAccessToken(token);
-    await api.get("/protected");
+    await api.get(`${API}/protected`);
 
     try {
       return await fetchProfile(session.user?.email_verified ?? false);
@@ -444,7 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       setApiAccessToken(token);
-      await api.get("/protected");
+      await api.get(`${API}/protected`);
       const nextUser = await fetchProfile(emailVerifiedFallback);
 
       applySession({
@@ -474,7 +475,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     try {
-      const response = await api.post<AuthResponse>("/login", {
+      const response = await api.post<AuthResponse>(`${API}/login`, {
         email,
         password,
       });
@@ -500,7 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signup(email: string, password: string, username: string) {
     try {
-      const response = await api.post<AuthResponse>("/signup", {
+      const response = await api.post<AuthResponse>(`${API}/signup`, {
         email,
         password,
         username,
@@ -551,7 +552,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function restoreSession() {
       try {
         setApiAccessToken(storedAuth.accessToken);
-        await api.get("/protected");
+        await api.get(`${API}/protected`);
         const nextUser = await fetchProfile(
           storedAuth.user?.email_verified ?? false,
         );

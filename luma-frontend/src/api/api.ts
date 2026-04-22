@@ -1,72 +1,11 @@
 import axios, { AxiosHeaders, type AxiosError } from "axios";
 import { recordDevFlowApiCall } from "../context/DevFlowTestingContext";
 
-function normalizeOrigin(value: string | undefined) {
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-
-  try {
-    return new URL(value.trim()).origin.replace(/\/+$/, "").toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function resolveApiBaseUrl() {
-  const explicitApiBaseUrl =
-    import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL;
-  const trimmedApiBaseUrl =
-    typeof explicitApiBaseUrl === "string" ? explicitApiBaseUrl.trim() : "";
-  const explicitApiOrigin = normalizeOrigin(trimmedApiBaseUrl);
-  const publicAppOrigin = normalizeOrigin(import.meta.env.PUBLIC_APP_URL);
-  const browserOrigin =
-    typeof window !== "undefined"
-      ? normalizeOrigin(window.location.origin)
-      : null;
-  const defaultDevelopmentApiBaseUrl = "http://127.0.0.1:8000";
-
-  if (
-    import.meta.env.DEV &&
-    explicitApiOrigin &&
-    explicitApiOrigin !== normalizeOrigin(defaultDevelopmentApiBaseUrl) &&
-    (explicitApiOrigin === publicAppOrigin || explicitApiOrigin === browserOrigin)
-  ) {
-    console.warn(
-      "VITE_API_BASE_URL points to the frontend app in development. Falling back to the local FastAPI backend at http://127.0.0.1:8000.",
-    );
-    return defaultDevelopmentApiBaseUrl;
-  }
-
-  if (trimmedApiBaseUrl) {
-    return trimmedApiBaseUrl.replace(/\/+$/, "");
-  }
-
-  return defaultDevelopmentApiBaseUrl;
-}
-
-/*
-Frontend .env.example
-VITE_API_BASE_URL=http://127.0.0.1:8000
-# Optional legacy fallback:
-# VITE_API_URL=http://127.0.0.1:8000
-# Custom domain placeholder:
-# PUBLIC_APP_URL=https://yourdomain.com
-# Supabase Auth dashboard:
-# - add PUBLIC_APP_URL to Allowed Redirect URLs
-# - add PUBLIC_APP_URL to Allowed Callback URLs
-
-Deployment notes:
-- Vercel or Netlify: set VITE_API_BASE_URL to your Render/Railway/Fly.io backend URL.
-- Local development: keep VITE_API_BASE_URL pointed at the local FastAPI server.
-- All real frontend API requests should go through the shared `api` instance below so
-  they inherit API_BASE_URL, auth headers, and response handling consistently.
-*/
-
-// Deployment note: on Vercel or Netlify, set `VITE_API_BASE_URL` in the
-// project environment settings so the built frontend points at your FastAPI
-// deployment. `VITE_API_URL` remains supported for backwards compatibility.
-export const API_BASE_URL = resolveApiBaseUrl();
+export const API =
+  typeof import.meta.env.VITE_API_BASE_URL === "string"
+    ? import.meta.env.VITE_API_BASE_URL.trim().replace(/\/+$/, "")
+    : "";
+export const API_BASE_URL = API;
 
 export const AUTH_STORAGE_KEY = "luma.auth";
 export const LEGACY_TOKEN_STORAGE_KEY = "token";
@@ -241,14 +180,14 @@ export function isRateLimitMessage(message: string) {
 
 export async function sendVerificationEmail() {
   const response = await api.post<VerificationStatusResponse>(
-    "/auth/send-verification",
+    `${API}/auth/send-verification`,
   );
   return response.data;
 }
 
 export async function sendPasswordResetLink(email: string) {
   const response = await api.post<VerificationStatusResponse>(
-    "/auth/request-reset",
+    `${API}/auth/request-reset`,
     { email },
   );
   return response.data;
@@ -258,19 +197,30 @@ export async function resetPasswordRequest(
   token: string,
   newPassword: string,
 ) {
-  const response = await api.post<VerificationStatusResponse>("/auth/reset", {
-    token,
-    new_password: newPassword,
-  });
+  const response = await api.post<VerificationStatusResponse>(
+    `${API}/auth/reset`,
+    {
+      token,
+      new_password: newPassword,
+    },
+  );
   return response.data;
 }
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API,
   headers: {
     Accept: "application/json",
   },
 });
+
+function resolveRequestUrl(url: string | undefined, baseURL?: string) {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  return `${baseURL ?? API}${url ?? ""}`;
+}
 
 api.interceptors.request.use((config) => {
   const token = getActiveAccessToken();
@@ -286,7 +236,7 @@ api.interceptors.request.use((config) => {
 
   recordDevFlowApiCall({
     method: (config.method ?? "GET").toUpperCase(),
-    url: `${config.baseURL ?? API_BASE_URL}${config.url ?? ""}`,
+    url: resolveRequestUrl(config.url, config.baseURL),
     status: "pending",
     timestamp: new Date().toISOString(),
   });
@@ -298,7 +248,7 @@ api.interceptors.response.use(
   (response) => {
     recordDevFlowApiCall({
       method: (response.config.method ?? "GET").toUpperCase(),
-      url: `${response.config.baseURL ?? API_BASE_URL}${response.config.url ?? ""}`,
+      url: resolveRequestUrl(response.config.url, response.config.baseURL),
       status: response.status,
       timestamp: new Date().toISOString(),
       detail: response.statusText || undefined,
@@ -309,7 +259,7 @@ api.interceptors.response.use(
   (error: AxiosError<ApiErrorResponse>) => {
     const status = error.response?.status;
     const authorizationHeader = getAuthorizationHeader(error.config?.headers);
-    const url = `${error.config?.baseURL ?? API_BASE_URL}${error.config?.url ?? ""}`;
+    const url = resolveRequestUrl(error.config?.url, error.config?.baseURL);
     const message = getApiErrorMessage(error, "Request failed.");
 
     recordDevFlowApiCall({

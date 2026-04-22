@@ -7,7 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import { Link } from "react-router-dom";
-import { api, getApiErrorMessage, type AuthUser } from "../api/api";
+import { API, api, getApiErrorMessage, type AuthUser } from "../api/api";
 import ApiErrorBoundary from "../components/ApiErrorBoundary";
 import PageSkeleton from "../components/PageSkeleton";
 import { useAuth } from "../context/AuthContext";
@@ -176,7 +176,7 @@ export default function ProfileSettingsPage() {
     setPageError("");
 
     try {
-      const response = await api.get<AuthUser>("/me/profile");
+      const response = await api.get<AuthUser>(`${API}/me/profile`);
       setProfile(response.data);
       syncForm(response.data);
     } catch (error) {
@@ -348,10 +348,10 @@ export default function ProfileSettingsPage() {
     try {
       const username = formValues.username.trim();
       if (username !== profile.username) {
-        await api.put("/me/username", { new_username: username });
+        await api.put(`${API}/me/username`, { new_username: username });
       }
 
-      await api.put("/me/profile", {
+      await api.put(`${API}/me/profile`, {
         display_name: formValues.display_name.trim() || undefined,
         timezone: formValues.timezone.trim(),
         theme_mode: formValues.theme_mode,
@@ -360,19 +360,19 @@ export default function ProfileSettingsPage() {
       });
 
       if (removeAvatar && profile.avatar_url) {
-        await api.delete("/me/avatar");
+        await api.delete(`${API}/me/avatar`);
       } else if (avatarFile) {
         const data = new FormData();
         data.append("file", avatarFile);
-        await api.post("/me/avatar", data);
+        await api.post(`${API}/me/avatar`, data);
       }
 
       if (removeThemeImage && profile.custom_theme_image_url) {
-        await api.delete("/me/theme-image");
+        await api.delete(`${API}/me/theme-image`);
       } else if (themeImageFile) {
         const data = new FormData();
         data.append("file", themeImageFile);
-        await api.post("/me/theme-image", data);
+        await api.post(`${API}/me/theme-image`, data);
       }
 
       const refreshed = await refreshUser();

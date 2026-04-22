@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
-import { api, getApiErrorMessage } from "../../api/api";
+import { API, api, getApiErrorMessage } from "../../api/api";
 import RequireSubscription from "../../components/RequireSubscription";
 import { useAuth } from "../../context/AuthContext";
 import { trackFeatureUsage } from "../../lib/analytics";
@@ -299,9 +299,12 @@ function readFileAsBase64(file: File) {
 async function generateNotes(imageFile: File) {
   const image = await readFileAsBase64(imageFile);
   try {
-    const response = await api.post<GenerateNotesResponse>("/api/generate-notes", {
-      image,
-    });
+    const response = await api.post<GenerateNotesResponse>(
+      `${API}/api/generate-notes`,
+      {
+        image,
+      },
+    );
 
     if (typeof response.data?.notes !== "string") {
       throw new Error("Unable to generate notes. Try again.");

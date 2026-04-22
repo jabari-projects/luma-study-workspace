@@ -6,7 +6,7 @@ import {
   type FormEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, getApiErrorMessage, type AuthUser } from "../api/api";
+import { API, api, getApiErrorMessage, type AuthUser } from "../api/api";
 import { useAuth } from "../context/AuthContext";
 import {
   clearDevFlowOnboardingStep,
@@ -956,7 +956,7 @@ export default function OnboardingPage() {
     theme_mode?: ThemeMode;
     avatar_url?: string | null;
   }) {
-    const response = await api.put<AuthUser>("/me/profile", values);
+    const response = await api.put<AuthUser>(`${API}/me/profile`, values);
     await refreshUser();
     return response.data;
   }
@@ -1040,7 +1040,7 @@ export default function OnboardingPage() {
       formData.append("file", avatarFile);
 
       try {
-        await api.post("/me/avatar", formData, {
+        await api.post(`${API}/me/avatar`, formData, {
           headers: {
             "Content-Type": "multipart/form-data",
           },

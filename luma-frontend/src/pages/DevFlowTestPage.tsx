@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, getApiErrorMessage, type AuthResponse } from "../api/api";
+import { API, api, getApiErrorMessage, type AuthResponse } from "../api/api";
 import { useAuth } from "../context/AuthContext";
 import { useDevFlowTesting } from "../context/DevFlowTestingContext";
 
@@ -298,11 +298,14 @@ export default function DevFlowTestPage() {
                   className="luma-dev-flows__button luma-dev-flows__button--primary"
                   onClick={() => {
                     void runAction("Signup API flow", async () => {
-                      const response = await api.post<AuthResponse>("/signup", {
-                        email: credentials.email,
-                        username: credentials.username,
-                        password: credentials.password,
-                      });
+                      const response = await api.post<AuthResponse>(
+                        `${API}/signup`,
+                        {
+                          email: credentials.email,
+                          username: credentials.username,
+                          password: credentials.password,
+                        },
+                      );
                       console.info(
                         "[Luma Dev Flow] Signup response",
                         response.data,
@@ -350,10 +353,13 @@ export default function DevFlowTestPage() {
                   className="luma-dev-flows__button"
                   onClick={() => {
                     void runAction("Login API flow", async () => {
-                      const response = await api.post<AuthResponse>("/login", {
-                        email: credentials.email,
-                        password: credentials.password,
-                      });
+                      const response = await api.post<AuthResponse>(
+                        `${API}/login`,
+                        {
+                          email: credentials.email,
+                          password: credentials.password,
+                        },
+                      );
                       console.info(
                         "[Luma Dev Flow] Login response",
                         response.data,
@@ -432,7 +438,7 @@ export default function DevFlowTestPage() {
                   className="luma-dev-flows__button"
                   onClick={() => {
                     void runAction("Fetch profile", async () => {
-                      const response = await api.get("/me/profile");
+                      const response = await api.get(`${API}/me/profile`);
                       console.info(
                         "[Luma Dev Flow] Profile response",
                         response.data,

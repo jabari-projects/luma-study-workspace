@@ -1,5 +1,5 @@
 import {
-  API_BASE_URL,
+  API,
   AUTH_STORAGE_KEY,
   LEGACY_TOKEN_STORAGE_KEY,
 } from "../api/api";
@@ -201,7 +201,7 @@ async function postAnalyticsBatch(
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  return fetch(`${API_BASE_URL}/analytics/events`, {
+  return fetch(`${API}/analytics/events`, {
     method: "POST",
     headers,
     body: JSON.stringify({ events }),

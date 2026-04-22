@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, getApiErrorMessage } from "../../api/api";
+import { API, api, getApiErrorMessage } from "../../api/api";
 import RequireSubscription from "../../components/RequireSubscription";
 import { useAuth } from "../../context/AuthContext";
 import { trackFeatureUsage } from "../../lib/analytics";
@@ -194,7 +194,7 @@ async function transcribeAudio(blob: Blob) {
 
   try {
     const response = await api.post<TranscribeResponse>(
-      "/api/transcribe",
+      `${API}/api/transcribe`,
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },

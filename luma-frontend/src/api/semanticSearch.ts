@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { API } from "./api";
 import {
   emptySearchResults,
   searchAll,
@@ -89,7 +89,7 @@ export async function semanticSearch(query: string, userId: string): Promise<Sea
 
   try {
     const response = await api.post<SemanticSearchPayload>(
-      "/api/semantic-search",
+      `${API}/api/semantic-search`,
       { query: normalizedQuery },
     );
     semanticPayload = response.data;
