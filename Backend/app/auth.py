@@ -1,29 +1,24 @@
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import jwt
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .config import settings
 from .supabase_client import get_supabase
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
-
 security = HTTPBearer(auto_error=False)
-APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
-DEFAULT_DEV_JWT_SECRET = "luma-development-jwt-secret-key-2026"
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
-if not JWT_SECRET_KEY and APP_ENV != "production":
-    JWT_SECRET_KEY = DEFAULT_DEV_JWT_SECRET
+
+def get_jwt_secret_key() -> str | None:
+    return settings.effective_jwt_secret_key
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    if not JWT_SECRET_KEY:
+    jwt_secret_key = get_jwt_secret_key()
+    if not jwt_secret_key:
         raise HTTPException(status_code=500, detail="JWT secret is not configured")
 
     to_encode = data.copy()
@@ -31,15 +26,16 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(to_encode, jwt_secret_key, algorithm=JWT_ALGORITHM)
 
 
 def validate_access_token(token: str):
-    if not JWT_SECRET_KEY:
+    jwt_secret_key = get_jwt_secret_key()
+    if not jwt_secret_key:
         raise HTTPException(status_code=500, detail="JWT secret is not configured")
 
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, jwt_secret_key, algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
         return {"id": payload["sub"]}
@@ -50,11 +46,12 @@ def validate_access_token(token: str):
 
 
 def _get_user_from_custom_jwt(token: str) -> str | None:
-    if not JWT_SECRET_KEY:
+    jwt_secret_key = get_jwt_secret_key()
+    if not jwt_secret_key:
         return None
 
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, jwt_secret_key, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         return None
 

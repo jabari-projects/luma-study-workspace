@@ -18,24 +18,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from openai import APIConnectionError, APIStatusError, AuthenticationError, OpenAI, OpenAIError
 from pydantic import BaseModel, EmailStr, Field
-from supabase import create_client, Client
-from dotenv import load_dotenv
+from supabase import Client
 from .analytics import router as analytics_router
 from .auth import create_access_token, get_current_user, validate_access_token
+from .config import settings
 from .flashcards import router as flashcards_router
 from .notes import router as notes_router
 from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
+from .supabase_client import get_supabase
 from .transcripts import router as transcripts_router
-
-# Load environment variables from the backend directory for local development.
-# Production platforms should still inject real environment variables directly.
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 # Deployment notes:
 # - Backend platforms like Render, Railway, and Fly.io should set
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET_KEY, API_BASE_URL,
-#   and FRONTEND_ORIGIN in environment settings.
+#   and FRONTEND_ORIGINS in environment settings.
 # - For AI features, set OPENAI_API_KEY (optionally OPENAI_ENDPOINT).
 # - Optional AI model overrides:
 #   OPENAI_VISION_MODEL
@@ -47,54 +44,27 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 # - Suggested start commands:
 #   uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 #   gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-8000}
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 EMAIL_VERIFICATION_EXPIRE_HOURS = 24
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN") or os.getenv("PUBLIC_APP_URL") or "http://localhost:5173"
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
-OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4.1-mini")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-FREE_AI_DAILY_LIMIT = int(os.getenv("FREE_AI_DAILY_LIMIT", "3"))
-AI_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("AI_RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MESSAGE = "Too many requests, please wait."
-DEFAULT_DEV_JWT_SECRET = "luma-development-jwt-secret-key-2026"
 
-
-def parse_origins(value: Optional[str]):
-    if not value:
-        return []
-    return [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
-
-
-DEFAULT_FRONTEND_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-ALLOWED_CORS_ORIGINS = sorted(
-    {
-        *DEFAULT_FRONTEND_ORIGINS,
-        *parse_origins(FRONTEND_ORIGIN),
-    }
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
-if APP_ENV == "production":
+app = FastAPI()
+logger = logging.getLogger(__name__)
+
+if settings.APP_ENV == "production":
     missing_backend_env = [
         name
         for name, value in {
-            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
-            "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY"),
-            "SUPABASE_URL": SUPABASE_URL,
-            "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY"),
+            "OPENAI_API_KEY": settings.OPENAI_API_KEY,
+            "DEEPGRAM_API_KEY": settings.DEEPGRAM_API_KEY,
+            "SUPABASE_URL": settings.SUPABASE_URL,
+            "SUPABASE_SERVICE_ROLE_KEY": settings.SUPABASE_SERVICE_ROLE_KEY,
         }.items()
         if not value
     ]
@@ -105,47 +75,40 @@ if APP_ENV == "production":
             + ", ".join(missing_backend_env)
         )
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError(
-        "Required environment variables are not set correctly."
+        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for the backend to start."
     )
 
-if not JWT_SECRET_KEY:
-    if APP_ENV == "production":
+if not settings.JWT_SECRET_KEY:
+    if settings.APP_ENV == "production":
         raise RuntimeError(
-            "JWT_SECRET_KEY must be set in production."
+            "JWT_SECRET_KEY is required in production. Set JWT_SECRET_KEY in the Render environment before starting the backend."
         )
-    JWT_SECRET_KEY = DEFAULT_DEV_JWT_SECRET
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-)
-
-app = FastAPI()
-logger = logging.getLogger(__name__)
-
-if not os.getenv("JWT_SECRET_KEY") and APP_ENV != "production":
     logger.warning(
         "JWT_SECRET_KEY is not set; using the shared development secret. "
         "Set JWT_SECRET_KEY in production deployments."
     )
 
+if not settings.API_BASE_URL:
+    logger.warning(
+        "API_BASE_URL is not set; using development fallback %s for public URL generation.",
+        settings.resolved_api_base_url,
+    )
+
+supabase: Client = get_supabase()
+
 logger.info(
-    "Luma backend starting env=%s api_base=%s cors_origins=%s",
-    APP_ENV,
-    API_BASE_URL,
-    ",".join(ALLOWED_CORS_ORIGINS),
+    "Luma backend starting env=%s api_base=%s frontend_origins=%s",
+    settings.APP_ENV,
+    settings.resolved_api_base_url,
+    ",".join(settings.FRONTEND_ORIGINS),
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://luma-frontend-ruby.vercel.app",
-        "http://localhost:5173",
-    ],
+    allow_origins=settings.FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -206,8 +169,7 @@ class AIServiceUnavailableError(RuntimeError):
 
 
 def build_public_api_url(path: str):
-    logger.info(f"API_BASE_URL = {API_BASE_URL}")
-    return f"{API_BASE_URL}{path}"
+    return f"{settings.resolved_api_base_url}{path}"
 
 
 def has_premium_subscription(subscription_status: Optional[str]) -> bool:
@@ -229,7 +191,7 @@ def consume_ai_rate_limit_slot(
     active_window = [
         timestamp
         for timestamp in ai_rate_limit_windows[bucket_key]
-        if now - timestamp < AI_RATE_LIMIT_WINDOW_SECONDS
+        if now - timestamp < settings.AI_RATE_LIMIT_WINDOW_SECONDS
     ]
 
     if len(active_window) >= limit:
@@ -701,8 +663,8 @@ def log_password_reset_link(token: str):
 
 def send_email(to_email: str, subject: str, html_body: str):
     logger.info("Entered send_email()")
-    resend_api_key = (os.getenv("RESEND_API_KEY") or "").strip()
-    email_from = (os.getenv("EMAIL_FROM") or "").strip()
+    resend_api_key = (settings.RESEND_API_KEY or "").strip()
+    email_from = (settings.EMAIL_FROM or "").strip()
     logger.info(f"RESEND_API_KEY loaded? {bool(resend_api_key)}")
     logger.info(f"EMAIL_FROM loaded? {bool(email_from)}")
 
@@ -954,7 +916,7 @@ def count_ai_usage_today(user_id: str, usage_type: Literal["notes", "transcripti
             .eq("user_id", user_id)
             .eq("type", usage_type)
             .gte("created_at", day_start.isoformat())
-            .limit(FREE_AI_DAILY_LIMIT)
+            .limit(settings.FREE_AI_DAILY_LIMIT)
             .execute()
         )
     except Exception as exc:
@@ -1011,7 +973,7 @@ def authenticate_ai_request(request: Request):
 
 
 def has_free_ai_daily_limit(user_id: str, usage_type: Literal["notes", "transcription"]):
-    return count_ai_usage_today(user_id, usage_type) >= FREE_AI_DAILY_LIMIT
+    return count_ai_usage_today(user_id, usage_type) >= settings.FREE_AI_DAILY_LIMIT
 
 
 def record_ai_usage(user_id: str, usage_type: Literal["notes", "transcription"]):
@@ -1064,7 +1026,7 @@ def normalize_openai_base_url(value: Optional[str]):
 
 
 def get_openai_api_key():
-    return (os.getenv("OPENAI_API_KEY") or "").strip()
+    return (settings.OPENAI_API_KEY or "").strip()
 
 
 def get_ai_client():
@@ -1075,7 +1037,7 @@ def get_ai_client():
         )
 
     client_kwargs = {"api_key": api_key}
-    base_url = normalize_openai_base_url(os.getenv("OPENAI_ENDPOINT"))
+    base_url = normalize_openai_base_url(settings.OPENAI_ENDPOINT)
     if base_url:
         client_kwargs["base_url"] = base_url
 
@@ -1083,11 +1045,11 @@ def get_ai_client():
 
 
 def get_ai_model():
-    return OPENAI_VISION_MODEL
+    return settings.OPENAI_VISION_MODEL
 
 
 def get_embedding_model():
-    return OPENAI_EMBEDDING_MODEL
+    return settings.OPENAI_EMBEDDING_MODEL
 
 
 SUPPORTED_TRANSCRIBE_CONTENT_TYPES = {
@@ -1112,7 +1074,7 @@ SUPPORTED_TRANSCRIBE_EXTENSIONS = {
 
 
 def get_deepgram_api_key():
-    return (os.getenv("DEEPGRAM_API_KEY") or "").strip()
+    return (settings.DEEPGRAM_API_KEY or "").strip()
 
 
 def get_transcribe_content_type(file: UploadFile):
@@ -1333,26 +1295,26 @@ def health_check():
     responses={500: {"model": BasicApiErrorResponse}},
 )
 def create_checkout_session(user=Depends(get_current_user)):
-    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+    if not settings.STRIPE_SECRET_KEY or not settings.STRIPE_PRICE_ID:
         return JSONResponse(status_code=500, content={"error": "Stripe is not configured"})
 
     user_row = get_user_by_id(user["id"])
     if not user_row:
         raise HTTPException(status_code=404, detail="User not found")
 
-    stripe.api_key = STRIPE_SECRET_KEY
+    stripe.api_key = settings.STRIPE_SECRET_KEY
 
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
             line_items=[
                 {
-                    "price": STRIPE_PRICE_ID,
+                    "price": settings.STRIPE_PRICE_ID,
                     "quantity": 1,
                 }
             ],
-            success_url=f"{FRONTEND_ORIGIN.rstrip('/')}/subscribe?checkout=success",
-            cancel_url=f"{FRONTEND_ORIGIN.rstrip('/')}/subscribe?checkout=canceled",
+            success_url=f"{settings.frontend_app_origin}/subscribe?checkout=success",
+            cancel_url=f"{settings.frontend_app_origin}/subscribe?checkout=canceled",
             customer_email=user_row["email"],
             client_reference_id=user["id"],
             metadata={"user_id": user["id"]},
@@ -1374,10 +1336,10 @@ def create_checkout_session(user=Depends(get_current_user)):
     responses={400: {"model": BasicApiErrorResponse}, 500: {"model": BasicApiErrorResponse}},
 )
 async def stripe_webhook(request: Request):
-    if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
+    if not settings.STRIPE_SECRET_KEY or not settings.STRIPE_WEBHOOK_SECRET:
         return JSONResponse(status_code=500, content={"error": "Stripe is not configured"})
 
-    stripe.api_key = STRIPE_SECRET_KEY
+    stripe.api_key = settings.STRIPE_SECRET_KEY
     payload = await request.body()
     signature = request.headers.get("stripe-signature")
 
@@ -1388,7 +1350,7 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(
             payload=payload,
             sig_header=signature,
-            secret=STRIPE_WEBHOOK_SECRET,
+            secret=settings.STRIPE_WEBHOOK_SECRET,
         )
     except (ValueError, stripe.SignatureVerificationError):
         return JSONResponse(status_code=400, content={"error": "Invalid request"})
@@ -1922,7 +1884,7 @@ def search_users(query: str = Query(..., min_length=1, max_length=50)):
 @app.post("/internal/supabase/user-updated")
 async def supabase_user_updated(payload: dict, request: Request):
     secret = request.headers.get("authorization")
-    if secret != f"Bearer {WEBHOOK_SECRET}":
+    if secret != f"Bearer {settings.WEBHOOK_SECRET}":
         raise HTTPException(status_code=401, detail="Unauthorized webhook")
 
     logger.info("🔥 Supabase webhook fired")
