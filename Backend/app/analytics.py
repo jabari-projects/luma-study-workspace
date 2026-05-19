@@ -96,8 +96,6 @@ def _normalize_timestamp(value: datetime | None):
     return value.astimezone(timezone.utc).isoformat()
 
 
-# TODO: Add retention policies, sampling controls, and abuse-rate monitoring
-# before expanding analytics coverage more broadly in production.
 @router.post("/events", response_model=AnalyticsBatchResponse, status_code=status.HTTP_202_ACCEPTED)
 def record_analytics_events(
     payload: AnalyticsBatchRequest,

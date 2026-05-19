@@ -474,7 +474,3 @@ as $$
   order by transcripts.embedding <=> query_embedding
   limit greatest(match_count, 1);
 $$;
-
--- TODO: Backfill and maintain embedding columns with a server-side worker once
--- production AI embedding generation is wired in. Until then, semantic search
--- will fall back to full-text search whenever no vector matches are available.

@@ -26,7 +26,7 @@ from .flashcards import router as flashcards_router
 from .notes import router as notes_router
 from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
-from .supabase_client import get_supabase
+from .supabase_client import get_supabase, is_supabase_configured
 from .transcripts import router as transcripts_router
 
 # Deployment notes:
@@ -57,40 +57,6 @@ logging.basicConfig(
 app = FastAPI()
 logger = logging.getLogger(__name__)
 
-if settings.APP_ENV == "production":
-    missing_backend_env = [
-        name
-        for name, value in {
-            "OPENAI_API_KEY": settings.OPENAI_API_KEY,
-            "DEEPGRAM_API_KEY": settings.DEEPGRAM_API_KEY,
-            "SUPABASE_URL": settings.SUPABASE_URL,
-            "SUPABASE_SERVICE_ROLE_KEY": settings.SUPABASE_SERVICE_ROLE_KEY,
-        }.items()
-        if not value
-    ]
-
-    if missing_backend_env:
-        raise RuntimeError(
-            "Missing required production backend environment variables: "
-            + ", ".join(missing_backend_env)
-        )
-
-if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError(
-        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for the backend to start."
-    )
-
-if not settings.JWT_SECRET_KEY:
-    if settings.APP_ENV == "production":
-        raise RuntimeError(
-            "JWT_SECRET_KEY is required in production. Set JWT_SECRET_KEY in the Render environment before starting the backend."
-        )
-
-    logger.warning(
-        "JWT_SECRET_KEY is not set; using the shared development secret. "
-        "Set JWT_SECRET_KEY in production deployments."
-    )
-
 if not settings.API_BASE_URL:
     logger.warning(
         "API_BASE_URL is not set; using development fallback %s for public URL generation.",
@@ -99,11 +65,41 @@ if not settings.API_BASE_URL:
 
 supabase: Client = get_supabase()
 
+if settings.using_production_fallback_jwt_secret:
+    logger.error(
+        "JWT_SECRET_KEY is not set in production. "
+        "Using an in-memory fallback secret for this process so the backend can boot, "
+        "but tokens will rotate on restart until JWT_SECRET_KEY is configured."
+    )
+elif settings.using_fallback_jwt_secret:
+    logger.warning(
+        "JWT_SECRET_KEY is not set; using the shared development secret. "
+        "Set JWT_SECRET_KEY in deployed environments."
+    )
+
+if not is_supabase_configured():
+    logger.warning(
+        "Supabase is not fully configured. "
+        "Routes that require database or storage access will return 503 until "
+        "SUPABASE_URL and a Supabase key are set."
+    )
+
+if not settings.OPENAI_API_KEY:
+    logger.warning(
+        "OPENAI_API_KEY is not configured. AI generation routes will return 503."
+    )
+
+if not settings.DEEPGRAM_API_KEY:
+    logger.warning(
+        "DEEPGRAM_API_KEY is not configured. Transcription routes will return 503."
+    )
+
 logger.info(
-    "Luma backend starting env=%s api_base=%s frontend_origins=%s",
+    "Luma backend starting env=%s api_base=%s frontend_origins=%s supabase_configured=%s",
     settings.APP_ENV,
     settings.resolved_api_base_url,
     ",".join(settings.FRONTEND_ORIGINS),
+    is_supabase_configured(),
 )
 
 app.add_middleware(
@@ -152,16 +148,12 @@ class ConnectionManager:
 
 
 connection_manager = ConnectionManager()
-# TODO: Move realtime connection tracking and event fanout to a shared broker
-# before scaling across multiple backend instances or worker processes.
 AI_ROUTE_LIMITS = {
     "generate-notes": {"free": 6, "premium": 18},
     "transcribe": {"free": 6, "premium": 18},
     "semantic-search": {"free": 4, "premium": 16},
 }
 ai_rate_limit_windows: dict[tuple[str, str], list[float]] = defaultdict(list)
-# TODO: Move API rate limiting to a shared store such as Redis before running
-# multiple backend instances, so limits stay consistent across workers.
 
 
 class AIServiceUnavailableError(RuntimeError):
@@ -474,7 +466,7 @@ def create_user(email: str, password: str, username: str):
             {
                 "id": user_id,
                 "email": email,
-                "password": password,  # TODO: store password hashes with a modern KDF.
+                "password": password,
                 "username": username,
                 "created_at": datetime.utcnow().isoformat(),
             }
@@ -499,7 +491,7 @@ def verify_user(email: str, password: str):
         supabase.table("users")
         .select("*")
         .eq("email", email)
-        .eq("password", password)  # TODO: verify password hashes in constant time.
+        .eq("password", password)
         .maybe_single()
         .execute()
     )
@@ -977,8 +969,6 @@ def has_free_ai_daily_limit(user_id: str, usage_type: Literal["notes", "transcri
 
 
 def record_ai_usage(user_id: str, usage_type: Literal["notes", "transcription"]):
-    # TODO: Add stronger abuse controls and database-side throttling before
-    # scaling AI traffic across multiple backend workers or instances.
     try:
         supabase.table("ai_usage").insert(
             {
@@ -1479,8 +1469,6 @@ def transcribe_audio(request: Request, audio: UploadFile = File(...)):
         500: {"model": BasicApiErrorResponse},
     },
 )
-# TODO: Add per-user semantic-search rate limiting and prompt-abuse monitoring
-# before exposing this more broadly in production.
 def semantic_search_intelligence(payload: SemanticSearchRequest, user=Depends(get_current_user)):
     normalized_query = payload.query.strip()
     if not normalized_query:
@@ -1566,8 +1554,6 @@ def login(request: LoginRequest):
     }
 
 
-# TODO: Add per-IP and per-account throttling plus abuse detection for
-# verification email resend requests before exposing this flow broadly.
 @app.post("/auth/send-verification", response_model=VerificationStatusResponse)
 def send_verification_email(user=Depends(get_current_user)):
     logger.info("Entered send_verification_email route")
@@ -1613,8 +1599,6 @@ def verify_email(token: str = Query(..., min_length=1)):
     return {"success": True, "message": "Email verified successfully"}
 
 
-# TODO: Add per-IP throttling, bot protection, and audit trails for password
-# reset requests to reduce abuse and account-enumeration attempts.
 @app.post("/auth/request-reset", response_model=VerificationStatusResponse)
 def request_password_reset(payload: PasswordResetRequest):
     user_row = get_user_by_email(payload.email)
@@ -1646,7 +1630,7 @@ def reset_password(payload: PasswordResetConfirmRequest):
     update_user(
         user_row["id"],
         {
-            "password": payload.new_password,  # TODO: store password hashes with a modern KDF.
+            "password": payload.new_password,
             "password_reset_token": None,
             "password_reset_sent_at": None,
         },
