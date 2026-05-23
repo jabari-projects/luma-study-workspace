@@ -11,6 +11,7 @@ import {
   api,
   clearStoredSession,
   readStoredSession,
+  signupWithBackend,
   writeStoredSession,
 } from "./api"
 import type { AuthContextValue, LoginInput, SignupInput } from "./auth"
@@ -105,10 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = useCallback(
     async (input: SignupInput) => {
-      const response = await api.post<AuthSession>("/signup", input)
+      const session = await signupWithBackend(input)
       persistSession({
-        accessToken: response.data.access_token,
-        user: response.data.user,
+        accessToken: session.access_token,
+        user: session.user,
       })
 
       try {

@@ -41,6 +41,12 @@ export type StoredAuthSession = {
   user: BasicUser | Profile
 }
 
+export type SignupPayload = {
+  email: string
+  username: string
+  password: string
+}
+
 type ApiValidationError = {
   msg?: string
 }
@@ -143,6 +149,43 @@ export function getErrorMessage(error: unknown, fallback = "Something went wrong
   }
 
   return fallback
+}
+
+export async function signupWithBackend(payload: SignupPayload): Promise<AuthSession> {
+  const response = await fetch(`${API_BASE_URL}/signup`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    let message = `Signup failed with HTTP ${response.status}.`
+
+    try {
+      const data = (await response.json()) as ApiErrorPayload
+      if (typeof data.detail === "string" && data.detail) {
+        message = data.detail
+      } else if (typeof data.error === "string" && data.error) {
+        message = data.error
+      } else if (typeof data.message === "string" && data.message) {
+        message = data.message
+      } else if (Array.isArray(data.detail)) {
+        const firstMessage = data.detail.find((item) => typeof item.msg === "string" && item.msg)
+        if (firstMessage?.msg) {
+          message = firstMessage.msg
+        }
+      }
+    } catch {
+      // Keep the HTTP status fallback when the response body is not JSON.
+    }
+
+    throw new Error(message)
+  }
+
+  return response.json() as Promise<AuthSession>
 }
 
 export async function checkBackendHealth(): Promise<void> {

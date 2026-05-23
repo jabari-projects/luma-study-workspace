@@ -167,6 +167,53 @@ const workspaceLinks = collectionConfigs.map((config) => ({
   label: config.title,
 }))
 
+const initialHealthState: HealthState = {
+  status: "checking",
+  detail: "Checking backend...",
+}
+
+function useBackendHealth() {
+  const [health, setHealth] = useState<HealthState>(initialHealthState)
+
+  const refreshBackendHealth = useCallback(async () => {
+    setHealth(initialHealthState)
+
+    try {
+      await checkBackendHealth()
+      setHealth({ status: "online", detail: null })
+      return true
+    } catch (error: unknown) {
+      setHealth({ status: "offline", detail: getErrorMessage(error) })
+      return false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function checkHealth() {
+      try {
+        await checkBackendHealth()
+        if (active) {
+          setHealth({ status: "online", detail: null })
+        }
+      } catch (error: unknown) {
+        if (active) {
+          setHealth({ status: "offline", detail: getErrorMessage(error) })
+        }
+      }
+    }
+
+    void checkHealth()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return { health, refreshBackendHealth }
+}
+
 function makeEmptyValues(fields: FieldConfig[]): Record<string, string> {
   return fields.reduce<Record<string, string>>((accumulator, field) => {
     accumulator[field.name] = field.kind === "number" ? "0" : ""
@@ -418,30 +465,7 @@ function RootRoutes() {
 
 function LandingPage() {
   const { isAuthenticated } = useAuth()
-  const [health, setHealth] = useState<HealthState>({
-    status: "checking",
-    detail: "Checking backend...",
-  })
-
-  useEffect(() => {
-    let active = true
-
-    checkBackendHealth()
-      .then(() => {
-        if (active) {
-          setHealth({ status: "online", detail: null })
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setHealth({ status: "offline", detail: getErrorMessage(error) })
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
+  const { health } = useBackendHealth()
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />
@@ -590,8 +614,14 @@ function LoginPage() {
 function SignupPage() {
   const { signup } = useAuth()
   const navigate = useNavigate()
+  const { health, refreshBackendHealth } = useBackendHealth()
 
   const handleSignup = async (values: { email: string; username: string; password: string }) => {
+    const backendConnected = await refreshBackendHealth()
+    if (!backendConnected) {
+      throw new Error("Could not reach the Luma backend. Confirm the backend is reachable and try again.")
+    }
+
     await signup(values)
     navigate("/dashboard", { replace: true })
   }
@@ -604,6 +634,7 @@ function SignupPage() {
           title="Create your account"
           description="Signup uses the backend custom JWT flow and creates a Luma profile."
         />
+        <BackendConnectionBanner health={health} />
         <AuthForm mode="signup" onSubmit={handleSignup} />
         <p className="auth-link">
           Already have an account? <Link to="/login">Login</Link>
@@ -715,18 +746,11 @@ function ResetPasswordPage() {
 
 function DashboardPage() {
   const profile = useProfile()
-  const [health, setHealth] = useState<HealthState>({
-    status: "checking",
-    detail: "Checking backend...",
-  })
+  const { health } = useBackendHealth()
   const [counts, setCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     let active = true
-
-    checkBackendHealth()
-      .then(() => active && setHealth({ status: "online", detail: null }))
-      .catch((error: unknown) => active && setHealth({ status: "offline", detail: getErrorMessage(error) }))
 
     Promise.all(
       collectionConfigs.map(async (config) => {
