@@ -44,7 +44,7 @@ type CollectionItem = {
 
 type HealthState = {
   status: "checking" | "online" | "offline"
-  detail: string
+  detail: string | null
 }
 
 const collectionConfigs: CollectionConfig[] = [
@@ -265,6 +265,21 @@ function LoadingScreen({ message }: { message: string }) {
   )
 }
 
+function BackendConnectionBanner({ health }: { health: HealthState }) {
+  if (health.status === "online") {
+    return null
+  }
+
+  return (
+    <div className="backend-banner" role="status" aria-live="polite">
+      <span className={`health-dot ${health.status}`} />
+      <strong>{health.status === "checking" ? "Checking backend" : "Backend unavailable"}</strong>
+      <p>{health.detail ?? "Waiting for the backend health check to finish."}</p>
+      <small>{API_BASE_URL}</small>
+    </div>
+  )
+}
+
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { loading, isAuthenticated } = useAuth()
   const location = useLocation()
@@ -412,9 +427,9 @@ function LandingPage() {
     let active = true
 
     checkBackendHealth()
-      .then((detail) => {
+      .then(() => {
         if (active) {
-          setHealth({ status: "online", detail })
+          setHealth({ status: "online", detail: null })
         }
       })
       .catch((error: unknown) => {
@@ -441,7 +456,7 @@ function LandingPage() {
           <h1>Luma</h1>
           <p>
             Notes, flashcards, transcripts, sessions, and AI study tools running against
-            the local backend.
+            the configured backend.
           </p>
           <div className="hero-actions">
             <Link className="primary-button" to="/login">
@@ -452,12 +467,7 @@ function LandingPage() {
             </Link>
           </div>
         </div>
-        <div className="hero-panel">
-          <span className={`health-dot ${health.status}`} />
-          <strong>Backend</strong>
-          <p>{health.detail}</p>
-          <small>{API_BASE_URL}</small>
-        </div>
+        <BackendConnectionBanner health={health} />
       </section>
     </main>
   )
@@ -715,7 +725,7 @@ function DashboardPage() {
     let active = true
 
     checkBackendHealth()
-      .then((detail) => active && setHealth({ status: "online", detail }))
+      .then(() => active && setHealth({ status: "online", detail: null }))
       .catch((error: unknown) => active && setHealth({ status: "offline", detail: getErrorMessage(error) }))
 
     Promise.all(
@@ -745,15 +755,10 @@ function DashboardPage() {
       <PageHeader
         eyebrow="Workspace"
         title={`Good to see you${profile?.display_name ? `, ${profile.display_name}` : ""}`}
-        description="Your Luma backend, study collections, and AI tools are wired into one local workspace."
+        description="Your Luma backend, study collections, and AI tools are wired into one workspace."
       />
+      <BackendConnectionBanner health={health} />
       <section className="metrics-grid">
-        <article className="metric-card">
-          <span className={`health-dot ${health.status}`} />
-          <strong>Backend</strong>
-          <p>{health.detail}</p>
-          <small>{API_BASE_URL}</small>
-        </article>
         {collectionConfigs.map((config) => (
           <Link className="metric-card link-card" key={config.key} to={`/${config.key}`}>
             <strong>{config.title}</strong>

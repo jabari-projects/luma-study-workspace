@@ -113,7 +113,7 @@ p {
   align-items: center;
 }
 
-.hero-panel,
+.backend-banner,
 .status-panel,
 .form-panel,
 .item-card,
@@ -126,19 +126,19 @@ p {
   border-radius: 8px;
 }
 
-.hero-panel {
+.backend-banner {
   padding: 20px;
   align-self: center;
 }
 
-.hero-panel strong,
+.backend-banner strong,
 .metric-card strong {
   display: block;
   margin: 8px 0;
   color: var(--text);
 }
 
-.hero-panel small,
+.backend-banner small,
 .metric-card small,
 .item-card small {
   color: var(--muted);
