@@ -11,23 +11,38 @@ TABLE_NAME = "flashcards"
 
 
 class FlashcardCreateRequest(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
     front: str = Field(..., min_length=1)
     back: str = Field(..., min_length=1)
     tags: list[str] = Field(default_factory=list)
+    is_public: bool = False
+    published_at: Optional[str] = None
+    published_by: Optional[str] = None
+    study_type: Optional[str] = None
 
 
 class FlashcardUpdateRequest(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
     front: Optional[str] = Field(default=None, min_length=1)
     back: Optional[str] = Field(default=None, min_length=1)
     tags: Optional[list[str]] = None
+    is_public: Optional[bool] = None
+    published_at: Optional[str] = None
+    published_by: Optional[str] = None
+    study_type: Optional[str] = None
 
 
 class FlashcardResponse(BaseModel):
     id: str
     user_id: str
+    title: str = ""
     front: str
     back: str
     tags: list[str] = Field(default_factory=list)
+    is_public: bool = False
+    published_at: Optional[str] = None
+    published_by: Optional[str] = None
+    study_type: str = "flashcards"
     created_at: str
 
 
@@ -39,9 +54,14 @@ def _normalize_flashcard_row(row: dict) -> dict:
     return {
         "id": row["id"],
         "user_id": row["user_id"],
+        "title": row.get("title") or "",
         "front": row.get("front") or "",
         "back": row.get("back") or "",
         "tags": row.get("tags") or [],
+        "is_public": bool(row.get("is_public", False)),
+        "published_at": row.get("published_at"),
+        "published_by": row.get("published_by"),
+        "study_type": row.get("study_type") or "flashcards",
         "created_at": row["created_at"],
     }
 
@@ -70,9 +90,14 @@ def create_flashcard(payload: FlashcardCreateRequest, user_id: str = Depends(get
         .insert(
             {
                 "user_id": user_id,
+                "title": payload.title,
                 "front": payload.front,
                 "back": payload.back,
                 "tags": payload.tags,
+                "is_public": payload.is_public,
+                "published_at": payload.published_at,
+                "published_by": payload.published_by,
+                "study_type": payload.study_type or "flashcards",
             }
         )
         .execute()
@@ -107,7 +132,7 @@ def update_flashcard(
 ):
     _get_flashcard_or_404(user_id, flashcard_id)
 
-    updates = payload.model_dump(exclude_none=True)
+    updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 

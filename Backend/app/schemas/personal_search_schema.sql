@@ -23,6 +23,10 @@ begin
           title text,
           content text,
           tags text[] default ''{}''::text[],
+          is_public boolean not null default false,
+          published_at timestamptz,
+          published_by text,
+          study_type text not null default ''note'',
           search_vector tsvector,
           embedding vector(1536),
           created_at timestamp default now()
@@ -42,6 +46,10 @@ begin
           title text,
           content text,
           tags text[] default ''{}''::text[],
+          is_public boolean not null default false,
+          published_at timestamptz,
+          published_by text,
+          study_type text not null default ''note'',
           search_vector tsvector,
           embedding vector(1536),
           created_at timestamp default now()
@@ -72,7 +80,12 @@ begin
         create table public.summaries (
           id uuid primary key default uuid_generate_v4(),
           user_id uuid references public.profiles(id),
+          title text,
           content text,
+          is_public boolean not null default false,
+          published_at timestamptz,
+          published_by text,
+          study_type text not null default ''summary'',
           search_vector tsvector,
           embedding vector(1536),
           created_at timestamp default now()
@@ -89,7 +102,12 @@ begin
         create table public.summaries (
           id uuid primary key default uuid_generate_v4(),
           user_id uuid references public.profiles(user_id),
+          title text,
           content text,
+          is_public boolean not null default false,
+          published_at timestamptz,
+          published_by text,
+          study_type text not null default ''summary'',
           search_vector tsvector,
           embedding vector(1536),
           created_at timestamp default now()
@@ -150,7 +168,12 @@ begin
 end $$;
 
 alter table if exists public.flashcards
+  add column if not exists title text,
   add column if not exists tags text[] default '{}'::text[],
+  add column if not exists is_public boolean not null default false,
+  add column if not exists published_at timestamptz,
+  add column if not exists published_by text,
+  add column if not exists study_type text not null default 'flashcards',
   add column if not exists search_vector tsvector,
   add column if not exists embedding vector(1536);
 
@@ -165,11 +188,20 @@ alter table if exists public.notes
   add column if not exists title text,
   add column if not exists content text,
   add column if not exists tags text[] default '{}'::text[],
+  add column if not exists is_public boolean not null default false,
+  add column if not exists published_at timestamptz,
+  add column if not exists published_by text,
+  add column if not exists study_type text not null default 'note',
   add column if not exists search_vector tsvector,
   add column if not exists embedding vector(1536);
 
 alter table if exists public.summaries
+  add column if not exists title text,
   add column if not exists content text,
+  add column if not exists is_public boolean not null default false,
+  add column if not exists published_at timestamptz,
+  add column if not exists published_by text,
+  add column if not exists study_type text not null default 'summary',
   add column if not exists search_vector tsvector,
   add column if not exists embedding vector(1536);
 
@@ -202,6 +234,7 @@ begin
   new.search_vector :=
     to_tsvector(
       'english',
+      coalesce(new.title, '') || ' ' ||
       coalesce(new.front, '') || ' ' ||
       coalesce(new.back, '') || ' ' ||
       coalesce(array_to_string(new.tags, ' '), '')
@@ -231,7 +264,7 @@ returns trigger
 language plpgsql
 as $$
 begin
-  new.search_vector := to_tsvector('english', coalesce(new.content, ''));
+  new.search_vector := to_tsvector('english', coalesce(new.title, '') || ' ' || coalesce(new.content, ''));
   return new;
 end;
 $$;
@@ -285,6 +318,7 @@ update public.flashcards
 set search_vector =
   to_tsvector(
     'english',
+    coalesce(title, '') || ' ' ||
     coalesce(front, '') || ' ' ||
     coalesce(back, '') || ' ' ||
     coalesce(array_to_string(tags, ' '), '')
@@ -302,7 +336,7 @@ set search_vector =
 where true;
 
 update public.summaries
-set search_vector = to_tsvector('english', coalesce(content, ''))
+set search_vector = to_tsvector('english', coalesce(title, '') || ' ' || coalesce(content, ''))
 where true;
 
 update public.transcripts
@@ -319,6 +353,20 @@ create index if not exists summaries_user_id_created_at_idx
   on public.summaries (user_id, created_at desc);
 create index if not exists transcripts_user_id_created_at_idx
   on public.transcripts (user_id, created_at desc);
+
+create index if not exists notes_is_public_created_at_idx
+  on public.notes (is_public, created_at desc);
+create index if not exists flashcards_is_public_created_at_idx
+  on public.flashcards (is_public, created_at desc);
+create index if not exists summaries_is_public_created_at_idx
+  on public.summaries (is_public, created_at desc);
+
+create index if not exists notes_published_at_idx
+  on public.notes (published_at desc);
+create index if not exists flashcards_published_at_idx
+  on public.flashcards (published_at desc);
+create index if not exists summaries_published_at_idx
+  on public.summaries (published_at desc);
 
 create index if not exists notes_search_idx
   on public.notes using gin (search_vector);

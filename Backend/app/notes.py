@@ -14,12 +14,20 @@ class NoteCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
     tags: list[str] = Field(default_factory=list)
+    is_public: bool = False
+    published_at: Optional[str] = None
+    published_by: Optional[str] = None
+    study_type: Optional[str] = None
 
 
 class NoteUpdateRequest(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     content: Optional[str] = Field(default=None, min_length=1)
     tags: Optional[list[str]] = None
+    is_public: Optional[bool] = None
+    published_at: Optional[str] = None
+    published_by: Optional[str] = None
+    study_type: Optional[str] = None
 
 
 class NoteResponse(BaseModel):
@@ -28,6 +36,10 @@ class NoteResponse(BaseModel):
     title: str
     content: str
     tags: list[str] = Field(default_factory=list)
+    is_public: bool = False
+    published_at: Optional[str] = None
+    published_by: Optional[str] = None
+    study_type: str = "note"
     created_at: str
 
 
@@ -42,6 +54,10 @@ def _normalize_note_row(row: dict) -> dict:
         "title": row.get("title") or "",
         "content": row.get("content") or "",
         "tags": row.get("tags") or [],
+        "is_public": bool(row.get("is_public", False)),
+        "published_at": row.get("published_at"),
+        "published_by": row.get("published_by"),
+        "study_type": row.get("study_type") or "note",
         "created_at": row["created_at"],
     }
 
@@ -73,6 +89,10 @@ def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_u
                 "title": payload.title,
                 "content": payload.content,
                 "tags": payload.tags,
+                "is_public": payload.is_public,
+                "published_at": payload.published_at,
+                "published_by": payload.published_by,
+                "study_type": payload.study_type or "note",
             }
         )
         .execute()
@@ -100,7 +120,7 @@ def list_notes(user_id: str = Depends(get_current_user_id)):
 def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends(get_current_user_id)):
     _get_note_or_404(user_id, note_id)
 
-    updates = payload.model_dump(exclude_none=True)
+    updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 

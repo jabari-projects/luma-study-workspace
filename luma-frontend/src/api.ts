@@ -120,7 +120,7 @@ api.interceptors.request.use((config) => {
 export function getErrorMessage(error: unknown, fallback = "Something went wrong."): string {
   if (error instanceof AxiosError) {
     if (!error.response) {
-      return "Could not reach the Luma backend. Confirm the backend is running and try again."
+      return "Luma is having trouble connecting. Please try again soon."
     }
 
     const data = error.response.data as ApiErrorPayload | undefined
@@ -194,6 +194,6 @@ export async function checkBackendHealth(): Promise<void> {
   })
 
   if (response.status !== 200) {
-    throw new Error(`Backend health check returned HTTP ${response.status}.`)
+    throw new Error(`Luma answered with HTTP ${response.status}.`)
   }
 }

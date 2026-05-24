@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import type { ChangeEvent, FormEvent, ReactNode } from "react"
+import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react"
 import {
   Link,
   Navigate,
@@ -32,14 +32,47 @@ type CollectionConfig = {
   key: string
   title: string
   description: string
+  dashboardDescription: string
   endpoint: string
   fields: FieldConfig[]
+  publicable?: boolean
+  studyType?: StudyType
+  helperText?: string
 }
 
 type CollectionItem = {
   id: string
   created_at?: string
+  is_public?: boolean
+  published_at?: string | null
+  published_by?: string | null
+  study_type?: StudyType | null
   [key: string]: unknown
+}
+
+type StudyType = "note" | "flashcards" | "summary"
+
+type PublicStudyItem = {
+  id: string
+  study_type: StudyType
+  title: string
+  preview: string
+  tags: string[]
+  user_id: string
+  username: string
+  display_name?: string | null
+  published_at?: string | null
+  published_by?: string | null
+  created_at: string
+}
+
+type PublicUser = {
+  id: string
+  username: string
+  display_name?: string | null
+  avatar_url?: string | null
+  public_count: number
+  items: PublicStudyItem[]
 }
 
 type HealthState = {
@@ -51,116 +84,151 @@ const collectionConfigs: CollectionConfig[] = [
   {
     key: "notes",
     title: "Notes",
-    description: "Capture structured study notes and keep them searchable.",
+    description: "Write your notes here.",
+    dashboardDescription: "Write down what you're learning so you don't forget.",
     endpoint: "/notes",
+    publicable: true,
+    studyType: "note",
     fields: [
       {
         name: "title",
         label: "Title",
         kind: "text",
-        placeholder: "Photosynthesis review",
+        placeholder: "Title",
       },
       {
         name: "content",
         label: "Content",
         kind: "textarea",
-        placeholder: "Main ideas, examples, and questions",
+        placeholder: "Write your notes...",
       },
       {
         name: "tags",
         label: "Tags",
         kind: "tags",
-        placeholder: "biology, exam",
+        placeholder: "Add tags (optional)",
       },
     ],
   },
   {
     key: "flashcards",
     title: "Flashcards",
-    description: "Build memory prompts for quick review sessions.",
+    description: "Practice remembering what you learned.",
+    dashboardDescription: "Practice remembering things you've learned.",
     endpoint: "/flashcards",
+    publicable: true,
+    studyType: "flashcards",
+    helperText: "Challenge your mind to remember.",
     fields: [
       {
+        name: "title",
+        label: "Title",
+        kind: "text",
+        placeholder: "Title",
+      },
+      {
         name: "front",
-        label: "Front",
+        label: "Question",
         kind: "textarea",
-        placeholder: "What is active recall?",
+        placeholder: "Question",
       },
       {
         name: "back",
-        label: "Back",
+        label: "Answer",
         kind: "textarea",
-        placeholder: "Retrieving information without looking at notes",
+        placeholder: "Answer",
       },
       {
         name: "tags",
         label: "Tags",
         kind: "tags",
-        placeholder: "study, recall",
+        placeholder: "Add tags (optional)",
       },
     ],
   },
   {
     key: "study-sessions",
     title: "Study Sessions",
-    description: "Plan and track focused blocks of learning.",
+    description: "Plan your study time.",
+    dashboardDescription: "Plan your study time and stay focused.",
     endpoint: "/study-sessions",
     fields: [
       {
         name: "name",
         label: "Name",
         kind: "text",
-        placeholder: "Chemistry practice block",
+        placeholder: "Study name",
       },
       {
         name: "subject",
         label: "Subject",
         kind: "text",
-        placeholder: "Chemistry",
+        placeholder: "Subject",
       },
       {
         name: "notes",
         label: "Notes",
         kind: "textarea",
-        placeholder: "Focus on stoichiometry problems",
+        placeholder: "What do you want to study?",
       },
       {
         name: "duration_seconds",
-        label: "Duration seconds",
+        label: "Time in seconds",
         kind: "number",
-        placeholder: "1800",
+        placeholder: "How long?",
       },
     ],
   },
   {
     key: "summaries",
     title: "Summaries",
-    description: "Store compact summaries for later review.",
+    description: "Write a short version of your lesson.",
+    dashboardDescription: "Save short versions of your lessons.",
     endpoint: "/summaries",
+    publicable: true,
+    studyType: "summary",
     fields: [
+      {
+        name: "title",
+        label: "Title",
+        kind: "text",
+        placeholder: "Title",
+      },
       {
         name: "content",
         label: "Summary",
         kind: "textarea",
-        placeholder: "Condense the lesson into the most important ideas",
+        placeholder: "Write a short version...",
       },
     ],
   },
   {
     key: "transcripts",
     title: "Transcripts",
-    description: "Keep lecture or voice transcripts attached to your workspace.",
+    description: "Turn talking or audio into text you can read.",
+    dashboardDescription: "Turn talking or audio into text you can read.",
     endpoint: "/transcripts",
     fields: [
       {
         name: "content",
         label: "Transcript",
         kind: "textarea",
-        placeholder: "Paste or save transcript text",
+        placeholder: "Paste text here...",
       },
     ],
   },
 ]
+
+const themeColors = [
+  { name: "Blue", value: "#3157d5" },
+  { name: "Green", value: "#18764a" },
+  { name: "Pink", value: "#c02663" },
+  { name: "Orange", value: "#c2410c" },
+  { name: "Purple", value: "#6d28d9" },
+  { name: "Gray", value: "#475467" },
+]
+
+type ThemeMode = "light" | "dark"
 
 const workspaceLinks = collectionConfigs.map((config) => ({
   to: `/${config.key}`,
@@ -169,7 +237,7 @@ const workspaceLinks = collectionConfigs.map((config) => ({
 
 const initialHealthState: HealthState = {
   status: "checking",
-  detail: "Checking backend...",
+  detail: "Checking Luma...",
 }
 
 function useBackendHealth() {
@@ -231,8 +299,8 @@ function normalizeTags(value: string): string[] {
 function buildPayload(
   fields: FieldConfig[],
   values: Record<string, string>,
-): Record<string, string | number | string[]> {
-  return fields.reduce<Record<string, string | number | string[]>>((payload, field) => {
+): Record<string, string | number | string[] | boolean> {
+  return fields.reduce<Record<string, string | number | string[] | boolean>>((payload, field) => {
     const rawValue = values[field.name] ?? ""
 
     if (field.kind === "tags") {
@@ -264,6 +332,49 @@ function displayValue(value: unknown): string {
   }
 
   return ""
+}
+
+function getItemTitle(item: CollectionItem): string {
+  return displayValue(item.title).trim()
+}
+
+function labelForStudyType(studyType: StudyType): string {
+  if (studyType === "note") {
+    return "Note"
+  }
+
+  if (studyType === "flashcards") {
+    return "Flashcards"
+  }
+
+  return "Summary"
+}
+
+function formatPublishedDate(value?: string | null): string {
+  if (!value) {
+    return "Not published yet"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function groupPublicItems(items: PublicStudyItem[]): Record<StudyType, PublicStudyItem[]> {
+  return items.reduce<Record<StudyType, PublicStudyItem[]>>(
+    (groups, item) => {
+      groups[item.study_type].push(item)
+      return groups
+    },
+    { note: [], flashcards: [], summary: [] },
+  )
 }
 
 function classForNavLink({ isActive }: { isActive: boolean }): string {
@@ -320,8 +431,8 @@ function BackendConnectionBanner({ health }: { health: HealthState }) {
   return (
     <div className="backend-banner" role="status" aria-live="polite">
       <span className={`health-dot ${health.status}`} />
-      <strong>{health.status === "checking" ? "Checking backend" : "Backend unavailable"}</strong>
-      <p>{health.detail ?? "Waiting for the backend health check to finish."}</p>
+      <strong>{health.status === "checking" ? "Checking Luma" : "Luma is having trouble connecting"}</strong>
+      <p>{health.detail ?? "We are checking the connection."}</p>
       <small>{API_BASE_URL}</small>
     </div>
   )
@@ -393,7 +504,7 @@ function AppLayout() {
             Voice Input
           </NavLink>
           <NavLink to="/subscribe" className={classForNavLink}>
-            Subscribe
+            Subscription
           </NavLink>
           <NavLink to="/settings" className={classForNavLink}>
             Settings
@@ -478,10 +589,7 @@ function LandingPage() {
           <img className="hero-mark" src="/luma-star.png" alt="" />
           <p className="eyebrow">Study workspace</p>
           <h1>Luma</h1>
-          <p>
-            Notes, flashcards, transcripts, sessions, and AI study tools running against
-            the configured backend.
-          </p>
+          <p>Keep your notes, cards, study time, and lessons in one easy place.</p>
           <div className="hero-actions">
             <Link className="primary-button" to="/login">
               Login
@@ -594,7 +702,7 @@ function LoginPage() {
         <PageHeader
           eyebrow="Welcome back"
           title="Login to Luma"
-          description="Use your Luma backend account to open the workspace."
+          description="Log in to get back to your work."
         />
         <AuthForm
           mode="login"
@@ -619,7 +727,7 @@ function SignupPage() {
   const handleSignup = async (values: { email: string; username: string; password: string }) => {
     const backendConnected = await refreshBackendHealth()
     if (!backendConnected) {
-      throw new Error("Could not reach the Luma backend. Confirm the backend is reachable and try again.")
+      throw new Error("Luma is not reachable right now. Please try again soon.")
     }
 
     await signup(values)
@@ -632,7 +740,7 @@ function SignupPage() {
         <PageHeader
           eyebrow="New workspace"
           title="Create your account"
-          description="Signup uses the backend custom JWT flow and creates a Luma profile."
+          description="Make your Luma account."
         />
         <BackendConnectionBanner health={health} />
         <AuthForm mode="signup" onSubmit={handleSignup} />
@@ -658,7 +766,7 @@ function ForgotPasswordPage() {
       await api.post("/auth/request-reset", { email })
       setNotice({
         type: "success",
-        text: "If that account exists, the backend accepted the reset request.",
+        text: "If that account exists, we sent password help.",
       })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error) })
@@ -673,7 +781,7 @@ function ForgotPasswordPage() {
         <PageHeader
           eyebrow="Password help"
           title="Request reset"
-          description="Ask the backend to issue a password reset token."
+          description="We can help you reset your password."
         />
         <form className="form-panel" onSubmit={submit}>
           <NoticeBanner notice={notice} />
@@ -703,7 +811,7 @@ function ResetPasswordPage() {
 
     try {
       await api.post("/auth/reset", { token, new_password: password })
-      setNotice({ type: "success", text: "Password reset accepted. You can login now." })
+      setNotice({ type: "success", text: "Your password was changed. You can log in now." })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error) })
     } finally {
@@ -717,7 +825,7 @@ function ResetPasswordPage() {
         <PageHeader
           eyebrow="Password help"
           title="Set new password"
-          description="Paste the reset token from the backend email flow."
+          description="Pick a new password."
         />
         <form className="form-panel" onSubmit={submit}>
           <NoticeBanner notice={notice} />
@@ -778,8 +886,8 @@ function DashboardPage() {
     <>
       <PageHeader
         eyebrow="Workspace"
-        title={`Good to see you${profile?.display_name ? `, ${profile.display_name}` : ""}`}
-        description="Your Luma backend, study collections, and AI tools are wired into one workspace."
+        title={`Good to see you${profile?.username ? `, ${profile.username}` : ""}`}
+        description="Pick what you want to work on today."
       />
       <BackendConnectionBanner health={health} />
       <section className="metrics-grid">
@@ -787,7 +895,7 @@ function DashboardPage() {
           <Link className="metric-card link-card" key={config.key} to={`/${config.key}`}>
             <strong>{config.title}</strong>
             <span>{counts[config.key] ?? "-"}</span>
-            <p>{config.description}</p>
+            <p>{config.dashboardDescription}</p>
           </Link>
         ))}
       </section>
@@ -796,12 +904,20 @@ function DashboardPage() {
 }
 
 function CollectionPage({ config }: { config: CollectionConfig }) {
+  const profile = useProfile()
+  const { user } = useAuth()
   const [items, setItems] = useState<CollectionItem[]>([])
   const [values, setValues] = useState(() => makeEmptyValues(config.fields))
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<Record<string, string>>({})
+  const [publishModalItem, setPublishModalItem] = useState<CollectionItem | null>(null)
+  const [publishing, setPublishing] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [loading, setLoading] = useState(true)
+  const selectedItem = items.find((item) => item.id === selectedItemId) ?? null
+  const selectedItemIsEditing = Boolean(selectedItem && editingId === selectedItem.id)
+  const publisherUsername = profile?.username ?? user?.username ?? "Student"
 
   const loadItems = useCallback(async () => {
     setLoading(true)
@@ -819,8 +935,10 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
 
   useEffect(() => {
     setValues(makeEmptyValues(config.fields))
+    setSelectedItemId(null)
     setEditingId(null)
     setEditValues({})
+    setPublishModalItem(null)
     void loadItems()
   }, [config.fields, loadItems])
 
@@ -843,7 +961,9 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
     setNotice(null)
 
     try {
-      await api.post(config.endpoint, buildPayload(config.fields, values))
+      const payload = buildPayload(config.fields, values)
+
+      await api.post(config.endpoint, payload)
       setValues(makeEmptyValues(config.fields))
       setNotice({ type: "success", text: `${config.title.slice(0, -1) || config.title} saved.` })
       await loadItems()
@@ -853,6 +973,7 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
   }
 
   const startEdit = (item: CollectionItem) => {
+    setSelectedItemId(item.id)
     setEditingId(item.id)
     setEditValues(
       config.fields.reduce<Record<string, string>>((draft, field) => {
@@ -866,7 +987,9 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
     setNotice(null)
 
     try {
-      await api.put(`${config.endpoint}/${itemId}`, buildPayload(config.fields, editValues))
+      const payload = buildPayload(config.fields, editValues)
+
+      await api.put(`${config.endpoint}/${itemId}`, payload)
       setEditingId(null)
       setEditValues({})
       setNotice({ type: "success", text: "Changes saved." })
@@ -881,10 +1004,68 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
 
     try {
       await api.delete(`${config.endpoint}/${itemId}`)
+      if (selectedItemId === itemId) {
+        setSelectedItemId(null)
+      }
       setNotice({ type: "success", text: "Item deleted." })
       await loadItems()
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not delete item.") })
+    }
+  }
+
+  const openPublishModal = (item: CollectionItem) => {
+    setNotice(null)
+
+    if (!getItemTitle(item)) {
+      setNotice({ type: "error", text: "Please give this study set a title before publishing." })
+      return
+    }
+
+    setPublishModalItem(item)
+  }
+
+  const publishItem = async (item: CollectionItem) => {
+    if (!config.studyType) {
+      return
+    }
+
+    setPublishing(true)
+    setNotice(null)
+
+    try {
+      await api.put(`${config.endpoint}/${item.id}`, {
+        is_public: true,
+        published_at: new Date().toISOString(),
+        published_by: publisherUsername,
+        study_type: config.studyType,
+      })
+      setPublishModalItem(null)
+      setNotice({ type: "success", text: "Published." })
+      await loadItems()
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not publish this study set.") })
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const unpublishItem = async (item: CollectionItem) => {
+    setPublishing(true)
+    setNotice(null)
+
+    try {
+      await api.put(`${config.endpoint}/${item.id}`, {
+        is_public: false,
+        published_at: null,
+        published_by: null,
+      })
+      setNotice({ type: "success", text: "Unpublished." })
+      await loadItems()
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not unpublish this study set.") })
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -895,6 +1076,7 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
       <section className="split-layout">
         <form className="form-panel" onSubmit={createItem}>
           <h2>Create</h2>
+          {config.helperText ? <p className="muted">{config.helperText}</p> : null}
           {config.fields.map((field) => (
             <FieldInput
               key={field.name}
@@ -911,7 +1093,10 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
           {loading ? <p className="muted">Loading...</p> : null}
           {!loading && items.length === 0 ? <p className="muted">No items yet.</p> : null}
           {items.map((item) => (
-            <article className="item-card" key={item.id}>
+            <article
+              className={selectedItemId === item.id ? "item-card active" : "item-card"}
+              key={item.id}
+            >
               {editingId === item.id ? (
                 <>
                   {config.fields.map((field) => (
@@ -926,7 +1111,13 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
                     <button type="button" className="primary-button" onClick={() => void saveEdit(item.id)}>
                       Save changes
                     </button>
-                    <button type="button" className="secondary-button" onClick={() => setEditingId(null)}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setEditingId(null)
+                      }}
+                    >
                       Cancel
                     </button>
                   </div>
@@ -940,8 +1131,22 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
                         <p>{displayValue(item[field.name]) || "-"}</p>
                       </div>
                     ))}
+                    {config.publicable ? (
+                      <span className={`visibility-pill ${item.is_public ? "public" : "private"}`}>
+                        {item.is_public ? "Public" : "Private"}
+                      </span>
+                    ) : null}
+                    {item.is_public ? (
+                      <div className="published-meta">
+                        <small>Published</small>
+                        <p>{formatPublishedDate(displayValue(item.published_at))}</p>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="button-row">
+                    <button type="button" className="secondary-button" onClick={() => setSelectedItemId(item.id)}>
+                      {selectedItemId === item.id ? "Viewing" : "View"}
+                    </button>
                     <button type="button" className="secondary-button" onClick={() => startEdit(item)}>
                       Edit
                     </button>
@@ -955,6 +1160,29 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
           ))}
         </section>
       </section>
+      {config.publicable && selectedItem && !selectedItemIsEditing ? (
+        <button
+          type="button"
+          className={selectedItem.is_public ? "floating-publish unpublish" : "floating-publish"}
+          onClick={() => {
+            if (selectedItem.is_public) {
+              void unpublishItem(selectedItem)
+              return
+            }
+            openPublishModal(selectedItem)
+          }}
+          disabled={publishing}
+        >
+          {selectedItem.is_public ? "Unpublish" : "Publish"}
+        </button>
+      ) : null}
+      {publishModalItem ? (
+        <PublishModal
+          publishing={publishing}
+          onCancel={() => setPublishModalItem(null)}
+          onConfirm={() => void publishItem(publishModalItem)}
+        />
+      ) : null}
     </>
   )
 }
@@ -991,6 +1219,36 @@ function FieldInput({
         />
       )}
     </label>
+  )
+}
+
+function PublishModal({
+  publishing,
+  onCancel,
+  onConfirm,
+}: {
+  publishing: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="publish-title">
+        <h2 id="publish-title">Publish this study set?</h2>
+        <p>
+          Publishing makes this study set visible to other students. Your username will appear as the
+          creator. You can unpublish it anytime.
+        </p>
+        <div className="button-row">
+          <button type="button" className="secondary-button" onClick={onCancel} disabled={publishing}>
+            Cancel
+          </button>
+          <button type="button" className="primary-button" onClick={onConfirm} disabled={publishing}>
+            {publishing ? "Publishing..." : "Publish"}
+          </button>
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -1043,9 +1301,9 @@ function ImageToNotesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="AI"
+        eyebrow="Tools"
         title="Image to Notes"
-        description="Send an image data URL to the backend note generation endpoint."
+        description="Upload a picture and turn it into notes."
       />
       <form className="form-panel" onSubmit={generateNotes}>
         <NoticeBanner notice={notice} />
@@ -1055,7 +1313,7 @@ function ImageToNotesPage() {
         </label>
         {fileName ? <p className="muted">Selected: {fileName}</p> : null}
         <button className="primary-button" type="submit" disabled={submitting}>
-          {submitting ? "Generating..." : "Generate notes"}
+          {submitting ? "Working..." : "Make notes"}
         </button>
       </form>
       {result ? <OutputBlock title="Generated notes" value={result} /> : null}
@@ -1095,9 +1353,9 @@ function VoiceInputPage() {
   return (
     <>
       <PageHeader
-        eyebrow="AI"
+        eyebrow="Tools"
         title="Voice Input"
-        description="Upload audio and let the backend transcription route produce text."
+        description="Upload audio and turn it into text."
       />
       <form className="form-panel" onSubmit={transcribe}>
         <NoticeBanner notice={notice} />
@@ -1110,7 +1368,7 @@ function VoiceInputPage() {
           />
         </label>
         <button className="primary-button" type="submit" disabled={submitting}>
-          {submitting ? "Transcribing..." : "Transcribe"}
+          {submitting ? "Working..." : "Turn into text"}
         </button>
       </form>
       {transcript ? <OutputBlock title="Transcript" value={transcript} /> : null}
@@ -1119,101 +1377,296 @@ function VoiceInputPage() {
 }
 
 function SearchPage() {
+  const [activeTab, setActiveTab] = useState<"topics" | "users">("topics")
   const [query, setQuery] = useState("")
-  const [users, setUsers] = useState<Array<{ id: string; username: string; display_name?: string | null }>>([])
-  const [semanticResult, setSemanticResult] = useState("")
+  const [topics, setTopics] = useState<PublicStudyItem[]>([])
+  const [users, setUsers] = useState<PublicUser[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [loading, setLoading] = useState(false)
+  const groupedTopics = groupPublicItems(topics)
+  const studyGroups: Array<{ type: StudyType; title: string }> = [
+    { type: "note", title: "Notes" },
+    { type: "flashcards", title: "Flashcards" },
+    { type: "summary", title: "Summaries" },
+  ]
 
-  const searchUsers = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const searchPublicTopics = useCallback(async (searchQuery: string) => {
+    setLoading(true)
     setNotice(null)
 
     try {
-      const response = await api.get<Array<{ id: string; username: string; display_name?: string | null }>>(
-        "/users/search",
-        { params: { query } },
-      )
+      const response = await api.get<PublicStudyItem[]>("/public/topics", {
+        params: { query: searchQuery },
+      })
+      setTopics(response.data)
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not search study materials.") })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const searchPublicUsers = useCallback(async (searchQuery: string) => {
+    setLoading(true)
+    setNotice(null)
+
+    try {
+      const response = await api.get<PublicUser[]>("/public/users", {
+        params: { query: searchQuery },
+      })
       setUsers(response.data)
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not search users.") })
+    } finally {
+      setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    void searchPublicTopics("")
+  }, [searchPublicTopics])
+
+  const submitSearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (activeTab === "topics") {
+      await searchPublicTopics(query)
+      return
+    }
+
+    await searchPublicUsers(query)
   }
 
-  const semanticSearch = async () => {
-    setNotice(null)
-    setSemanticResult("")
-
-    try {
-      const response = await api.post<{ keywords: string[]; embedding?: number[] | null }>("/api/semantic-search", {
-        query,
-      })
-      setSemanticResult(
-        `Keywords: ${response.data.keywords.join(", ")}\nEmbedding dimensions: ${
-          response.data.embedding?.length ?? 0
-        }`,
-      )
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not run semantic search.") })
-    }
+  const browseTopics = async () => {
+    setActiveTab("topics")
+    setQuery("")
+    await searchPublicTopics("")
   }
 
   return (
     <>
       <PageHeader
         eyebrow="Search"
-        title="Workspace Search"
-        description="Search profiles and run the premium semantic search endpoint when configured."
+        title="Search"
+        description="Find study sets from other students."
       />
-      <form className="form-panel" onSubmit={searchUsers}>
+      <div className="tabs" role="tablist" aria-label="Search choices">
+        <button
+          type="button"
+          className={activeTab === "topics" ? "tab-button active" : "tab-button"}
+          onClick={() => setActiveTab("topics")}
+        >
+          Search Topics
+        </button>
+        <button
+          type="button"
+          className={activeTab === "users" ? "tab-button active" : "tab-button"}
+          onClick={() => setActiveTab("users")}
+        >
+          Search Users
+        </button>
+      </div>
+      <form className="form-panel" onSubmit={submitSearch}>
         <NoticeBanner notice={notice} />
         <label>
-          Query
-          <input value={query} onChange={(event) => setQuery(event.target.value)} required minLength={1} />
+          Search
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={activeTab === "topics" ? "Try math, history, or science" : "Search a username"}
+          />
         </label>
         <div className="button-row">
           <button className="primary-button" type="submit">
-            Search users
+            Search
           </button>
-          <button className="secondary-button" type="button" onClick={() => void semanticSearch()}>
-            Semantic search
+          <button className="secondary-button" type="button" onClick={() => void browseTopics()}>
+            Browse study materials
           </button>
         </div>
       </form>
-      <section className="list-panel">
-        {users.length === 0 ? <p className="muted">No user results yet.</p> : null}
-        {users.map((user) => (
-          <article className="item-card" key={user.id}>
-            <strong>{user.display_name || user.username}</strong>
-            <small>@{user.username}</small>
-          </article>
-        ))}
-      </section>
-      {semanticResult ? <OutputBlock title="Semantic result" value={semanticResult} /> : null}
+      {activeTab === "topics" ? (
+        <section className="public-results" aria-live="polite">
+          {loading ? <p className="muted">Loading...</p> : null}
+          {!loading && topics.length === 0 ? (
+            <p className="muted">No public study sets found.</p>
+          ) : null}
+          {studyGroups.map((group) =>
+            groupedTopics[group.type].length ? (
+              <section className="public-section" key={group.type}>
+                <h2>{group.title}</h2>
+                <div className="public-grid">
+                  {groupedTopics[group.type].map((item) => (
+                    <PublicStudyCard item={item} key={`${item.study_type}-${item.id}`} />
+                  ))}
+                </div>
+              </section>
+            ) : null,
+          )}
+        </section>
+      ) : (
+        <section className="list-panel" aria-live="polite">
+          {loading ? <p className="muted">Loading...</p> : null}
+          {!loading && users.length === 0 ? (
+            <p className="muted">No public study sets found for that user.</p>
+          ) : null}
+          {users.map((user) => (
+            <article className="item-card public-user-section" key={user.id}>
+              <div className="user-card">
+                <span className="avatar">{(user.display_name || user.username).slice(0, 1).toUpperCase()}</span>
+                <div>
+                  <strong>{user.display_name || user.username}</strong>
+                  <small>@{user.username}</small>
+                  <p>{user.public_count} public study set{user.public_count === 1 ? "" : "s"}</p>
+                </div>
+              </div>
+              <div className="public-grid compact">
+                {user.items.map((item) => (
+                  <PublicStudyCard item={item} key={`${item.study_type}-${item.id}`} />
+                ))}
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
     </>
+  )
+}
+
+function PublicStudyCard({ item }: { item: PublicStudyItem }) {
+  return (
+    <article className="public-card">
+      <div className="card-topline">
+        <span>{labelForStudyType(item.study_type)}</span>
+        <small>@{item.published_by || item.username}</small>
+      </div>
+      <h2>{item.title}</h2>
+      <dl className="public-details">
+        <div>
+          <dt>Study type</dt>
+          <dd>{labelForStudyType(item.study_type)}</dd>
+        </div>
+        <div>
+          <dt>Published date</dt>
+          <dd>{formatPublishedDate(item.published_at)}</dd>
+        </div>
+        <div>
+          <dt>Published by</dt>
+          <dd>@{item.published_by || item.username}</dd>
+        </div>
+      </dl>
+      <p>{item.preview || "No text yet."}</p>
+      {item.tags.length ? (
+        <div className="tag-row">
+          {item.tags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+      ) : null}
+    </article>
   )
 }
 
 function SettingsPage() {
   const profile = useProfile()
+  const { user } = useAuth()
   const [notice, setNotice] = useState<Notice | null>(null)
+  const settingsKey = profile?.id ?? user?.id ?? "empty"
 
   return (
     <>
       <PageHeader
         eyebrow="Account"
         title="Settings"
-        description="Manage profile fields that are stored through the backend profile API."
+        description="Manage your account and settings."
       />
       <NoticeBanner notice={notice} />
-      <section className="split-layout">
-        <ProfileSettingsForm key={`profile-${profile?.id ?? "empty"}`} profile={profile} setNotice={setNotice} />
-        <IdentitySettingsForm key={`identity-${profile?.username ?? "empty"}`} profile={profile} setNotice={setNotice} />
+      <section className="settings-grid">
+        <UsernameSettingsForm key={`username-${settingsKey}`} profile={profile} setNotice={setNotice} />
+        <EmailSettingsForm key={`email-${settingsKey}`} profile={profile} setNotice={setNotice} />
+        <ThemeSettingsForm key={`theme-${settingsKey}`} profile={profile} setNotice={setNotice} />
+        <AccountHelpPanel profile={profile} setNotice={setNotice} />
+        <DeleteAccountPanel setNotice={setNotice} />
       </section>
     </>
   )
 }
 
-function ProfileSettingsForm({
+function UsernameSettingsForm({
+  profile,
+  setNotice,
+}: {
+  profile: Profile | null
+  setNotice: (notice: Notice | null) => void
+}) {
+  const { refreshProfile, user } = useAuth()
+  const [username, setUsername] = useState(profile?.username ?? user?.username ?? "")
+
+  const saveUsername = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setNotice(null)
+
+    try {
+      await api.put("/me/username", { new_username: username.trim() })
+      await refreshProfile()
+      setNotice({ type: "success", text: "Username saved." })
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not save username.") })
+    }
+  }
+
+  return (
+    <form className="form-panel" onSubmit={saveUsername}>
+      <h2>Username</h2>
+      <label>
+        Username
+        <input value={username} onChange={(event) => setUsername(event.target.value)} minLength={3} required />
+      </label>
+      <button className="primary-button" type="submit">
+        Save username
+      </button>
+    </form>
+  )
+}
+
+function EmailSettingsForm({
+  profile,
+  setNotice,
+}: {
+  profile: Profile | null
+  setNotice: (notice: Notice | null) => void
+}) {
+  const { setProfile, user } = useAuth()
+  const [email, setEmail] = useState(profile?.email ?? user?.email ?? "")
+
+  const saveEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setNotice(null)
+
+    try {
+      const response = await api.put<Profile>("/me/email", { new_email: email.trim() })
+      setProfile(response.data)
+      setNotice({ type: "success", text: "Email saved. Check your email when you can." })
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not save email.") })
+    }
+  }
+
+  return (
+    <form className="form-panel" onSubmit={saveEmail}>
+      <h2>Change Email</h2>
+      <label>
+        Email
+        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+      </label>
+      <button className="primary-button" type="submit">
+        Save email
+      </button>
+    </form>
+  )
+}
+
+function ThemeSettingsForm({
   profile,
   setNotice,
 }: {
@@ -1221,87 +1674,87 @@ function ProfileSettingsForm({
   setNotice: (notice: Notice | null) => void
 }) {
   const { setProfile } = useAuth()
-  const [profileValues, setProfileValues] = useState({
-    display_name: profile?.display_name ?? "",
-    timezone: profile?.timezone ?? "",
-    theme_mode: profile?.theme_mode ?? "",
-    phone_number: profile?.phone_number ?? "",
-    birthday: profile?.birthday ?? "",
-  })
+  const [themeColor, setThemeColor] = useState(profile?.theme_color ?? themeColors[0].value)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(profile?.theme_mode === "dark" ? "dark" : "light")
+  const previewStyle = { "--theme-choice": themeColor } as CSSProperties
 
-  const updateProfileValue = (event: ChangeEvent<HTMLInputElement>) => {
-    setProfileValues((current) => ({
-      ...current,
-      [event.target.name]: event.target.value,
-    }))
-  }
-
-  const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
+  const saveTheme = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setNotice(null)
 
     try {
-      const payload = Object.fromEntries(
-        Object.entries(profileValues).map(([key, value]) => [key, value.trim() || null]),
-      )
-      const response = await api.put<Profile>("/me/profile", payload)
+      const response = await api.put<Profile>("/me/profile", {
+        theme_color: themeColor,
+        theme_mode: themeMode,
+      })
       setProfile(response.data)
-      setNotice({ type: "success", text: "Profile saved." })
+      setNotice({ type: "success", text: "Theme saved." })
     } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not save profile.") })
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not save theme.") })
     }
   }
 
   return (
-    <form className="form-panel" onSubmit={saveProfile}>
-      <h2>Profile</h2>
-      <label>
-        Display name
-        <input name="display_name" value={profileValues.display_name} onChange={updateProfileValue} />
-      </label>
-      <label>
-        Timezone
-        <input name="timezone" value={profileValues.timezone} onChange={updateProfileValue} />
-      </label>
-      <label>
-        Theme mode
-        <input name="theme_mode" value={profileValues.theme_mode} onChange={updateProfileValue} />
-      </label>
-      <label>
-        Phone
-        <input name="phone_number" value={profileValues.phone_number} onChange={updateProfileValue} />
-      </label>
-      <label>
-        Birthday
-        <input name="birthday" type="date" value={profileValues.birthday} onChange={updateProfileValue} />
-      </label>
+    <form className="form-panel" onSubmit={saveTheme}>
+      <h2>Theme</h2>
+      <div className={`theme-preview ${themeMode}`} style={previewStyle}>
+        <span />
+        <strong>{themeMode === "dark" ? "Dark" : "Light"}</strong>
+      </div>
+      <div className="color-grid" aria-label="Theme colors">
+        {themeColors.map((color) => (
+          <button
+            key={color.value}
+            type="button"
+            className={themeColor === color.value ? "color-button active" : "color-button"}
+            style={{ backgroundColor: color.value }}
+            aria-label={color.name}
+            aria-pressed={themeColor === color.value}
+            onClick={() => setThemeColor(color.value)}
+          />
+        ))}
+      </div>
+      <div className="mode-toggle" aria-label="Light or dark mode">
+        <button
+          type="button"
+          className={themeMode === "light" ? "active" : ""}
+          onClick={() => setThemeMode("light")}
+        >
+          Light
+        </button>
+        <button
+          type="button"
+          className={themeMode === "dark" ? "active" : ""}
+          onClick={() => setThemeMode("dark")}
+        >
+          Dark
+        </button>
+      </div>
       <button className="primary-button" type="submit">
-        Save profile
+        Save theme
       </button>
     </form>
   )
 }
 
-function IdentitySettingsForm({
+function AccountHelpPanel({
   profile,
   setNotice,
 }: {
   profile: Profile | null
   setNotice: (notice: Notice | null) => void
 }) {
-  const { refreshProfile } = useAuth()
-  const [username, setUsername] = useState(profile?.username ?? "")
+  const { user } = useAuth()
+  const email = profile?.email ?? user?.email ?? ""
 
-  const saveUsername = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const resetPassword = async () => {
     setNotice(null)
 
     try {
-      await api.put("/me/username", { new_username: username })
-      await refreshProfile()
-      setNotice({ type: "success", text: "Username updated." })
+      await api.post("/auth/request-reset", { email })
+      setNotice({ type: "success", text: "Password help sent." })
     } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not update username.") })
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not send password help.") })
     }
   }
 
@@ -1310,24 +1763,62 @@ function IdentitySettingsForm({
 
     try {
       await api.post("/auth/send-verification")
-      setNotice({ type: "success", text: "Verification request sent." })
+      setNotice({ type: "success", text: "Verification email sent." })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not send verification email.") })
     }
   }
 
   return (
-    <form className="form-panel" onSubmit={saveUsername}>
-      <h2>Identity</h2>
-      <label>
-        Username
-        <input value={username} onChange={(event) => setUsername(event.target.value)} minLength={3} required />
-      </label>
-      <button className="primary-button" type="submit">
-        Save username
+    <section className="form-panel">
+      <h2>Account Help</h2>
+      <button className="secondary-button" type="button" onClick={() => void resetPassword()} disabled={!email}>
+        Reset password
       </button>
       <button className="secondary-button" type="button" onClick={() => void sendVerification()}>
         Send verification email
+      </button>
+    </section>
+  )
+}
+
+function DeleteAccountPanel({
+  setNotice,
+}: {
+  setNotice: (notice: Notice | null) => void
+}) {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+  const [confirmText, setConfirmText] = useState("")
+
+  const deleteAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setNotice(null)
+
+    if (confirmText.trim().toLowerCase() !== "delete") {
+      setNotice({ type: "error", text: "Type delete to confirm." })
+      return
+    }
+
+    try {
+      await api.delete("/me/account")
+      logout()
+      navigate("/", { replace: true })
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not delete account.") })
+    }
+  }
+
+  return (
+    <form className="form-panel danger-zone" onSubmit={deleteAccount}>
+      <h2>Delete Account</h2>
+      <p>This removes your account and study work.</p>
+      <label>
+        Type delete
+        <input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} />
+      </label>
+      <button className="danger-button" type="submit">
+        Delete account
       </button>
     </form>
   )
@@ -1356,16 +1847,13 @@ function SubscribePage() {
       <PageHeader
         eyebrow="Premium"
         title="Subscription"
-        description="Start Stripe Checkout through the backend when Stripe env vars are configured."
+        description="Get extra features and higher limits with Luma Premium."
       />
       <NoticeBanner notice={notice} />
       <section className="form-panel">
-        <p>
-          Premium unlocks higher AI limits and premium study tools. The backend will return a
-          checkout URL when Stripe is configured.
-        </p>
+        <p>Press the button below to upgrade.</p>
         <button className="primary-button" type="button" onClick={() => void startCheckout()} disabled={loading}>
-          {loading ? "Starting..." : "Start checkout"}
+          {loading ? "Starting..." : "Upgrade"}
         </button>
       </section>
     </>
@@ -1385,7 +1873,7 @@ function NotFoundPage() {
   return (
     <section className="status-panel">
       <h1>Page not found</h1>
-      <p>The route does not exist in this Luma app.</p>
+      <p>We could not find that page.</p>
       <Link className="primary-button" to="/dashboard">
         Back to dashboard
       </Link>

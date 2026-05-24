@@ -24,6 +24,7 @@ from .auth import create_access_token, get_current_user, validate_access_token
 from .config import settings
 from .flashcards import router as flashcards_router
 from .notes import router as notes_router
+from .public_search import router as public_search_router
 from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
@@ -116,6 +117,7 @@ app.include_router(study_sessions_router)
 app.include_router(summaries_router)
 app.include_router(transcripts_router)
 app.include_router(analytics_router)
+app.include_router(public_search_router)
 
 
 class ConnectionManager:
@@ -303,10 +305,20 @@ class UsernameUpdateRequest(BaseModel):
 
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, min_length=2, max_length=50)
+    theme_color: Optional[str] = Field(default=None, max_length=32)
     timezone: Optional[str] = None
     theme_mode: Optional[str] = None
     phone_number: Optional[str] = None
     birthday: Optional[str] = None
+
+
+class EmailUpdateRequest(BaseModel):
+    new_email: EmailStr
+
+
+class AccountDeleteResponse(BaseModel):
+    success: bool
+    message: str
 
 
 class UserSearchResponse(BaseModel):
@@ -536,6 +548,39 @@ def update_profile(user_id: str, data: dict):
         .execute()
     )
     return response.data[0] if response.data else None
+
+
+def build_profile_response(user_id: str):
+    profile = get_profile(user_id)
+    if not profile:
+        profile = create_profile(user_id, "")
+
+    user_data_response = (
+        supabase.table("users")
+        .select("email, username, email_verified")
+        .eq("id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if user_data_response is None or user_data_response.data is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_data = user_data_response.data
+    return {
+        "id": user_id,
+        "email": user_data["email"],
+        "username": user_data["username"],
+        "display_name": profile.get("display_name"),
+        "avatar_url": profile.get("avatar_url"),
+        "theme_color": profile.get("theme_color"),
+        "custom_theme_image_url": profile.get("custom_theme_image_url"),
+        "timezone": profile.get("timezone"),
+        "theme_mode": profile.get("theme_mode"),
+        "phone_number": profile.get("phone_number"),
+        "birthday": profile.get("birthday"),
+        "subscription_status": profile.get("subscription_status") or "free",
+        "email_verified": user_data.get("email_verified", False),
+    }
 
 
 def set_subscription_status(user_id: str, subscription_status: str):
@@ -1798,6 +1843,67 @@ def update_username(payload: UsernameUpdateRequest, user=Depends(get_current_use
     update_profile(user["id"], {"username": payload.new_username})
 
     return {"message": "Username updated successfully", "username": payload.new_username}
+
+
+@app.put("/me/email", response_model=ProfileResponse)
+def update_email(payload: EmailUpdateRequest, user=Depends(get_current_user)):
+    normalized_email = str(payload.new_email).strip().lower()
+    existing_user = get_user_by_email(normalized_email)
+    if existing_user and existing_user["id"] != user["id"]:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    updated_user = update_user(
+        user["id"],
+        {
+            "email": normalized_email,
+            "email_verified": False,
+            "email_verification_token": None,
+            "email_verification_sent_at": None,
+        },
+    )
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        token = issue_email_verification_token(user["id"])
+        verification_url = build_public_api_url(f"/auth/verify?token={token}")
+        send_email(
+            normalized_email,
+            "Verify your Luma account",
+            build_verification_email_html(verification_url),
+        )
+    except Exception as exc:
+        logger.warning("Email change verification could not be sent for user_id=%s: %s", user["id"], exc)
+
+    return build_profile_response(user["id"])
+
+
+@app.delete("/me/account", response_model=AccountDeleteResponse)
+def delete_account(user=Depends(get_current_user)):
+    user_id = user["id"]
+    related_tables = (
+        "notifications",
+        "ai_usage",
+        "notes",
+        "flashcards",
+        "study_sessions",
+        "summaries",
+        "transcripts",
+        "profiles",
+    )
+
+    for table_name in related_tables:
+        try:
+            supabase.table(table_name).delete().eq("user_id", user_id).execute()
+        except Exception as exc:
+            logger.warning("Account cleanup skipped table=%s user_id=%s: %s", table_name, user_id, exc)
+
+    response = supabase.table("users").delete().eq("id", user_id).execute()
+    if response is None:
+        raise HTTPException(status_code=500, detail="Could not delete account")
+
+    return {"success": True, "message": "Account deleted"}
+
 
 @app.get("/notifications", response_model=List[NotificationResponse])
 def get_notifications(user=Depends(get_current_user)):
