@@ -10,7 +10,8 @@ create table if not exists public.notes (
   published_at timestamptz,
   published_by text,
   study_type text not null default 'note',
-  created_at timestamp default now()
+  created_at timestamp default now(),
+  updated_at timestamptz default now()
 );
 
 alter table public.notes
@@ -21,7 +22,8 @@ alter table public.notes
   add column if not exists published_at timestamptz,
   add column if not exists published_by text,
   add column if not exists study_type text not null default 'note',
-  add column if not exists created_at timestamp default now();
+  add column if not exists created_at timestamp default now(),
+  add column if not exists updated_at timestamptz default now();
 
 create index if not exists notes_user_id_created_at_idx
   on public.notes (user_id, created_at desc);

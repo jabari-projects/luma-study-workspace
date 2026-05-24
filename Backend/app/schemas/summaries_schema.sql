@@ -5,21 +5,25 @@ create table if not exists public.summaries (
   user_id uuid references public.profiles(user_id),
   title text,
   content text not null,
+  tags text[] not null default '{}'::text[],
   is_public boolean not null default false,
   published_at timestamptz,
   published_by text,
   study_type text not null default 'summary',
-  created_at timestamp default now()
+  created_at timestamp default now(),
+  updated_at timestamptz default now()
 );
 
 alter table public.summaries
   add column if not exists title text,
   add column if not exists content text,
+  add column if not exists tags text[] not null default '{}'::text[],
   add column if not exists is_public boolean not null default false,
   add column if not exists published_at timestamptz,
   add column if not exists published_by text,
   add column if not exists study_type text not null default 'summary',
-  add column if not exists created_at timestamp default now();
+  add column if not exists created_at timestamp default now(),
+  add column if not exists updated_at timestamptz default now();
 
 create index if not exists summaries_user_id_created_at_idx
   on public.summaries (user_id, created_at desc);

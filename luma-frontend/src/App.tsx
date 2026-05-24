@@ -8,6 +8,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useParams,
 } from "react-router-dom"
 
 import { useAuth, useProfile } from "./auth"
@@ -43,6 +44,7 @@ type CollectionConfig = {
 type CollectionItem = {
   id: string
   created_at?: string
+  updated_at?: string | null
   is_public?: boolean
   published_at?: string | null
   published_by?: string | null
@@ -114,7 +116,7 @@ const collectionConfigs: CollectionConfig[] = [
     key: "flashcards",
     title: "Flashcards",
     description: "Practice remembering what you learned.",
-    dashboardDescription: "Practice remembering things you've learned.",
+    dashboardDescription: "Practice remembering things you learned.",
     endpoint: "/flashcards",
     publicable: true,
     studyType: "flashcards",
@@ -150,7 +152,7 @@ const collectionConfigs: CollectionConfig[] = [
     key: "study-sessions",
     title: "Study Sessions",
     description: "Plan your study time.",
-    dashboardDescription: "Plan your study time and stay focused.",
+    dashboardDescription: "Plan your study time.",
     endpoint: "/study-sessions",
     fields: [
       {
@@ -200,35 +202,37 @@ const collectionConfigs: CollectionConfig[] = [
         kind: "textarea",
         placeholder: "Write a short version...",
       },
-    ],
-  },
-  {
-    key: "transcripts",
-    title: "Transcripts",
-    description: "Turn talking or audio into text you can read.",
-    dashboardDescription: "Turn talking or audio into text you can read.",
-    endpoint: "/transcripts",
-    fields: [
       {
-        name: "content",
-        label: "Transcript",
-        kind: "textarea",
-        placeholder: "Paste text here...",
+        name: "tags",
+        label: "Tags",
+        kind: "tags",
+        placeholder: "Add tags (optional)",
       },
     ],
   },
 ]
 
 const themeColors = [
+  { name: "Red", value: "#dc2626" },
+  { name: "Yellow", value: "#ca8a04" },
+  { name: "Teal", value: "#0f766e" },
+  { name: "Pink", value: "#db2777" },
+  { name: "Gold", value: "#b7791f" },
+  { name: "Cyan", value: "#0891b2" },
+  { name: "Purple", value: "#7c3aed" },
+  { name: "Orange", value: "#ea580c" },
+  { name: "Green", value: "#16a34a" },
   { name: "Blue", value: "#3157d5" },
-  { name: "Green", value: "#18764a" },
-  { name: "Pink", value: "#c02663" },
-  { name: "Orange", value: "#c2410c" },
-  { name: "Purple", value: "#6d28d9" },
-  { name: "Gray", value: "#475467" },
 ]
 
 type ThemeMode = "light" | "dark"
+
+const aiTutorLink = {
+  to: "/ai-tutor",
+  label: "AI Tutor",
+  title: "AI Tutor",
+  dashboardDescription: "Get help studying from your AI tutor.",
+}
 
 const workspaceLinks = collectionConfigs.map((config) => ({
   to: `/${config.key}`,
@@ -367,6 +371,25 @@ function formatPublishedDate(value?: string | null): string {
   })
 }
 
+function formatTimestamp(value?: string | null): string {
+  if (!value) {
+    return "-"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
 function groupPublicItems(items: PublicStudyItem[]): Record<StudyType, PublicStudyItem[]> {
   return items.reduce<Record<StudyType, PublicStudyItem[]>>(
     (groups, item) => {
@@ -379,6 +402,16 @@ function groupPublicItems(items: PublicStudyItem[]): Record<StudyType, PublicStu
 
 function classForNavLink({ isActive }: { isActive: boolean }): string {
   return isActive ? "nav-link active" : "nav-link"
+}
+
+function buildThemeStyle(profile: Profile | null): CSSProperties & Record<string, string> {
+  const accent = profile?.theme_color || themeColors[themeColors.length - 1].value
+  return {
+    "--accent": accent,
+    "--accent-strong": `color-mix(in srgb, ${accent} 82%, black)`,
+    "--accent-soft": `color-mix(in srgb, ${accent} 12%, white)`,
+    "--accent-border": `color-mix(in srgb, ${accent} 30%, white)`,
+  }
 }
 
 function PageHeader({
@@ -472,6 +505,7 @@ function AppLayout() {
   const navigate = useNavigate()
   const profile = useProfile()
   const initials = (user?.username ?? user?.email ?? "L").slice(0, 1).toUpperCase()
+  const themeMode = profile?.theme_mode === "dark" ? "dark" : "light"
 
   const handleLogout = () => {
     logout()
@@ -479,7 +513,7 @@ function AppLayout() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${themeMode}`} style={buildThemeStyle(profile)}>
       <aside className="sidebar">
         <Link className="brand" to="/dashboard" aria-label="Luma dashboard">
           <img src="/luma-star.png" alt="" />
@@ -497,6 +531,9 @@ function AppLayout() {
               {link.label}
             </NavLink>
           ))}
+          <NavLink to={aiTutorLink.to} className={classForNavLink}>
+            {aiTutorLink.label}
+          </NavLink>
           <NavLink to="/image-to-notes" className={classForNavLink}>
             Image to Notes
           </NavLink>
@@ -528,14 +565,21 @@ function AppLayout() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/search" element={<SearchPage />} />
           {collectionConfigs.map((config) => (
-            <Route
-              key={config.key}
-              path={`/${config.key}`}
-              element={<CollectionPage config={config} />}
-            />
+            <Route key={config.key} path={`/${config.key}`} element={<CollectionPage config={config} />} />
           ))}
+          {collectionConfigs
+            .filter((config) => config.publicable)
+            .map((config) => (
+              <Route
+                key={`${config.key}-view`}
+                path={`/${config.key}/:itemId`}
+                element={<CollectionItemViewPage config={config} />}
+              />
+            ))}
           <Route path="/image-to-notes" element={<ImageToNotesPage />} />
           <Route path="/voice-input" element={<VoiceInputPage />} />
+          <Route path="/ai-tutor" element={<AiTutorPage />} />
+          <Route path="/transcripts" element={<Navigate to="/ai-tutor" replace />} />
           <Route path="/study-session" element={<Navigate to="/study-sessions" replace />} />
           <Route path="/subscribe" element={<SubscribePage />} />
           <Route path="/settings" element={<SettingsPage />} />
@@ -898,26 +942,22 @@ function DashboardPage() {
             <p>{config.dashboardDescription}</p>
           </Link>
         ))}
+        <Link className="metric-card link-card" to={aiTutorLink.to}>
+          <strong>{aiTutorLink.title}</strong>
+          <span>Go</span>
+          <p>{aiTutorLink.dashboardDescription}</p>
+        </Link>
       </section>
     </>
   )
 }
 
 function CollectionPage({ config }: { config: CollectionConfig }) {
-  const profile = useProfile()
-  const { user } = useAuth()
+  const navigate = useNavigate()
   const [items, setItems] = useState<CollectionItem[]>([])
   const [values, setValues] = useState(() => makeEmptyValues(config.fields))
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<Record<string, string>>({})
-  const [publishModalItem, setPublishModalItem] = useState<CollectionItem | null>(null)
-  const [publishing, setPublishing] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [loading, setLoading] = useState(true)
-  const selectedItem = items.find((item) => item.id === selectedItemId) ?? null
-  const selectedItemIsEditing = Boolean(selectedItem && editingId === selectedItem.id)
-  const publisherUsername = profile?.username ?? user?.username ?? "Student"
 
   const loadItems = useCallback(async () => {
     setLoading(true)
@@ -935,10 +975,6 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
 
   useEffect(() => {
     setValues(makeEmptyValues(config.fields))
-    setSelectedItemId(null)
-    setEditingId(null)
-    setEditValues({})
-    setPublishModalItem(null)
     void loadItems()
   }, [config.fields, loadItems])
 
@@ -949,53 +985,23 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
     }))
   }
 
-  const updateEditValue = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setEditValues((current) => ({
-      ...current,
-      [event.target.name]: event.target.value,
-    }))
-  }
-
   const createItem = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setNotice(null)
 
     try {
-      const payload = buildPayload(config.fields, values)
-
-      await api.post(config.endpoint, payload)
+      const response = await api.post<CollectionItem>(config.endpoint, buildPayload(config.fields, values))
       setValues(makeEmptyValues(config.fields))
+
+      if (config.publicable && response.data.id) {
+        navigate(`/${config.key}/${response.data.id}`)
+        return
+      }
+
       setNotice({ type: "success", text: `${config.title.slice(0, -1) || config.title} saved.` })
       await loadItems()
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, `Could not save ${config.title}.`) })
-    }
-  }
-
-  const startEdit = (item: CollectionItem) => {
-    setSelectedItemId(item.id)
-    setEditingId(item.id)
-    setEditValues(
-      config.fields.reduce<Record<string, string>>((draft, field) => {
-        draft[field.name] = displayValue(item[field.name])
-        return draft
-      }, {}),
-    )
-  }
-
-  const saveEdit = async (itemId: string) => {
-    setNotice(null)
-
-    try {
-      const payload = buildPayload(config.fields, editValues)
-
-      await api.put(`${config.endpoint}/${itemId}`, payload)
-      setEditingId(null)
-      setEditValues({})
-      setNotice({ type: "success", text: "Changes saved." })
-      await loadItems()
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not save changes.") })
     }
   }
 
@@ -1004,68 +1010,10 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
 
     try {
       await api.delete(`${config.endpoint}/${itemId}`)
-      if (selectedItemId === itemId) {
-        setSelectedItemId(null)
-      }
       setNotice({ type: "success", text: "Item deleted." })
       await loadItems()
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not delete item.") })
-    }
-  }
-
-  const openPublishModal = (item: CollectionItem) => {
-    setNotice(null)
-
-    if (!getItemTitle(item)) {
-      setNotice({ type: "error", text: "Please give this study set a title before publishing." })
-      return
-    }
-
-    setPublishModalItem(item)
-  }
-
-  const publishItem = async (item: CollectionItem) => {
-    if (!config.studyType) {
-      return
-    }
-
-    setPublishing(true)
-    setNotice(null)
-
-    try {
-      await api.put(`${config.endpoint}/${item.id}`, {
-        is_public: true,
-        published_at: new Date().toISOString(),
-        published_by: publisherUsername,
-        study_type: config.studyType,
-      })
-      setPublishModalItem(null)
-      setNotice({ type: "success", text: "Published." })
-      await loadItems()
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not publish this study set.") })
-    } finally {
-      setPublishing(false)
-    }
-  }
-
-  const unpublishItem = async (item: CollectionItem) => {
-    setPublishing(true)
-    setNotice(null)
-
-    try {
-      await api.put(`${config.endpoint}/${item.id}`, {
-        is_public: false,
-        published_at: null,
-        published_by: null,
-      })
-      setNotice({ type: "success", text: "Unpublished." })
-      await loadItems()
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not unpublish this study set.") })
-    } finally {
-      setPublishing(false)
     }
   }
 
@@ -1093,94 +1041,212 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
           {loading ? <p className="muted">Loading...</p> : null}
           {!loading && items.length === 0 ? <p className="muted">No items yet.</p> : null}
           {items.map((item) => (
-            <article
-              className={selectedItemId === item.id ? "item-card active" : "item-card"}
-              key={item.id}
-            >
-              {editingId === item.id ? (
-                <>
-                  {config.fields.map((field) => (
-                    <FieldInput
-                      key={field.name}
-                      field={field}
-                      value={editValues[field.name] ?? ""}
-                      onChange={updateEditValue}
-                    />
-                  ))}
-                  <div className="button-row">
-                    <button type="button" className="primary-button" onClick={() => void saveEdit(item.id)}>
-                      Save changes
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        setEditingId(null)
-                      }}
-                    >
-                      Cancel
-                    </button>
+            <article className="item-card" key={item.id}>
+              <div className="item-fields">
+                {config.fields.slice(0, 2).map((field) => (
+                  <div key={field.name}>
+                    <small>{field.label}</small>
+                    <p>{displayValue(item[field.name]) || "-"}</p>
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="item-fields">
-                    {config.fields.map((field) => (
-                      <div key={field.name}>
-                        <small>{field.label}</small>
-                        <p>{displayValue(item[field.name]) || "-"}</p>
-                      </div>
-                    ))}
-                    {config.publicable ? (
-                      <span className={`visibility-pill ${item.is_public ? "public" : "private"}`}>
-                        {item.is_public ? "Public" : "Private"}
-                      </span>
-                    ) : null}
-                    {item.is_public ? (
-                      <div className="published-meta">
-                        <small>Published</small>
-                        <p>{formatPublishedDate(displayValue(item.published_at))}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="button-row">
-                    <button type="button" className="secondary-button" onClick={() => setSelectedItemId(item.id)}>
-                      {selectedItemId === item.id ? "Viewing" : "View"}
-                    </button>
-                    <button type="button" className="secondary-button" onClick={() => startEdit(item)}>
-                      Edit
-                    </button>
-                    <button type="button" className="danger-button" onClick={() => void deleteItem(item.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </>
-              )}
+                ))}
+                {config.publicable ? (
+                  <span className={`visibility-pill ${item.is_public ? "public" : "private"}`}>
+                    {item.is_public ? "Public" : "Private"}
+                  </span>
+                ) : null}
+              </div>
+              <div className="button-row">
+                {config.publicable ? (
+                  <Link className="secondary-button" to={`/${config.key}/${item.id}`}>
+                    View
+                  </Link>
+                ) : null}
+                <button type="button" className="danger-button" onClick={() => void deleteItem(item.id)}>
+                  Delete
+                </button>
+              </div>
             </article>
           ))}
         </section>
       </section>
-      {config.publicable && selectedItem && !selectedItemIsEditing ? (
-        <button
-          type="button"
-          className={selectedItem.is_public ? "floating-publish unpublish" : "floating-publish"}
-          onClick={() => {
-            if (selectedItem.is_public) {
-              void unpublishItem(selectedItem)
-              return
-            }
-            openPublishModal(selectedItem)
-          }}
-          disabled={publishing}
-        >
-          {selectedItem.is_public ? "Unpublish" : "Publish"}
-        </button>
+    </>
+  )
+}
+
+function CollectionItemViewPage({ config }: { config: CollectionConfig }) {
+  const { itemId } = useParams()
+  const [item, setItem] = useState<CollectionItem | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const loadItem = useCallback(async () => {
+    if (!itemId) {
+      setLoading(false)
+      setNotice({ type: "error", text: "We could not find this study set." })
+      return
+    }
+
+    setLoading(true)
+    setNotice(null)
+
+    try {
+      const response = await api.get<CollectionItem>(`${config.endpoint}/${itemId}`)
+      setItem(response.data)
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not load this study set.") })
+    } finally {
+      setLoading(false)
+    }
+  }, [config.endpoint, itemId])
+
+  useEffect(() => {
+    void loadItem()
+  }, [loadItem])
+
+  if (loading) {
+    return <LoadingScreen message="Loading study set..." />
+  }
+
+  return (
+    <>
+      <PageHeader
+        eyebrow={labelForStudyType(config.studyType ?? "note")}
+        title={item ? getItemTitle(item) || config.title : config.title}
+        description="Review your study set here."
+        actions={
+          <Link className="secondary-button" to={`/${config.key}`}>
+            Back
+          </Link>
+        }
+      />
+      <NoticeBanner notice={notice} />
+      {item ? (
+        <>
+          <section className="detail-panel">
+            <div className="detail-meta">
+              <div>
+                <small>Created</small>
+                <p>{formatTimestamp(displayValue(item.created_at))}</p>
+              </div>
+              <div>
+                <small>Updated</small>
+                <p>{formatTimestamp(displayValue(item.updated_at ?? item.created_at))}</p>
+              </div>
+              <div>
+                <small>Status</small>
+                <p>{item.is_public ? "Public" : "Private"}</p>
+              </div>
+            </div>
+            <div className="detail-content">
+              {config.fields.map((field) => (
+                <div key={field.name}>
+                  <small>{field.label}</small>
+                  <p>{displayValue(item[field.name]) || "-"}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+          {config.studyType ? (
+            <PublishActionButton
+              config={config}
+              item={item}
+              onUpdated={setItem}
+              setNotice={setNotice}
+            />
+          ) : null}
+        </>
       ) : null}
-      {publishModalItem ? (
+    </>
+  )
+}
+
+function PublishActionButton({
+  config,
+  item,
+  onUpdated,
+  setNotice,
+}: {
+  config: CollectionConfig
+  item: CollectionItem
+  onUpdated: (item: CollectionItem) => void
+  setNotice: (notice: Notice | null) => void
+}) {
+  const profile = useProfile()
+  const { user } = useAuth()
+  const [modalOpen, setModalOpen] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const publisherUsername = profile?.username ?? user?.username ?? "Student"
+
+  const publishItem = async () => {
+    if (!config.studyType) {
+      return
+    }
+
+    if (!getItemTitle(item)) {
+      setNotice({ type: "error", text: "Please give this study set a title before publishing." })
+      return
+    }
+
+    setPublishing(true)
+    setNotice(null)
+
+    try {
+      const response = await api.put<CollectionItem>(`${config.endpoint}/${item.id}`, {
+        is_public: true,
+        published_at: new Date().toISOString(),
+        published_by: publisherUsername,
+        study_type: config.studyType,
+      })
+      onUpdated(response.data)
+      setModalOpen(false)
+      setNotice({ type: "success", text: "Published." })
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not publish this study set.") })
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const unpublishItem = async () => {
+    setPublishing(true)
+    setNotice(null)
+
+    try {
+      const response = await api.put<CollectionItem>(`${config.endpoint}/${item.id}`, {
+        is_public: false,
+        published_at: null,
+        published_by: null,
+      })
+      onUpdated(response.data)
+      setNotice({ type: "success", text: "Unpublished." })
+    } catch (error: unknown) {
+      setNotice({ type: "error", text: getErrorMessage(error, "Could not unpublish this study set.") })
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className={item.is_public ? "floating-publish unpublish" : "floating-publish"}
+        onClick={() => {
+          if (item.is_public) {
+            void unpublishItem()
+            return
+          }
+          setModalOpen(true)
+        }}
+        disabled={publishing}
+      >
+        {item.is_public ? "Unpublish" : "Publish"}
+      </button>
+      {modalOpen ? (
         <PublishModal
           publishing={publishing}
-          onCancel={() => setPublishModalItem(null)}
-          onConfirm={() => void publishItem(publishModalItem)}
+          onCancel={() => setModalOpen(false)}
+          onConfirm={() => void publishItem()}
         />
       ) : null}
     </>
@@ -1372,6 +1438,60 @@ function VoiceInputPage() {
         </button>
       </form>
       {transcript ? <OutputBlock title="Transcript" value={transcript} /> : null}
+    </>
+  )
+}
+
+function AiTutorPage() {
+  const [message, setMessage] = useState("")
+  const [audioName, setAudioName] = useState("")
+  const [imageName, setImageName] = useState("")
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Study help"
+        title="AI Tutor"
+        description="Get help studying from your AI tutor."
+      />
+      <section className="split-layout">
+        <form className="form-panel">
+          <h2>Chat</h2>
+          <label>
+            Message
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Ask about your notes..."
+            />
+          </label>
+          <button type="button" className="primary-button">
+            Send
+          </button>
+        </form>
+        <section className="form-panel">
+          <h2>Add More</h2>
+          <p className="muted">For now, your tutor uses your own notes. Ask for public notes if you want them.</p>
+          <label>
+            Voice
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(event) => setAudioName(event.target.files?.[0]?.name ?? "")}
+            />
+          </label>
+          {audioName ? <p className="muted">Selected: {audioName}</p> : null}
+          <label>
+            Image
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setImageName(event.target.files?.[0]?.name ?? "")}
+            />
+          </label>
+          {imageName ? <p className="muted">Selected: {imageName}</p> : null}
+        </section>
+      </section>
     </>
   )
 }
@@ -1695,11 +1815,15 @@ function ThemeSettingsForm({
   }
 
   return (
-    <form className="form-panel" onSubmit={saveTheme}>
+    <form className="form-panel theme-panel" onSubmit={saveTheme}>
       <h2>Theme</h2>
       <div className={`theme-preview ${themeMode}`} style={previewStyle}>
         <span />
         <strong>{themeMode === "dark" ? "Dark" : "Light"}</strong>
+      </div>
+      <div className="color-preview-bar" style={previewStyle}>
+        <span />
+        <strong>{themeColors.find((color) => color.value === themeColor)?.name ?? "Color"}</strong>
       </div>
       <div className="color-grid" aria-label="Theme colors">
         {themeColors.map((color) => (
@@ -1707,7 +1831,7 @@ function ThemeSettingsForm({
             key={color.value}
             type="button"
             className={themeColor === color.value ? "color-button active" : "color-button"}
-            style={{ backgroundColor: color.value }}
+            style={{ "--swatch-color": color.value } as CSSProperties}
             aria-label={color.name}
             aria-pressed={themeColor === color.value}
             onClick={() => setThemeColor(color.value)}

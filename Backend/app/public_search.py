@@ -51,7 +51,7 @@ def _clip(value: str, limit: int = 220) -> str:
 
 
 def _matches_query(query: str, *values: object) -> bool:
-    normalized_query = query.strip().lower()
+    normalized_query = query.strip().lower().lstrip("#")
     if not normalized_query:
         return True
 
@@ -116,7 +116,7 @@ def _build_items(query: str = "") -> list[PublicStudyItem]:
     )
     summaries = _fetch_public_rows(
         "summaries",
-        "id, user_id, title, content, created_at, is_public, published_at, published_by, study_type",
+        "id, user_id, title, content, tags, created_at, is_public, published_at, published_by, study_type",
     )
 
     user_ids = [
@@ -181,7 +181,8 @@ def _build_items(query: str = "") -> list[PublicStudyItem]:
     for row in summaries:
         title = _as_text(row.get("title"))
         content = _as_text(row.get("content"))
-        if not title or not _matches_query(query, title, content, row.get("published_by")):
+        tags = _as_tags(row.get("tags"))
+        if not title or not _matches_query(query, title, content, tags, row.get("published_by")):
             continue
         user_id = _as_text(row.get("user_id"))
         profile = profiles.get(user_id)
@@ -192,7 +193,7 @@ def _build_items(query: str = "") -> list[PublicStudyItem]:
                 study_type="summary",
                 title=title,
                 preview=_clip(content),
-                tags=[],
+                tags=tags,
                 user_id=user_id,
                 username=username,
                 display_name=profile.get("display_name") if profile else None,

@@ -11,7 +11,8 @@ create table if not exists public.flashcards (
   published_at timestamptz,
   published_by text,
   study_type text not null default 'flashcards',
-  created_at timestamp default now()
+  created_at timestamp default now(),
+  updated_at timestamptz default now()
 );
 
 alter table public.flashcards
@@ -23,7 +24,8 @@ alter table public.flashcards
   add column if not exists published_at timestamptz,
   add column if not exists published_by text,
   add column if not exists study_type text not null default 'flashcards',
-  add column if not exists created_at timestamp default now();
+  add column if not exists created_at timestamp default now(),
+  add column if not exists updated_at timestamptz default now();
 
 create index if not exists flashcards_user_id_created_at_idx
   on public.flashcards (user_id, created_at desc);

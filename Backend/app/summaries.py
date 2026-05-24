@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,19 +14,23 @@ TABLE_NAME = "summaries"
 class SummaryCreateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=200)
     content: str = Field(..., min_length=1)
+    tags: list[str] = Field(default_factory=list)
     is_public: bool = False
     published_at: Optional[str] = None
     published_by: Optional[str] = None
     study_type: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class SummaryUpdateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=200)
     content: Optional[str] = Field(default=None, min_length=1)
+    tags: Optional[list[str]] = None
     is_public: Optional[bool] = None
     published_at: Optional[str] = None
     published_by: Optional[str] = None
     study_type: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class SummaryResponse(BaseModel):
@@ -33,11 +38,13 @@ class SummaryResponse(BaseModel):
     user_id: str
     title: str = ""
     content: str
+    tags: list[str] = Field(default_factory=list)
     is_public: bool = False
     published_at: Optional[str] = None
     published_by: Optional[str] = None
     study_type: str = "summary"
     created_at: str
+    updated_at: Optional[str] = None
 
 
 class SummaryDeleteResponse(BaseModel):
@@ -50,11 +57,13 @@ def _normalize_summary_row(row: dict) -> dict:
         "user_id": row["user_id"],
         "title": row.get("title") or "",
         "content": row.get("content") or "",
+        "tags": row.get("tags") or [],
         "is_public": bool(row.get("is_public", False)),
         "published_at": row.get("published_at"),
         "published_by": row.get("published_by"),
         "study_type": row.get("study_type") or "summary",
         "created_at": row["created_at"],
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -84,10 +93,12 @@ def create_summary(payload: SummaryCreateRequest, user_id: str = Depends(get_cur
                 "user_id": user_id,
                 "title": payload.title,
                 "content": payload.content,
+                "tags": payload.tags,
                 "is_public": payload.is_public,
                 "published_at": payload.published_at,
                 "published_by": payload.published_by,
                 "study_type": payload.study_type or "summary",
+                "updated_at": payload.updated_at or datetime.utcnow().isoformat(),
             }
         )
         .execute()
@@ -114,6 +125,11 @@ def list_summaries(user_id: str = Depends(get_current_user_id)):
     return [_normalize_summary_row(row) for row in (response.data or [])]
 
 
+@router.get("/{summary_id}", response_model=SummaryResponse)
+def get_summary(summary_id: str, user_id: str = Depends(get_current_user_id)):
+    return _normalize_summary_row(_get_summary_or_404(user_id, summary_id))
+
+
 @router.put("/{summary_id}", response_model=SummaryResponse)
 def update_summary(summary_id: str, payload: SummaryUpdateRequest, user_id: str = Depends(get_current_user_id)):
     _get_summary_or_404(user_id, summary_id)
@@ -122,6 +138,7 @@ def update_summary(summary_id: str, payload: SummaryUpdateRequest, user_id: str 
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 
+    updates["updated_at"] = datetime.utcnow().isoformat()
     get_supabase().table(TABLE_NAME).update(updates).eq("id", summary_id).eq("user_id", user_id).execute()
     updated_row = _get_summary_or_404(user_id, summary_id)
     return _normalize_summary_row(updated_row)

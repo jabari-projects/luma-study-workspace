@@ -29,7 +29,8 @@ begin
           study_type text not null default ''note'',
           search_vector tsvector,
           embedding vector(1536),
-          created_at timestamp default now()
+          created_at timestamp default now(),
+          updated_at timestamptz default now()
         )
       ';
     elsif exists (
@@ -52,7 +53,8 @@ begin
           study_type text not null default ''note'',
           search_vector tsvector,
           embedding vector(1536),
-          created_at timestamp default now()
+          created_at timestamp default now(),
+          updated_at timestamptz default now()
         )
       ';
     else
@@ -82,13 +84,15 @@ begin
           user_id uuid references public.profiles(id),
           title text,
           content text,
+          tags text[] default ''{}''::text[],
           is_public boolean not null default false,
           published_at timestamptz,
           published_by text,
           study_type text not null default ''summary'',
           search_vector tsvector,
           embedding vector(1536),
-          created_at timestamp default now()
+          created_at timestamp default now(),
+          updated_at timestamptz default now()
         )
       ';
     elsif exists (
@@ -104,13 +108,15 @@ begin
           user_id uuid references public.profiles(user_id),
           title text,
           content text,
+          tags text[] default ''{}''::text[],
           is_public boolean not null default false,
           published_at timestamptz,
           published_by text,
           study_type text not null default ''summary'',
           search_vector tsvector,
           embedding vector(1536),
-          created_at timestamp default now()
+          created_at timestamp default now(),
+          updated_at timestamptz default now()
         )
       ';
     else
@@ -175,7 +181,8 @@ alter table if exists public.flashcards
   add column if not exists published_by text,
   add column if not exists study_type text not null default 'flashcards',
   add column if not exists search_vector tsvector,
-  add column if not exists embedding vector(1536);
+  add column if not exists embedding vector(1536),
+  add column if not exists updated_at timestamptz default now();
 
 alter table if exists public.study_sessions
   add column if not exists name text,
@@ -193,17 +200,20 @@ alter table if exists public.notes
   add column if not exists published_by text,
   add column if not exists study_type text not null default 'note',
   add column if not exists search_vector tsvector,
-  add column if not exists embedding vector(1536);
+  add column if not exists embedding vector(1536),
+  add column if not exists updated_at timestamptz default now();
 
 alter table if exists public.summaries
   add column if not exists title text,
   add column if not exists content text,
+  add column if not exists tags text[] default '{}'::text[],
   add column if not exists is_public boolean not null default false,
   add column if not exists published_at timestamptz,
   add column if not exists published_by text,
   add column if not exists study_type text not null default 'summary',
   add column if not exists search_vector tsvector,
-  add column if not exists embedding vector(1536);
+  add column if not exists embedding vector(1536),
+  add column if not exists updated_at timestamptz default now();
 
 alter table if exists public.transcripts
   add column if not exists content text,
@@ -264,7 +274,13 @@ returns trigger
 language plpgsql
 as $$
 begin
-  new.search_vector := to_tsvector('english', coalesce(new.title, '') || ' ' || coalesce(new.content, ''));
+  new.search_vector :=
+    to_tsvector(
+      'english',
+      coalesce(new.title, '') || ' ' ||
+      coalesce(new.content, '') || ' ' ||
+      coalesce(array_to_string(new.tags, ' '), '')
+    );
   return new;
 end;
 $$;
@@ -336,7 +352,13 @@ set search_vector =
 where true;
 
 update public.summaries
-set search_vector = to_tsvector('english', coalesce(title, '') || ' ' || coalesce(content, ''))
+set search_vector =
+  to_tsvector(
+    'english',
+    coalesce(title, '') || ' ' ||
+    coalesce(content, '') || ' ' ||
+    coalesce(array_to_string(tags, ' '), '')
+  )
 where true;
 
 update public.transcripts

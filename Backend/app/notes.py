@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,6 +19,7 @@ class NoteCreateRequest(BaseModel):
     published_at: Optional[str] = None
     published_by: Optional[str] = None
     study_type: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class NoteUpdateRequest(BaseModel):
@@ -28,6 +30,7 @@ class NoteUpdateRequest(BaseModel):
     published_at: Optional[str] = None
     published_by: Optional[str] = None
     study_type: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class NoteResponse(BaseModel):
@@ -41,6 +44,7 @@ class NoteResponse(BaseModel):
     published_by: Optional[str] = None
     study_type: str = "note"
     created_at: str
+    updated_at: Optional[str] = None
 
 
 class NoteDeleteResponse(BaseModel):
@@ -59,6 +63,7 @@ def _normalize_note_row(row: dict) -> dict:
         "published_by": row.get("published_by"),
         "study_type": row.get("study_type") or "note",
         "created_at": row["created_at"],
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -93,6 +98,7 @@ def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_u
                 "published_at": payload.published_at,
                 "published_by": payload.published_by,
                 "study_type": payload.study_type or "note",
+                "updated_at": payload.updated_at or datetime.utcnow().isoformat(),
             }
         )
         .execute()
@@ -116,6 +122,11 @@ def list_notes(user_id: str = Depends(get_current_user_id)):
     return [_normalize_note_row(row) for row in (response.data or [])]
 
 
+@router.get("/{note_id}", response_model=NoteResponse)
+def get_note(note_id: str, user_id: str = Depends(get_current_user_id)):
+    return _normalize_note_row(_get_note_or_404(user_id, note_id))
+
+
 @router.put("/{note_id}", response_model=NoteResponse)
 def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends(get_current_user_id)):
     _get_note_or_404(user_id, note_id)
@@ -124,6 +135,7 @@ def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 
+    updates["updated_at"] = datetime.utcnow().isoformat()
     get_supabase().table(TABLE_NAME).update(updates).eq("id", note_id).eq("user_id", user_id).execute()
     updated_row = _get_note_or_404(user_id, note_id)
     return _normalize_note_row(updated_row)
