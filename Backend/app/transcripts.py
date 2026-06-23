@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,10 +13,12 @@ TABLE_NAME = "transcripts"
 
 class TranscriptCreateRequest(BaseModel):
     content: str = Field(..., min_length=1)
+    updated_at: Optional[str] = None
 
 
 class TranscriptUpdateRequest(BaseModel):
     content: Optional[str] = Field(default=None, min_length=1)
+    updated_at: Optional[str] = None
 
 
 class TranscriptResponse(BaseModel):
@@ -23,6 +26,7 @@ class TranscriptResponse(BaseModel):
     user_id: str
     content: str
     created_at: str
+    updated_at: Optional[str] = None
 
 
 class TranscriptDeleteResponse(BaseModel):
@@ -35,6 +39,7 @@ def _normalize_transcript_row(row: dict) -> dict:
         "user_id": row["user_id"],
         "content": row.get("content") or "",
         "created_at": row["created_at"],
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -56,7 +61,18 @@ def _get_transcript_or_404(user_id: str, transcript_id: str) -> dict:
 
 @router.post("", response_model=TranscriptResponse, status_code=status.HTTP_201_CREATED)
 def create_transcript(payload: TranscriptCreateRequest, user_id: str = Depends(get_current_user_id)):
-    response = get_supabase().table(TABLE_NAME).insert({"user_id": user_id, "content": payload.content}).execute()
+    response = (
+        get_supabase()
+        .table(TABLE_NAME)
+        .insert(
+            {
+                "user_id": user_id,
+                "content": payload.content,
+                "updated_at": payload.updated_at or datetime.utcnow().isoformat(),
+            }
+        )
+        .execute()
+    )
     rows = response.data or []
     if not rows:
         raise HTTPException(
@@ -79,6 +95,11 @@ def list_transcripts(user_id: str = Depends(get_current_user_id)):
     return [_normalize_transcript_row(row) for row in (response.data or [])]
 
 
+@router.get("/{transcript_id}", response_model=TranscriptResponse)
+def get_transcript(transcript_id: str, user_id: str = Depends(get_current_user_id)):
+    return _normalize_transcript_row(_get_transcript_or_404(user_id, transcript_id))
+
+
 @router.put("/{transcript_id}", response_model=TranscriptResponse)
 def update_transcript(
     transcript_id: str,
@@ -87,10 +108,11 @@ def update_transcript(
 ):
     _get_transcript_or_404(user_id, transcript_id)
 
-    updates = payload.model_dump(exclude_none=True)
+    updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 
+    updates["updated_at"] = datetime.utcnow().isoformat()
     get_supabase().table(TABLE_NAME).update(updates).eq("id", transcript_id).eq("user_id", user_id).execute()
     updated_row = _get_transcript_or_404(user_id, transcript_id)
     return _normalize_transcript_row(updated_row)

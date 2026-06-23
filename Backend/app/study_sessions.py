@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -15,6 +16,7 @@ class StudySessionCreateRequest(BaseModel):
     subject: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
     duration_seconds: int = Field(default=0, ge=0)
+    updated_at: Optional[str] = None
 
 
 class StudySessionUpdateRequest(BaseModel):
@@ -22,6 +24,7 @@ class StudySessionUpdateRequest(BaseModel):
     subject: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
     duration_seconds: Optional[int] = Field(default=None, ge=0)
+    updated_at: Optional[str] = None
 
 
 class StudySessionResponse(BaseModel):
@@ -32,6 +35,7 @@ class StudySessionResponse(BaseModel):
     notes: Optional[str] = None
     duration_seconds: int
     created_at: str
+    updated_at: Optional[str] = None
 
 
 class StudySessionDeleteResponse(BaseModel):
@@ -47,6 +51,7 @@ def _normalize_study_session_row(row: dict) -> dict:
         "notes": row.get("notes"),
         "duration_seconds": row.get("duration_seconds") or 0,
         "created_at": row["created_at"],
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -78,6 +83,7 @@ def create_study_session(payload: StudySessionCreateRequest, user_id: str = Depe
                 "subject": payload.subject,
                 "notes": payload.notes,
                 "duration_seconds": payload.duration_seconds,
+                "updated_at": payload.updated_at or datetime.utcnow().isoformat(),
             }
         )
         .execute()
@@ -104,6 +110,11 @@ def list_study_sessions(user_id: str = Depends(get_current_user_id)):
     return [_normalize_study_session_row(row) for row in (response.data or [])]
 
 
+@router.get("/{session_id}", response_model=StudySessionResponse)
+def get_study_session(session_id: str, user_id: str = Depends(get_current_user_id)):
+    return _normalize_study_session_row(_get_study_session_or_404(user_id, session_id))
+
+
 @router.put("/{session_id}", response_model=StudySessionResponse)
 def update_study_session(
     session_id: str,
@@ -112,10 +123,11 @@ def update_study_session(
 ):
     _get_study_session_or_404(user_id, session_id)
 
-    updates = payload.model_dump(exclude_none=True)
+    updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 
+    updates["updated_at"] = datetime.utcnow().isoformat()
     get_supabase().table(TABLE_NAME).update(updates).eq("id", session_id).eq("user_id", user_id).execute()
     updated_row = _get_study_session_or_404(user_id, session_id)
     return _normalize_study_session_row(updated_row)

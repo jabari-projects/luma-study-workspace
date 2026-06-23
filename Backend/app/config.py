@@ -10,9 +10,10 @@ DEFAULT_DEV_JWT_SECRET = "luma-development-jwt-secret-key-2026"
 DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_FRONTEND_APP_ORIGIN = "http://localhost:5173"
 DEFAULT_FRONTEND_ORIGINS = [
-    "https://luma-frontend-ruby.vercel.app",
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    "https://*.vercel.app",
+    "https://luma-frontend-ruby.vercel.app",
+    "https://luma-frontend-dxgnch0h1-jabarimckinney213-7284s-projects.vercel.app",
 ]
 
 _PRODUCTION_FALLBACK_JWT_SECRET = secrets.token_urlsafe(64)
@@ -166,7 +167,6 @@ class AppSettings:
     OPENAI_API_KEY: str | None = None
     OPENAI_ENDPOINT: str | None = None
     OPENAI_VISION_MODEL: str = "gpt-4.1-mini"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     DEEPGRAM_API_KEY: str | None = None
     STRIPE_SECRET_KEY: str | None = None
     STRIPE_WEBHOOK_SECRET: str | None = None
@@ -251,12 +251,6 @@ def load_settings() -> AppSettings:
             default="gpt-4.1-mini",
         )
         or "gpt-4.1-mini",
-        OPENAI_EMBEDDING_MODEL=_read_env(
-            env_lookup,
-            "OPENAI_EMBEDDING_MODEL",
-            default="text-embedding-3-small",
-        )
-        or "text-embedding-3-small",
         DEEPGRAM_API_KEY=_read_env(env_lookup, "DEEPGRAM_API_KEY"),
         STRIPE_SECRET_KEY=_read_env(env_lookup, "STRIPE_SECRET_KEY"),
         STRIPE_WEBHOOK_SECRET=_read_env(env_lookup, "STRIPE_WEBHOOK_SECRET"),

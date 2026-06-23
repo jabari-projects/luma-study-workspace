@@ -35,3 +35,6 @@ create index if not exists flashcards_is_public_created_at_idx
 
 create index if not exists flashcards_published_at_idx
   on public.flashcards (published_at desc);
+
+create index if not exists flashcards_updated_at_idx
+  on public.flashcards (updated_at desc);

@@ -33,3 +33,6 @@ create index if not exists notes_is_public_created_at_idx
 
 create index if not exists notes_published_at_idx
   on public.notes (published_at desc);
+
+create index if not exists notes_updated_at_idx
+  on public.notes (updated_at desc);

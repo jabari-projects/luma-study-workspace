@@ -33,3 +33,6 @@ create index if not exists summaries_is_public_created_at_idx
 
 create index if not exists summaries_published_at_idx
   on public.summaries (published_at desc);
+
+create index if not exists summaries_updated_at_idx
+  on public.summaries (updated_at desc);

@@ -37,7 +37,6 @@ from .transcripts import router as transcripts_router
 # - For AI features, set OPENAI_API_KEY (optionally OPENAI_ENDPOINT).
 # - Optional AI model overrides:
 #   OPENAI_VISION_MODEL
-#   OPENAI_EMBEDDING_MODEL
 # - For Stripe Checkout, set STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
 #   and STRIPE_PRICE_ID.
 # - Frontend platforms like Vercel and Netlify should set VITE_API_BASE_URL
@@ -95,17 +94,26 @@ if not settings.DEEPGRAM_API_KEY:
         "DEEPGRAM_API_KEY is not configured. Transcription routes will return 503."
     )
 
+origins = [
+    "http://localhost:5173",
+    "https://*.vercel.app",
+    "https://luma-frontend-ruby.vercel.app",
+    "https://luma-frontend-dxgnch0h1-jabarimckinney213-7284s-projects.vercel.app",
+]
+VERCEL_ORIGIN_REGEX = r"https://.*\.vercel\.app"
+
 logger.info(
     "Luma backend starting env=%s api_base=%s frontend_origins=%s supabase_configured=%s",
     settings.APP_ENV,
     settings.resolved_api_base_url,
-    ",".join(settings.FRONTEND_ORIGINS),
+    ",".join(origins),
     is_supabase_configured(),
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.FRONTEND_ORIGINS,
+    allow_origins=origins,
+    allow_origin_regex=VERCEL_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -153,7 +161,6 @@ connection_manager = ConnectionManager()
 AI_ROUTE_LIMITS = {
     "generate-notes": {"free": 6, "premium": 18},
     "transcribe": {"free": 6, "premium": 18},
-    "semantic-search": {"free": 4, "premium": 16},
 }
 ai_rate_limit_windows: dict[tuple[str, str], list[float]] = defaultdict(list)
 
@@ -166,6 +173,15 @@ def build_public_api_url(path: str):
     return f"{settings.resolved_api_base_url}{path}"
 
 
+def require_internal_webhook_secret(request: Request):
+    if not settings.WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Webhook secret is not configured")
+
+    secret = request.headers.get("authorization")
+    if secret != f"Bearer {settings.WEBHOOK_SECRET}":
+        raise HTTPException(status_code=401, detail="Unauthorized webhook")
+
+
 def has_premium_subscription(subscription_status: Optional[str]) -> bool:
     if not isinstance(subscription_status, str):
         return False
@@ -175,7 +191,7 @@ def has_premium_subscription(subscription_status: Optional[str]) -> bool:
 
 def consume_ai_rate_limit_slot(
     user_id: str,
-    route_key: Literal["generate-notes", "transcribe", "semantic-search"],
+    route_key: Literal["generate-notes", "transcribe"],
     subscription_status: Optional[str],
 ):
     tier = "premium" if has_premium_subscription(subscription_status) else "free"
@@ -384,15 +400,6 @@ class TranscribeResponse(BaseModel):
 
 class BasicApiErrorResponse(BaseModel):
     error: str
-
-
-class SemanticSearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=160)
-
-
-class SemanticSearchResponse(BaseModel):
-    keywords: List[str]
-    embedding: Optional[List[float]] = None
 
 
 class CheckoutSessionResponse(BaseModel):
@@ -1083,10 +1090,6 @@ def get_ai_model():
     return settings.OPENAI_VISION_MODEL
 
 
-def get_embedding_model():
-    return settings.OPENAI_EMBEDDING_MODEL
-
-
 SUPPORTED_TRANSCRIBE_CONTENT_TYPES = {
     "audio/wav": "audio/wav",
     "audio/x-wav": "audio/wav",
@@ -1240,80 +1243,6 @@ def transcribe_audio_with_deepgram(file: UploadFile):
         raise RuntimeError("Transcription failed")
 
     return transcript
-
-
-def create_semantic_search_intelligence(query: str):
-    normalized_query = query.strip()
-    if not normalized_query:
-        raise ValueError("Invalid request")
-
-    client = get_ai_client()
-    keyword_model = get_ai_model()
-    try:
-        keyword_response = client.responses.create(
-            model=keyword_model,
-            input=[
-                {
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "You expand private study-search queries. "
-                                "Return up to 8 short semantic keywords or phrases "
-                                "that help find the user's own notes, flashcards, "
-                                "study sessions, summaries, and transcripts. "
-                                "Do not mention other users or public content. "
-                                "Return a plain comma-separated list only."
-                            ),
-                        }
-                    ],
-                },
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": normalized_query}],
-                },
-            ],
-            max_output_tokens=120,
-        )
-    except Exception as exc:
-        raise_openai_error(exc)
-
-    raw_keywords = getattr(keyword_response, "output_text", "") or normalized_query
-    parsed_keywords = [
-        keyword.strip()
-        for keyword in raw_keywords.replace("\n", ",").split(",")
-        if keyword.strip()
-    ]
-
-    deduped_keywords: List[str] = []
-    seen_keywords = set()
-    for keyword in [normalized_query, *parsed_keywords]:
-        lowered = keyword.lower()
-        if lowered in seen_keywords:
-            continue
-        seen_keywords.add(lowered)
-        deduped_keywords.append(keyword)
-        if len(deduped_keywords) >= 8:
-            break
-
-    embedding: Optional[List[float]] = None
-    try:
-        embedding_response = client.embeddings.create(
-            model=get_embedding_model(),
-            input=normalized_query,
-        )
-        data = getattr(embedding_response, "data", None) or []
-        first_item = data[0] if data else None
-        candidate_embedding = getattr(first_item, "embedding", None)
-        if isinstance(candidate_embedding, list) and candidate_embedding:
-            embedding = [float(value) for value in candidate_embedding]
-    except (AuthenticationError, APIConnectionError, APIStatusError, OpenAIError) as exc:
-        raise_openai_error(exc)
-    except Exception as exc:
-        logger.warning("Semantic embedding generation failed, falling back to full-text only: %s", exc)
-
-    return deduped_keywords, embedding
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -1501,52 +1430,6 @@ def transcribe_audio(request: Request, audio: UploadFile = File(...)):
     except Exception:
         logger.exception("AI transcription failed")
         return JSONResponse(status_code=500, content={"error": "Transcription failed"})
-
-
-@app.post(
-    "/api/semantic-search",
-    response_model=SemanticSearchResponse,
-    responses={
-        400: {"model": BasicApiErrorResponse},
-        401: {"model": BasicApiErrorResponse},
-        403: {"model": BasicApiErrorResponse},
-        503: {"model": BasicApiErrorResponse},
-        500: {"model": BasicApiErrorResponse},
-    },
-)
-def semantic_search_intelligence(payload: SemanticSearchRequest, user=Depends(get_current_user)):
-    normalized_query = payload.query.strip()
-    if not normalized_query:
-        return JSONResponse(status_code=400, content={"error": "Invalid request"})
-
-    profile = get_profile(user["id"])
-    subscription_status = (
-        profile.get("subscription_status")
-        if isinstance(profile, dict) and isinstance(profile.get("subscription_status"), str)
-        else "free"
-    )
-
-    if not has_premium_subscription(subscription_status):
-        return JSONResponse(status_code=403, content={"error": "Upgrade to Premium"})
-
-    if not consume_ai_rate_limit_slot(
-        user["id"],
-        "semantic-search",
-        subscription_status,
-    ):
-        return JSONResponse(status_code=429, content={"error": RATE_LIMIT_MESSAGE})
-
-    try:
-        keywords, embedding = create_semantic_search_intelligence(normalized_query)
-        return {"keywords": keywords, "embedding": embedding}
-    except ValueError:
-        return JSONResponse(status_code=400, content={"error": "Invalid request"})
-    except AIServiceUnavailableError as exc:
-        logger.warning("Semantic search unavailable: %s", exc)
-        return JSONResponse(status_code=503, content={"error": str(exc)})
-    except Exception:
-        logger.exception("Semantic search preparation failed")
-        return JSONResponse(status_code=500, content={"error": "AI processing failed"})
 
 
 # ---------- Auth routes ----------
@@ -1973,9 +1856,7 @@ def search_users(query: str = Query(..., min_length=1, max_length=50)):
 
 @app.post("/internal/supabase/user-updated")
 async def supabase_user_updated(payload: dict, request: Request):
-    secret = request.headers.get("authorization")
-    if secret != f"Bearer {settings.WEBHOOK_SECRET}":
-        raise HTTPException(status_code=401, detail="Unauthorized webhook")
+    require_internal_webhook_secret(request)
 
     logger.info("🔥 Supabase webhook fired")
     logger.info("Headers: %s", dict(request.headers))
@@ -1986,14 +1867,16 @@ async def supabase_user_updated(payload: dict, request: Request):
 
 
 @app.post("/internal/supabase/user-updated-test")
-async def supabase_user_updated_test(payload: dict):
+async def supabase_user_updated_test(payload: dict, request: Request):
+    require_internal_webhook_secret(request)
     logger.info("🧪 Test webhook hit with payload: %s", payload)
     print("🧪 Test webhook hit:", payload)
     return {"status": "test-ok"}
 
 
 @app.get("/internal/debug/file")
-async def debug_file():
+async def debug_file(request: Request):
+    require_internal_webhook_secret(request)
     import os
     return {
         "cwd": os.getcwd(),
