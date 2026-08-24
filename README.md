@@ -52,7 +52,7 @@ The frontend requires `VITE_API_BASE_URL`. The backend uses Supabase and JWT set
 
 ## Future Plans
 
-The active direction is to harden and complete the study workflows already present: personal and public study materials, AI-assisted image and audio processing, account and subscription management, and the in-progress AI Tutor interface. See [docs/roadmap.md](docs/roadmap.md) for a scoped roadmap based on the current codebase.
+The active direction is to harden and complete the study workflows already present: personal and public study materials, AI-assisted image and audio processing, account and subscription management, and the in-progress AI Tutor interface. See [docs/roadmap.md](docs/roadmap.md) for a roadmap based on the current codebase.
 
 ## Documentation
 
