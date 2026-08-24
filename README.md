@@ -6,19 +6,29 @@ I designed LUMA around a React + TypeScript + Vite frontend and a FastAPI/Python
 While I use Codex to speed up development, the system design, direction of developement, and implementation decisions are all from me — LUMA reflects how I personally approach learning and software engineering.
 
 Features: 
+
 Notes, flashcards, summaries, and study sessions
 
 AI tutor + AI‑generated study materials
+
 Image‑to‑notes conversion
-Audio transcription
-Public study‑set discovery
+
+Audio transcriptionPublic study‑set discovery
+
 Clean, fast UI built with React + Vite
+
 Secure authentication + storage via Supabase
+
 Python/FastAPI backend for processing + routing
 
 Tech Stack:
+
 Frontend: React, TypeScript, Vite
+
 Backend: FastAPI (Python)
+
 Database/Auth: Supabase
+
 AI Integrations: OpenAI, Deepgram
+
 Build Tools: Vite, pnpm
