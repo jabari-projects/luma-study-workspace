@@ -7,6 +7,7 @@ While I use Codex to speed up development, the system design, direction of devel
 
 Features: 
 Notes, flashcards, summaries, and study sessions
+
 AI tutor + AI‑generated study materials
 Image‑to‑notes conversion
 Audio transcription
