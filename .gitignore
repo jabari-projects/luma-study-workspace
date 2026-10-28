@@ -1,6 +1,26 @@
-.vercel
-.env*.local
-Backend/.env
-Backend/__pycache__/
-**/__pycache__/
-*.pyc
+# Machine-specific configuration and deployment state
+.vercel/
+.env
+.env.*
+!.env.example
+
+# Dependencies, build products, and Python caches
+node_modules/
+dist/
+dist-ssr/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.pytest_cache/
+.coverage
+coverage/
+*.log
+
+# Private local data and signing material
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key

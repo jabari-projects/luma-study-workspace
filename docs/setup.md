@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 20+ and npm
+- Node.js 22.12+ and npm
 - Python 3.11+
 - A Supabase project for persistent/authenticated application data
 - OpenAI and Deepgram credentials only when using image-to-notes or voice transcription
@@ -13,10 +13,10 @@
 From `frontend/`:
 
 ```bash
-npm install
+npm ci
 ```
 
-Create a local environment file such as `frontend/.env.local`:
+For a fresh checkout, copy `frontend/.env.example` to `frontend/.env.local`. Keep existing local configuration if you already have it. The API setting is:
 
 ```dotenv
 VITE_API_BASE_URL=http://127.0.0.1:8000
@@ -41,7 +41,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Set the backend environment variables in your shell or deployment provider. Required values for normal authenticated/data-backed operation are:
+For a fresh checkout, copy `backend/.env.example` to `backend/.env` and fill in your values. You can also set the variables directly in your shell or deployment provider. Required values for normal authenticated/data-backed operation are:
 
 ```dotenv
 SUPABASE_URL=
@@ -50,6 +50,8 @@ JWT_SECRET_KEY=
 API_BASE_URL=http://127.0.0.1:8000
 FRONTEND_ORIGIN=http://localhost:5173
 ```
+
+Use a private, randomly generated `JWT_SECRET_KEY` that stays the same between server restarts. For example, generate one locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in the backend environment only. Do not rely on the development fallback for a deployed app.
 
 `SUPABASE_KEY` is accepted as an alternative to `SUPABASE_SERVICE_ROLE_KEY`. `FRONTEND_ORIGINS` accepts a comma-separated list or JSON array of allowed origins; `PUBLIC_APP_URL` is also recognized for the frontend origin. `APP_ENV` (or `ENV`) and `LOG_LEVEL` are optional deployment settings.
 
@@ -84,8 +86,10 @@ AI_RATE_LIMIT_WINDOW_SECONDS=
 Run the API:
 
 ```bash
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+uvicorn main:app --env-file .env --reload --host 127.0.0.1 --port 8000
 ```
+
+`app/config.py` reads the process environment; it does not load `.env` files itself. The `--env-file .env` option explicitly loads your local file through Uvicorn. Omit that option when your shell or deployment platform already supplies the environment.
 
 ## Database schemas
 
@@ -93,4 +97,6 @@ Apply the SQL files in `backend/app/schemas/` to the Supabase project as appropr
 
 ## Security and deployment
 
-Never commit actual service keys, webhook secrets, or local `.env.local` files. Keep the frontend's browser-visible values limited to public configuration, and keep Supabase service-role, OpenAI, Deepgram, Stripe, JWT, email, and webhook secrets on the backend/deployment platform. `render.yaml`, `backend/railway.json`, `frontend/vercel.json`, and `frontend/netlify.toml` remain included as deployment integration files.
+Never commit actual service keys, webhook secrets, or populated environment files. The checked-in `.env.example` files contain placeholders only. All `VITE_*` values are included in the public browser bundle, so keep Supabase service-role, OpenAI, Deepgram, Stripe, JWT, email, and webhook secrets on the backend/deployment platform.
+
+For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY`, the public `API_BASE_URL`, and your frontend origin settings explicitly. `render.yaml`, `backend/railway.json`, `frontend/vercel.json`, and `frontend/netlify.toml` are included as deployment integration files. Changing these repository files does not configure credentials in a hosting account.
