@@ -33,6 +33,7 @@ export function AudioToNotesPage() {
   const [stage, setStage] = useState<Stage>("capture")
   const [step, setStep] = useState(0)
   const [transcript, setTranscript] = useState("")
+  const [hint, setHint] = useState("")
   const [draft, setDraft] = useState<NotesDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [limit, setLimit] = useState<string | null>(null)
@@ -66,7 +67,7 @@ export function AudioToNotesPage() {
     setStage("working")
     setStep(0)
     try {
-      const heard = await transcribeAudio(audioToSend.blob, audioToSend.filename)
+      const heard = await transcribeAudio(audioToSend.blob, audioToSend.filename, hint)
       setTranscript(heard)
       setStage("transcript")
     } catch (err: unknown) {
@@ -246,6 +247,21 @@ export function AudioToNotesPage() {
                   <summary>What we heard</summary>
                   <p>{transcript}</p>
                 </details>
+              ) : null}
+              {!transcript ? (
+                <label className="hint-field">
+                  Names or words to listen for (optional)
+                  <input
+                    value={hint}
+                    maxLength={300}
+                    onChange={(event) => setHint(event.target.value)}
+                    placeholder="Ms. Okafor, Nkrumah, photosynthesis"
+                    aria-describedby="hint-help"
+                  />
+                  <small id="hint-help" className="field-hint">
+                    Helps Luma spell names and new words right.
+                  </small>
+                </label>
               ) : null}
               <div className="button-row">
                 {transcript ? (

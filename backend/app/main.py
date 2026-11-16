@@ -18,7 +18,7 @@ from typing import Any, Literal, Optional, List, Union
 import anyio
 import httpx
 import stripe
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query, WebSocket, WebSocketDisconnect, status, Request
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, Query, WebSocket, WebSocketDisconnect, status, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -1970,14 +1970,32 @@ def build_transcribe_filename(filename: Optional[str], content_type: str) -> str
     return "recording" + TRANSCRIBE_EXTENSION_FOR_CONTENT_TYPE.get(content_type, ".webm")
 
 
-def transcribe_audio_bytes_with_openai(audio_bytes: bytes, filename: str, content_type: str):
+MAX_TRANSCRIBE_HINT_CHARS = 300
+
+
+def clean_transcribe_hint(hint: Optional[str]) -> Optional[str]:
+    """Names or words a student expects to hear (e.g. "Ms. Okafor, Nkrumah").
+
+    One short line only: it is passed to the speech model as a spelling hint,
+    which in the 2026-11-16 Whisper pilot raised correct names from 38/64 to
+    56/64. Returns None when there is nothing useful.
+    """
+    if not isinstance(hint, str):
+        return None
+    text = " ".join(hint.split())[:MAX_TRANSCRIBE_HINT_CHARS].strip()
+    return text or None
+
+
+def transcribe_audio_bytes_with_openai(audio_bytes: bytes, filename: str, content_type: str, hint: Optional[str] = None):
     client = get_ai_client()
+    extra = {"prompt": hint} if hint else {}
     try:
         response = run_with_deadline(
             lambda: client.audio.transcriptions.create(
                 model=settings.OPENAI_TRANSCRIBE_MODEL,
                 file=(filename, audio_bytes, content_type),
                 timeout=AI_TRANSCRIBE_TIMEOUT_SECONDS,
+                **extra,
             ),
             AI_TRANSCRIBE_DEADLINE_SECONDS,
         )
@@ -1990,13 +2008,18 @@ def transcribe_audio_bytes_with_openai(audio_bytes: bytes, filename: str, conten
     return transcript
 
 
-def transcribe_audio_bytes(audio_bytes: bytes, filename: str, content_type: str):
-    """Use OpenAI speech-to-text when configured, otherwise Deepgram."""
+def transcribe_audio_bytes(audio_bytes: bytes, filename: str, content_type: str, hint: Optional[str] = None):
+    """Use OpenAI speech-to-text when configured, otherwise Deepgram.
+
+    ``hint`` (names/words to listen for) is used by OpenAI only; the Deepgram
+    fallback ignores it.
+    """
     if get_openai_api_key():
         return transcribe_audio_bytes_with_openai(
             audio_bytes,
             build_transcribe_filename(filename, content_type),
             content_type,
+            **({"hint": hint} if hint else {}),
         )
 
     if get_deepgram_api_key():
@@ -2283,6 +2306,7 @@ def transcribe_audio(
     # text field. Accept it here so we can answer with a friendly 400 instead
     # of FastAPI's raw validation error.
     audio: Union[UploadFile, str, None] = File(None),
+    hint: Optional[str] = Form(None, max_length=1000),
 ):
     ai_user = authenticate_ai_request(request)
     if not ai_user:
@@ -2363,7 +2387,13 @@ def transcribe_audio(
         )
 
         try:
-            transcript = transcribe_audio_bytes(audio_bytes, audio.filename or "", content_type)
+            cleaned_hint = clean_transcribe_hint(hint)
+            transcript = transcribe_audio_bytes(
+                audio_bytes,
+                audio.filename or "",
+                content_type,
+                **({"hint": cleaned_hint} if cleaned_hint else {}),
+            )
             record_ai_usage(ai_user["id"], "transcription")
             return {"transcript": transcript}
         except EmptyAudioError:

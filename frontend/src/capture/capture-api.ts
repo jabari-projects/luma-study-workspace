@@ -50,12 +50,14 @@ function toCaptureError(error: unknown, fallback: string): CaptureError {
 let cardCounter = 0
 const nextId = () => `draft-${Date.now().toString(36)}-${(cardCounter += 1)}`
 
-export async function transcribeAudio(blob: Blob, filename: string): Promise<string> {
+export async function transcribeAudio(blob: Blob, filename: string, hint?: string): Promise<string> {
   const form = new FormData()
   // Only the file type matters; the student's own file name stays on this device.
   const dot = filename.lastIndexOf(".")
   const extension = dot >= 0 ? filename.slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, "") : ""
   form.append("audio", blob, `recording${extension}`)
+  const cleanedHint = (hint ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
+  if (cleanedHint) form.append("hint", cleanedHint)
   try {
     const response = await api.post<{ transcript: string }>("/api/transcribe", form, { timeout: 180000 })
     return response.data.transcript
