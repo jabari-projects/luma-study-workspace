@@ -147,6 +147,11 @@ logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL, logging.INFO),
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
+# httpx/httpcore log every request URL at INFO. Supabase (PostgREST) query
+# strings carry filter values such as email addresses and token digests, so
+# those URLs must never reach the logs. Warnings and errors still show.
+for _noisy_logger in ("httpx", "httpcore", "hpack"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
