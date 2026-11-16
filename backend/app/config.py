@@ -167,6 +167,7 @@ class AppSettings:
     OPENAI_API_KEY: str | None = None
     OPENAI_ENDPOINT: str | None = None
     OPENAI_VISION_MODEL: str = "gpt-4.1-mini"
+    OPENAI_TRANSCRIBE_MODEL: str = "gpt-4o-mini-transcribe"
     DEEPGRAM_API_KEY: str | None = None
     STRIPE_SECRET_KEY: str | None = None
     STRIPE_WEBHOOK_SECRET: str | None = None
@@ -176,6 +177,11 @@ class AppSettings:
     AI_RATE_LIMIT_WINDOW_SECONDS: int = 60
     RESEND_API_KEY: str | None = None
     EMAIL_FROM: str | None = None
+    # How many reverse proxies in front of the app append to X-Forwarded-For.
+    # 0 (default) ignores the header and uses the socket peer address. On
+    # Render/Railway set TRUSTED_PROXY_HOPS=1 so rate limits see the real
+    # client (the entry the platform proxy appended, never a client-supplied one).
+    TRUSTED_PROXY_HOPS: int = 0
 
     @property
     def FRONTEND_ORIGINS(self) -> list[str]:
@@ -251,6 +257,12 @@ def load_settings() -> AppSettings:
             default="gpt-4.1-mini",
         )
         or "gpt-4.1-mini",
+        OPENAI_TRANSCRIBE_MODEL=_read_env(
+            env_lookup,
+            "OPENAI_TRANSCRIBE_MODEL",
+            default="gpt-4o-mini-transcribe",
+        )
+        or "gpt-4o-mini-transcribe",
         DEEPGRAM_API_KEY=_read_env(env_lookup, "DEEPGRAM_API_KEY"),
         STRIPE_SECRET_KEY=_read_env(env_lookup, "STRIPE_SECRET_KEY"),
         STRIPE_WEBHOOK_SECRET=_read_env(env_lookup, "STRIPE_WEBHOOK_SECRET"),
@@ -266,6 +278,10 @@ def load_settings() -> AppSettings:
         ),
         RESEND_API_KEY=_read_env(env_lookup, "RESEND_API_KEY"),
         EMAIL_FROM=_read_env(env_lookup, "EMAIL_FROM"),
+        TRUSTED_PROXY_HOPS=max(
+            0,
+            _normalize_int(_read_env(env_lookup, "TRUSTED_PROXY_HOPS"), default=0),
+        ),
     )
 
 

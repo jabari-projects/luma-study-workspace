@@ -5,16 +5,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user_id
+from .publishing import apply_update_publish_rules, build_create_publish_fields
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/summaries", tags=["summaries"])
 TABLE_NAME = "summaries"
+STUDY_TYPE = "summary"
 
 
 class SummaryCreateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=200)
     content: str = Field(..., min_length=1)
     tags: list[str] = Field(default_factory=list)
+    # Accepted so the current frontend keeps working, but ignored: new items
+    # are always private and the server sets the publish metadata.
     is_public: bool = False
     published_at: Optional[str] = None
     published_by: Optional[str] = None
@@ -94,11 +98,7 @@ def create_summary(payload: SummaryCreateRequest, user_id: str = Depends(get_cur
                 "title": payload.title,
                 "content": payload.content,
                 "tags": payload.tags,
-                "is_public": payload.is_public,
-                "published_at": payload.published_at,
-                "published_by": payload.published_by,
-                "study_type": payload.study_type or "summary",
-                "updated_at": payload.updated_at or datetime.utcnow().isoformat(),
+                **build_create_publish_fields(STUDY_TYPE),
             }
         )
         .execute()
@@ -132,11 +132,12 @@ def get_summary(summary_id: str, user_id: str = Depends(get_current_user_id)):
 
 @router.put("/{summary_id}", response_model=SummaryResponse)
 def update_summary(summary_id: str, payload: SummaryUpdateRequest, user_id: str = Depends(get_current_user_id)):
-    _get_summary_or_404(user_id, summary_id)
+    existing_row = _get_summary_or_404(user_id, summary_id)
 
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
+    updates = apply_update_publish_rules(existing_row, updates, user_id=user_id, study_type=STUDY_TYPE)
 
     updates["updated_at"] = datetime.utcnow().isoformat()
     get_supabase().table(TABLE_NAME).update(updates).eq("id", summary_id).eq("user_id", user_id).execute()

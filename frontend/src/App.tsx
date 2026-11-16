@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useState } from "react"
 import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react"
+import { Toaster } from "sonner"
 import {
   Link,
   Navigate,
-  NavLink,
   Route,
   Routes,
   useLocation,
   useNavigate,
-  useParams,
 } from "react-router-dom"
 
 import { useAuth, useProfile } from "./auth"
 import { API_BASE_URL, api, checkBackendHealth, getErrorMessage } from "./api"
 import type { Profile } from "./api"
-
-type Notice = {
-  type: "success" | "error" | "info"
-  text: string
-}
+import { NoticeBanner, PageHeader } from "./ui/common"
+import type { Notice, StudyType } from "./ui/common"
+import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
+import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
+import { QuizPage } from "./study/QuizPage"
+import { NotePage } from "./notes/NotePage"
+import { TodayPage } from "./study/TodayPage"
+import { AudioToNotesPage } from "./capture/AudioPage"
+import {
+  ForgotPasswordPage,
+  LoginPage,
+  ResetPasswordPage,
+  SignupPage,
+  VerifyEmailBanner,
+  VerifyEmailPage,
+} from "./account/AccountPages"
+import { ImportPage } from "./capture/ImportPage"
 
 type FieldKind = "text" | "textarea" | "tags" | "number"
 
@@ -51,8 +62,6 @@ type CollectionItem = {
   study_type?: StudyType | null
   [key: string]: unknown
 }
-
-type StudyType = "note" | "flashcards" | "summary"
 
 type PublicStudyItem = {
   id: string
@@ -88,6 +97,7 @@ const collectionConfigs: CollectionConfig[] = [
     title: "Notes",
     description: "Write your notes here.",
     dashboardDescription: "Write down what you're learning so you don't forget.",
+    helperText: "Tip: write a question, then ::, then the answer. Luma can turn those lines into flashcards.",
     endpoint: "/notes",
     publicable: true,
     studyType: "note",
@@ -103,42 +113,6 @@ const collectionConfigs: CollectionConfig[] = [
         label: "Content",
         kind: "textarea",
         placeholder: "Write your notes...",
-      },
-      {
-        name: "tags",
-        label: "Tags",
-        kind: "tags",
-        placeholder: "Add tags (optional)",
-      },
-    ],
-  },
-  {
-    key: "flashcards",
-    title: "Flashcards",
-    description: "Practice remembering what you learned.",
-    dashboardDescription: "Practice remembering things you learned.",
-    endpoint: "/flashcards",
-    publicable: true,
-    studyType: "flashcards",
-    helperText: "Challenge your mind to remember.",
-    fields: [
-      {
-        name: "title",
-        label: "Title",
-        kind: "text",
-        placeholder: "Title",
-      },
-      {
-        name: "front",
-        label: "Question",
-        kind: "textarea",
-        placeholder: "Question",
-      },
-      {
-        name: "back",
-        label: "Answer",
-        kind: "textarea",
-        placeholder: "Answer",
       },
       {
         name: "tags",
@@ -225,19 +199,9 @@ const themeColors = [
   { name: "Blue", value: "#3157d5" },
 ]
 
+const DEFAULT_ACCENT = "#0f766e"
+
 type ThemeMode = "light" | "dark"
-
-const aiTutorLink = {
-  to: "/ai-tutor",
-  label: "AI Tutor",
-  title: "AI Tutor",
-  dashboardDescription: "Get help studying from your AI tutor.",
-}
-
-const workspaceLinks = collectionConfigs.map((config) => ({
-  to: `/${config.key}`,
-  label: config.title,
-}))
 
 const initialHealthState: HealthState = {
   status: "checking",
@@ -338,10 +302,6 @@ function displayValue(value: unknown): string {
   return ""
 }
 
-function getItemTitle(item: CollectionItem): string {
-  return displayValue(item.title).trim()
-}
-
 function labelForStudyType(studyType: StudyType): string {
   if (studyType === "note") {
     return "Note"
@@ -371,25 +331,6 @@ function formatPublishedDate(value?: string | null): string {
   })
 }
 
-function formatTimestamp(value?: string | null): string {
-  if (!value) {
-    return "-"
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
-
 function groupPublicItems(items: PublicStudyItem[]): Record<StudyType, PublicStudyItem[]> {
   return items.reduce<Record<StudyType, PublicStudyItem[]>>(
     (groups, item) => {
@@ -400,50 +341,6 @@ function groupPublicItems(items: PublicStudyItem[]): Record<StudyType, PublicStu
   )
 }
 
-function classForNavLink({ isActive }: { isActive: boolean }): string {
-  return isActive ? "nav-link active" : "nav-link"
-}
-
-function buildThemeStyle(profile: Profile | null): CSSProperties & Record<string, string> {
-  const accent = profile?.theme_color || themeColors[themeColors.length - 1].value
-  return {
-    "--accent": accent,
-    "--accent-strong": `color-mix(in srgb, ${accent} 82%, black)`,
-    "--accent-soft": `color-mix(in srgb, ${accent} 12%, white)`,
-    "--accent-border": `color-mix(in srgb, ${accent} 30%, white)`,
-  }
-}
-
-function PageHeader({
-  eyebrow,
-  title,
-  description,
-  actions,
-}: {
-  eyebrow?: string
-  title: string
-  description: string
-  actions?: ReactNode
-}) {
-  return (
-    <header className="page-header">
-      <div>
-        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </div>
-      {actions ? <div className="page-actions">{actions}</div> : null}
-    </header>
-  )
-}
-
-function NoticeBanner({ notice }: { notice: Notice | null }) {
-  if (!notice) {
-    return null
-  }
-
-  return <div className={`notice ${notice.type}`}>{notice.text}</div>
-}
 
 function LoadingScreen({ message }: { message: string }) {
   return (
@@ -506,6 +403,19 @@ function AppLayout() {
   const profile = useProfile()
   const initials = (user?.username ?? user?.email ?? "L").slice(0, 1).toUpperCase()
   const themeMode = profile?.theme_mode === "dark" ? "dark" : "light"
+  const accent = profile?.theme_color || DEFAULT_ACCENT
+
+  // Apply the theme to the whole page so the background, sheets and modals match.
+  // Other accent shades are mixed from --accent in styles.css for light and dark mode.
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.theme = themeMode
+    root.style.setProperty("--accent", accent)
+    return () => {
+      delete root.dataset.theme
+      root.style.removeProperty("--accent")
+    }
+  }, [themeMode, accent])
 
   const handleLogout = () => {
     logout()
@@ -513,80 +423,52 @@ function AppLayout() {
   }
 
   return (
-    <div className={`app-shell theme-${themeMode}`} style={buildThemeStyle(profile)}>
-      <aside className="sidebar">
-        <Link className="brand" to="/dashboard" aria-label="Luma dashboard">
-          <img src="/luma-star.png" alt="" />
-          <span>Luma</span>
-        </Link>
-        <nav className="nav-stack" aria-label="Main navigation">
-          <NavLink to="/dashboard" className={classForNavLink}>
-            Dashboard
-          </NavLink>
-          <NavLink to="/search" className={classForNavLink}>
-            Search
-          </NavLink>
-          {workspaceLinks.map((link) => (
-            <NavLink key={link.to} to={link.to} className={classForNavLink}>
-              {link.label}
-            </NavLink>
-          ))}
-          <NavLink to={aiTutorLink.to} className={classForNavLink}>
-            {aiTutorLink.label}
-          </NavLink>
-          <NavLink to="/image-to-notes" className={classForNavLink}>
-            Image to Notes
-          </NavLink>
-          <NavLink to="/voice-input" className={classForNavLink}>
-            Voice Input
-          </NavLink>
-          <NavLink to="/subscribe" className={classForNavLink}>
-            Subscription
-          </NavLink>
-          <NavLink to="/settings" className={classForNavLink}>
-            Settings
-          </NavLink>
-        </nav>
-        <div className="sidebar-footer">
-          <div className="identity">
-            <span className="avatar">{initials}</span>
-            <span>
-              <strong>{user?.username ?? "Luma user"}</strong>
-              <small>{profile?.subscription_status ?? "free"} plan</small>
-            </span>
-          </div>
-          <button type="button" className="secondary-button" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </aside>
+    <div className={`app-shell theme-${themeMode}`}>
+      <SideNav
+        username={user?.username ?? "Luma student"}
+        plan={profile?.subscription_status ?? "free"}
+        initials={initials}
+        onLogout={handleLogout}
+      />
+      <MobileTopBar initials={initials} />
       <main className="content">
+        <VerifyEmailBanner />
         <Routes>
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<TodayPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/flashcards" element={<DecksPage />} />
+          <Route path="/flashcards/new" element={<DeckEditorPage />} />
+          <Route path="/flashcards/:itemId" element={<DeckPage />} />
+          <Route path="/flashcards/:itemId/edit" element={<DeckEditorPage />} />
+          <Route path="/flashcards/:itemId/study" element={<StudyPage />} />
+          <Route path="/quizzes" element={<QuizPage />} />
           {collectionConfigs.map((config) => (
             <Route key={config.key} path={`/${config.key}`} element={<CollectionPage config={config} />} />
           ))}
-          {collectionConfigs
-            .filter((config) => config.publicable)
-            .map((config) => (
-              <Route
-                key={`${config.key}-view`}
-                path={`/${config.key}/:itemId`}
-                element={<CollectionItemViewPage config={config} />}
-              />
-            ))}
+          <Route
+            path="/notes/:itemId"
+            element={<NotePage endpoint="/notes" studyType="note" backTo="/notes" kindLabel="Note" />}
+          />
+          <Route
+            path="/summaries/:itemId"
+            element={<NotePage endpoint="/summaries" studyType="summary" backTo="/summaries" kindLabel="Summary" />}
+          />
           <Route path="/image-to-notes" element={<ImageToNotesPage />} />
-          <Route path="/voice-input" element={<VoiceInputPage />} />
+          <Route path="/voice-input" element={<AudioToNotesPage />} />
+          <Route path="/import" element={<ImportPage />} />
+          <Route path="/audio-to-notes" element={<Navigate to="/voice-input" replace />} />
           <Route path="/ai-tutor" element={<AiTutorPage />} />
           <Route path="/transcripts" element={<Navigate to="/ai-tutor" replace />} />
           <Route path="/study-session" element={<Navigate to="/study-sessions" replace />} />
+          <Route path="/quiz" element={<Navigate to="/quizzes" replace />} />
           <Route path="/subscribe" element={<SubscribePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={<Navigate to="/settings" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
+      <MobileTabBar onLogout={handleLogout} />
+      <Toaster position="top-center" richColors closeButton />
     </div>
   )
 }
@@ -611,6 +493,7 @@ function RootRoutes() {
           </PublicOnlyRoute>
         }
       />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
@@ -646,309 +529,6 @@ function LandingPage() {
         <BackendConnectionBanner health={health} />
       </section>
     </main>
-  )
-}
-
-function AuthForm({
-  mode,
-  onSubmit,
-}: {
-  mode: "login" | "signup"
-  onSubmit: (values: { email: string; username: string; password: string }) => Promise<void>
-}) {
-  const [values, setValues] = useState({ email: "", username: "", password: "" })
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const updateValue = (event: ChangeEvent<HTMLInputElement>) => {
-    setValues((current) => ({
-      ...current,
-      [event.target.name]: event.target.value,
-    }))
-  }
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitting(true)
-    setNotice(null)
-
-    try {
-      await onSubmit(values)
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Authentication failed.") })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <form className="form-panel" onSubmit={handleSubmit}>
-      <NoticeBanner notice={notice} />
-      <label>
-        Email
-        <input
-          name="email"
-          type="email"
-          autoComplete="email"
-          value={values.email}
-          onChange={updateValue}
-          required
-        />
-      </label>
-      {mode === "signup" ? (
-        <label>
-          Username
-          <input
-            name="username"
-            type="text"
-            autoComplete="username"
-            value={values.username}
-            onChange={updateValue}
-            minLength={3}
-            pattern="[a-zA-Z0-9_]+"
-            required
-          />
-        </label>
-      ) : null}
-      <label>
-        Password
-        <input
-          name="password"
-          type="password"
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          value={values.password}
-          onChange={updateValue}
-          minLength={6}
-          required
-        />
-      </label>
-      <button className="primary-button" type="submit" disabled={submitting}>
-        {submitting ? "Working..." : mode === "login" ? "Login" : "Create account"}
-      </button>
-    </form>
-  )
-}
-
-function LoginPage() {
-  const { login } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  const handleLogin = async (values: { email: string; password: string }) => {
-    await login(values)
-    const searchParams = new URLSearchParams(location.search)
-    navigate(searchParams.get("redirect") || "/dashboard", { replace: true })
-  }
-
-  return (
-    <main className="auth-screen">
-      <section>
-        <PageHeader
-          eyebrow="Welcome back"
-          title="Login to Luma"
-          description="Log in to get back to your work."
-        />
-        <AuthForm
-          mode="login"
-          onSubmit={(values) => handleLogin({ email: values.email, password: values.password })}
-        />
-        <p className="auth-link">
-          Need an account? <Link to="/signup">Create one</Link>
-        </p>
-        <p className="auth-link">
-          Forgot your password? <Link to="/forgot-password">Reset it</Link>
-        </p>
-      </section>
-    </main>
-  )
-}
-
-function SignupPage() {
-  const { signup } = useAuth()
-  const navigate = useNavigate()
-  const { health, refreshBackendHealth } = useBackendHealth()
-
-  const handleSignup = async (values: { email: string; username: string; password: string }) => {
-    const backendConnected = await refreshBackendHealth()
-    if (!backendConnected) {
-      throw new Error("Luma is not reachable right now. Please try again soon.")
-    }
-
-    await signup(values)
-    navigate("/dashboard", { replace: true })
-  }
-
-  return (
-    <main className="auth-screen">
-      <section>
-        <PageHeader
-          eyebrow="New workspace"
-          title="Create your account"
-          description="Make your Luma account."
-        />
-        <BackendConnectionBanner health={health} />
-        <AuthForm mode="signup" onSubmit={handleSignup} />
-        <p className="auth-link">
-          Already have an account? <Link to="/login">Login</Link>
-        </p>
-      </section>
-    </main>
-  )
-}
-
-function ForgotPasswordPage() {
-  const [email, setEmail] = useState("")
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitting(true)
-    setNotice(null)
-
-    try {
-      await api.post("/auth/request-reset", { email })
-      setNotice({
-        type: "success",
-        text: "If that account exists, we sent password help.",
-      })
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error) })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <main className="auth-screen">
-      <section>
-        <PageHeader
-          eyebrow="Password help"
-          title="Request reset"
-          description="We can help you reset your password."
-        />
-        <form className="form-panel" onSubmit={submit}>
-          <NoticeBanner notice={notice} />
-          <label>
-            Email
-            <input value={email} type="email" onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-          <button className="primary-button" type="submit" disabled={submitting}>
-            {submitting ? "Sending..." : "Send reset request"}
-          </button>
-        </form>
-      </section>
-    </main>
-  )
-}
-
-function ResetPasswordPage() {
-  const [token, setToken] = useState("")
-  const [password, setPassword] = useState("")
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitting(true)
-    setNotice(null)
-
-    try {
-      await api.post("/auth/reset", { token, new_password: password })
-      setNotice({ type: "success", text: "Your password was changed. You can log in now." })
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error) })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <main className="auth-screen">
-      <section>
-        <PageHeader
-          eyebrow="Password help"
-          title="Set new password"
-          description="Pick a new password."
-        />
-        <form className="form-panel" onSubmit={submit}>
-          <NoticeBanner notice={notice} />
-          <label>
-            Reset token
-            <input value={token} onChange={(event) => setToken(event.target.value)} required />
-          </label>
-          <label>
-            New password
-            <input
-              value={password}
-              type="password"
-              minLength={6}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </label>
-          <button className="primary-button" type="submit" disabled={submitting}>
-            {submitting ? "Resetting..." : "Reset password"}
-          </button>
-        </form>
-      </section>
-    </main>
-  )
-}
-
-function DashboardPage() {
-  const profile = useProfile()
-  const { health } = useBackendHealth()
-  const [counts, setCounts] = useState<Record<string, number>>({})
-
-  useEffect(() => {
-    let active = true
-
-    Promise.all(
-      collectionConfigs.map(async (config) => {
-        const response = await api.get<CollectionItem[]>(config.endpoint)
-        return [config.key, response.data.length] as const
-      }),
-    )
-      .then((entries) => {
-        if (active) {
-          setCounts(Object.fromEntries(entries))
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setCounts({})
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="Workspace"
-        title={`Good to see you${profile?.username ? `, ${profile.username}` : ""}`}
-        description="Pick what you want to work on today."
-      />
-      <BackendConnectionBanner health={health} />
-      <section className="metrics-grid">
-        {collectionConfigs.map((config) => (
-          <Link className="metric-card link-card" key={config.key} to={`/${config.key}`}>
-            <strong>{config.title}</strong>
-            <span>{counts[config.key] ?? "-"}</span>
-            <p>{config.dashboardDescription}</p>
-          </Link>
-        ))}
-        <Link className="metric-card link-card" to={aiTutorLink.to}>
-          <strong>{aiTutorLink.title}</strong>
-          <span>Go</span>
-          <p>{aiTutorLink.dashboardDescription}</p>
-        </Link>
-      </section>
-    </>
   )
 }
 
@@ -1073,186 +653,6 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
   )
 }
 
-function CollectionItemViewPage({ config }: { config: CollectionConfig }) {
-  const { itemId } = useParams()
-  const [item, setItem] = useState<CollectionItem | null>(null)
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const loadItem = useCallback(async () => {
-    if (!itemId) {
-      setLoading(false)
-      setNotice({ type: "error", text: "We could not find this study set." })
-      return
-    }
-
-    setLoading(true)
-    setNotice(null)
-
-    try {
-      const response = await api.get<CollectionItem>(`${config.endpoint}/${itemId}`)
-      setItem(response.data)
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not load this study set.") })
-    } finally {
-      setLoading(false)
-    }
-  }, [config.endpoint, itemId])
-
-  useEffect(() => {
-    void loadItem()
-  }, [loadItem])
-
-  if (loading) {
-    return <LoadingScreen message="Loading study set..." />
-  }
-
-  return (
-    <>
-      <PageHeader
-        eyebrow={labelForStudyType(config.studyType ?? "note")}
-        title={item ? getItemTitle(item) || config.title : config.title}
-        description="Review your study set here."
-        actions={
-          <Link className="secondary-button" to={`/${config.key}`}>
-            Back
-          </Link>
-        }
-      />
-      <NoticeBanner notice={notice} />
-      {item ? (
-        <>
-          <section className="detail-panel">
-            <div className="detail-meta">
-              <div>
-                <small>Created</small>
-                <p>{formatTimestamp(displayValue(item.created_at))}</p>
-              </div>
-              <div>
-                <small>Updated</small>
-                <p>{formatTimestamp(displayValue(item.updated_at ?? item.created_at))}</p>
-              </div>
-              <div>
-                <small>Status</small>
-                <p>{item.is_public ? "Public" : "Private"}</p>
-              </div>
-            </div>
-            <div className="detail-content">
-              {config.fields.map((field) => (
-                <div key={field.name}>
-                  <small>{field.label}</small>
-                  <p>{displayValue(item[field.name]) || "-"}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-          {config.studyType ? (
-            <PublishActionButton
-              config={config}
-              item={item}
-              onUpdated={setItem}
-              setNotice={setNotice}
-            />
-          ) : null}
-        </>
-      ) : null}
-    </>
-  )
-}
-
-function PublishActionButton({
-  config,
-  item,
-  onUpdated,
-  setNotice,
-}: {
-  config: CollectionConfig
-  item: CollectionItem
-  onUpdated: (item: CollectionItem) => void
-  setNotice: (notice: Notice | null) => void
-}) {
-  const profile = useProfile()
-  const { user } = useAuth()
-  const [modalOpen, setModalOpen] = useState(false)
-  const [publishing, setPublishing] = useState(false)
-  const publisherUsername = profile?.username ?? user?.username ?? "Student"
-
-  const publishItem = async () => {
-    if (!config.studyType) {
-      return
-    }
-
-    if (!getItemTitle(item)) {
-      setNotice({ type: "error", text: "Please give this study set a title before publishing." })
-      return
-    }
-
-    setPublishing(true)
-    setNotice(null)
-
-    try {
-      const response = await api.put<CollectionItem>(`${config.endpoint}/${item.id}`, {
-        is_public: true,
-        published_at: new Date().toISOString(),
-        published_by: publisherUsername,
-        study_type: config.studyType,
-      })
-      onUpdated(response.data)
-      setModalOpen(false)
-      setNotice({ type: "success", text: "Published." })
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not publish this study set.") })
-    } finally {
-      setPublishing(false)
-    }
-  }
-
-  const unpublishItem = async () => {
-    setPublishing(true)
-    setNotice(null)
-
-    try {
-      const response = await api.put<CollectionItem>(`${config.endpoint}/${item.id}`, {
-        is_public: false,
-        published_at: null,
-        published_by: null,
-      })
-      onUpdated(response.data)
-      setNotice({ type: "success", text: "Unpublished." })
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not unpublish this study set.") })
-    } finally {
-      setPublishing(false)
-    }
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        className={item.is_public ? "floating-publish unpublish" : "floating-publish"}
-        onClick={() => {
-          if (item.is_public) {
-            void unpublishItem()
-            return
-          }
-          setModalOpen(true)
-        }}
-        disabled={publishing}
-      >
-        {item.is_public ? "Unpublish" : "Publish"}
-      </button>
-      {modalOpen ? (
-        <PublishModal
-          publishing={publishing}
-          onCancel={() => setModalOpen(false)}
-          onConfirm={() => void publishItem()}
-        />
-      ) : null}
-    </>
-  )
-}
-
 function FieldInput({
   field,
   value,
@@ -1285,36 +685,6 @@ function FieldInput({
         />
       )}
     </label>
-  )
-}
-
-function PublishModal({
-  publishing,
-  onCancel,
-  onConfirm,
-}: {
-  publishing: boolean
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="publish-title">
-        <h2 id="publish-title">Publish this study set?</h2>
-        <p>
-          Publishing makes this study set visible to other students. Your username will appear as the
-          creator. You can unpublish it anytime.
-        </p>
-        <div className="button-row">
-          <button type="button" className="secondary-button" onClick={onCancel} disabled={publishing}>
-            Cancel
-          </button>
-          <button type="button" className="primary-button" onClick={onConfirm} disabled={publishing}>
-            {publishing ? "Publishing..." : "Publish"}
-          </button>
-        </div>
-      </section>
-    </div>
   )
 }
 
@@ -1378,66 +748,12 @@ function ImageToNotesPage() {
           <input type="file" accept="image/png,image/jpeg,image/webp" onChange={readImage} />
         </label>
         {fileName ? <p className="muted">Selected: {fileName}</p> : null}
+        <p className="muted small-text">To make notes, Luma sends your picture to OpenAI. Luma does not save the picture.</p>
         <button className="primary-button" type="submit" disabled={submitting}>
           {submitting ? "Working..." : "Make notes"}
         </button>
       </form>
       {result ? <OutputBlock title="Generated notes" value={result} /> : null}
-    </>
-  )
-}
-
-function VoiceInputPage() {
-  const [audio, setAudio] = useState<File | null>(null)
-  const [transcript, setTranscript] = useState("")
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const transcribe = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!audio) {
-      setNotice({ type: "error", text: "Choose an audio file first." })
-      return
-    }
-
-    setSubmitting(true)
-    setNotice(null)
-    const formData = new FormData()
-    formData.append("audio", audio)
-
-    try {
-      const response = await api.post<{ transcript: string }>("/api/transcribe", formData)
-      setTranscript(response.data.transcript)
-      setNotice({ type: "success", text: "Audio transcribed." })
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not transcribe audio.") })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="Tools"
-        title="Voice Input"
-        description="Upload audio and turn it into text."
-      />
-      <form className="form-panel" onSubmit={transcribe}>
-        <NoticeBanner notice={notice} />
-        <label>
-          Audio
-          <input
-            type="file"
-            accept="audio/*"
-            onChange={(event) => setAudio(event.target.files?.[0] ?? null)}
-          />
-        </label>
-        <button className="primary-button" type="submit" disabled={submitting}>
-          {submitting ? "Working..." : "Turn into text"}
-        </button>
-      </form>
-      {transcript ? <OutputBlock title="Transcript" value={transcript} /> : null}
     </>
   )
 }

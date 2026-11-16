@@ -16,6 +16,7 @@ export type BasicUser = {
   id: string
   email: string
   username: string
+  email_verified?: boolean
 }
 
 export type Profile = BasicUser & {
@@ -41,6 +42,15 @@ export type StoredAuthSession = {
   user: BasicUser | Profile
 }
 
+export type SignupPending = {
+  status: "check_email"
+  email: string
+  /** Random value only this browser knows; needed with the emailed code. */
+  ticket: string
+  resend_after_seconds: number
+  code_expires_in_seconds: number
+}
+
 export type SignupPayload = {
   email: string
   username: string
@@ -55,6 +65,53 @@ type ApiErrorPayload = {
   detail?: string | ApiValidationError[]
   error?: string
   message?: string
+  error_code?: string
+  retry_after?: number
+}
+
+const CANT_REACH_MESSAGE = "We can't reach Luma right now. Try again in a minute."
+
+export class ApiRequestError extends Error {
+  status: number
+  payload?: ApiErrorPayload
+
+  constructor(message: string, status: number, payload?: ApiErrorPayload) {
+    super(message)
+    this.status = status
+    this.payload = payload
+  }
+}
+
+function errorPayload(error: unknown): ApiErrorPayload | undefined {
+  if (error instanceof AxiosError) {
+    return error.response?.data as ApiErrorPayload | undefined
+  }
+  if (error instanceof ApiRequestError) {
+    return error.payload
+  }
+  return undefined
+}
+
+/** Stable machine-readable reason from the account routes, e.g. "code_expired". */
+export function getErrorCode(error: unknown): string | undefined {
+  const code = errorPayload(error)?.error_code
+  return typeof code === "string" ? code : undefined
+}
+
+/** Seconds to wait before trying again (429 answers), if the server said. */
+export function getRetryAfter(error: unknown): number | undefined {
+  const value = errorPayload(error)?.retry_after
+  return typeof value === "number" && value > 0 ? value : undefined
+}
+
+function isMissingRoute(status: number | undefined, data: ApiErrorPayload | undefined): boolean {
+  // A 404 with FastAPI's default body means the server we reached doesn't have
+  // this route at all (wrong server or an old fake server), not "account not found".
+  if (status !== 404) {
+    return false
+  }
+  const detail = typeof data?.detail === "string" ? data.detail : ""
+  return detail === "" || detail === "Not Found" || detail === "Not found" || detail.startsWith("Fake server has no route")
 }
 
 export const api: AxiosInstance = axios.create({
@@ -117,13 +174,33 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// After a password reset, older logins stop working on purpose. When the server says a
+// session expired, forget it and send the student to log in again instead of showing errors.
+api.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    if (error instanceof AxiosError && error.response?.status === 401) {
+      const detail = (error.response.data as { detail?: unknown } | undefined)?.detail
+      const onLoginPage = window.location.pathname.startsWith("/login")
+      if (typeof detail === "string" && detail.startsWith("Session expired") && getStoredAccessToken() && !onLoginPage) {
+        clearStoredSession()
+        window.location.assign("/login?expired=1")
+      }
+    }
+    return Promise.reject(error)
+  },
+)
+
 export function getErrorMessage(error: unknown, fallback = "Something went wrong."): string {
   if (error instanceof AxiosError) {
     if (!error.response) {
-      return "Luma is having trouble connecting. Please try again soon."
+      return CANT_REACH_MESSAGE
     }
 
     const data = error.response.data as ApiErrorPayload | undefined
+    if (isMissingRoute(error.response.status, data)) {
+      return CANT_REACH_MESSAGE
+    }
     if (typeof data?.detail === "string" && data.detail) {
       return data.detail
     }
@@ -151,41 +228,46 @@ export function getErrorMessage(error: unknown, fallback = "Something went wrong
   return fallback
 }
 
-export async function signupWithBackend(payload: SignupPayload): Promise<AuthSession> {
-  const response = await fetch(`${API_BASE_URL}/signup`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    let message = `Signup failed with HTTP ${response.status}.`
-
-    try {
-      const data = (await response.json()) as ApiErrorPayload
-      if (typeof data.detail === "string" && data.detail) {
-        message = data.detail
-      } else if (typeof data.error === "string" && data.error) {
-        message = data.error
-      } else if (typeof data.message === "string" && data.message) {
-        message = data.message
-      } else if (Array.isArray(data.detail)) {
-        const firstMessage = data.detail.find((item) => typeof item.msg === "string" && item.msg)
-        if (firstMessage?.msg) {
-          message = firstMessage.msg
-        }
-      }
-    } catch {
-      // Keep the HTTP status fallback when the response body is not JSON.
-    }
-
-    throw new Error(message)
+export async function signupWithBackend(payload: SignupPayload): Promise<SignupPending> {
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/signup`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    throw new ApiRequestError(CANT_REACH_MESSAGE, 0)
   }
 
-  return response.json() as Promise<AuthSession>
+  if (!response.ok) {
+    let data: ApiErrorPayload | undefined
+    try {
+      data = (await response.json()) as ApiErrorPayload
+    } catch {
+      // Not JSON; fall back to a plain message below.
+    }
+
+    let message = "We couldn't make your account. Try again."
+    if (isMissingRoute(response.status, data)) {
+      message = CANT_REACH_MESSAGE
+    } else if (typeof data?.detail === "string" && data.detail) {
+      message = data.detail
+    } else if (Array.isArray(data?.detail)) {
+      const first = data.detail.find((item) => typeof item.msg === "string" && item.msg)
+      if (first?.msg) {
+        message = /email/i.test(first.msg) ? "Check your email address." : first.msg
+      }
+    } else if (typeof data?.error === "string" && data.error) {
+      message = data.error
+    }
+    throw new ApiRequestError(message, response.status, data)
+  }
+
+  return response.json() as Promise<SignupPending>
 }
 
 export async function checkBackendHealth(): Promise<void> {

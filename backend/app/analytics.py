@@ -70,7 +70,11 @@ def get_optional_user_id(
         return None
 
     token = credentials.credentials
-    custom_user_id = _get_user_from_custom_jwt(token)
+    try:
+        custom_user_id = _get_user_from_custom_jwt(token)
+    except HTTPException:
+        # Stale or uncheckable session: record the event anonymously.
+        return None
     if custom_user_id:
         return custom_user_id
 

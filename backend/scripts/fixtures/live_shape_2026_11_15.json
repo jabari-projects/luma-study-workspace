@@ -1,0 +1,749 @@
+{
+ "tables": {
+  "study_sessions": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "extensions.uuid_generate_v4()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": "table='profiles' column='user_id'"
+   },
+   "name": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "subject": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "notes": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "duration_seconds": {
+    "format": "integer",
+    "type": "integer",
+    "required": true,
+    "default": 0,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp without time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   }
+  },
+  "email_verification_tokens": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "gen_random_uuid()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": "table='users' column='id'"
+   },
+   "token": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "expires_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "subscriptions": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "gen_random_uuid()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": "table='users' column='id'"
+   },
+   "stripe_customer_id": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "stripe_subscription_id": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "status": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "current_period_end": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   }
+  },
+  "profiles": {
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": true,
+    "fk": "table='users' column='id'"
+   },
+   "username": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "display_name": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "avatar_url": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "theme_color": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "custom_theme_image_url": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "timezone": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "theme_mode": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "phone_number": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "birthday": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "timezone('utc'::text, now())",
+    "pk": false,
+    "fk": null
+   },
+   "role": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": "user",
+    "pk": false,
+    "fk": null
+   }
+  },
+  "password_reset_tokens": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "gen_random_uuid()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": "table='users' column='id'"
+   },
+   "token": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "expires_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "flashcards": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "extensions.uuid_generate_v4()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": "table='profiles' column='user_id'"
+   },
+   "front": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "back": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "tags": {
+    "format": "text[]",
+    "type": "array",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp without time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "updated_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "search_vector": {
+    "format": "tsvector",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "summaries": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "extensions.uuid_generate_v4()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": "table='profiles' column='user_id'"
+   },
+   "content": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp without time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "source_type": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "source_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "search_vector": {
+    "format": "tsvector",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "transcripts": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "extensions.uuid_generate_v4()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": "table='profiles' column='user_id'"
+   },
+   "content": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp without time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "source": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "search_vector": {
+    "format": "tsvector",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "notes": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "extensions.uuid_generate_v4()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": "table='profiles' column='user_id'"
+   },
+   "title": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "content": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "tags": {
+    "format": "text[]",
+    "type": "array",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp without time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "updated_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "search_vector": {
+    "format": "tsvector",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "ai_usage": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "gen_random_uuid()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": "table='users' column='id'"
+   },
+   "feature": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "tokens_used": {
+    "format": "integer",
+    "type": "integer",
+    "required": false,
+    "default": 0,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "type": {
+    "format": "character varying",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "users": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": true,
+    "fk": null
+   },
+   "email": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "username": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "theme_color": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": "midnight",
+    "pk": false,
+    "fk": null
+   },
+   "role": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": "user",
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   },
+   "password": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "password_hash": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "email_verified": {
+    "format": "boolean",
+    "type": "boolean",
+    "required": false,
+    "default": false,
+    "pk": false,
+    "fk": null
+   },
+   "is_admin": {
+    "format": "boolean",
+    "type": "boolean",
+    "required": false,
+    "default": false,
+    "pk": false,
+    "fk": null
+   },
+   "verification_token": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "verification_expires_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "email_verification_sent_at": {
+    "format": "timestamp without time zone",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "email_verification_token": {
+    "format": "text",
+    "type": "string",
+    "required": false,
+    "default": null,
+    "pk": false,
+    "fk": null
+   }
+  },
+  "notifications": {
+   "id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": "gen_random_uuid()",
+    "pk": true,
+    "fk": null
+   },
+   "user_id": {
+    "format": "uuid",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": "table='users' column='id'"
+   },
+   "message": {
+    "format": "text",
+    "type": "string",
+    "required": true,
+    "default": null,
+    "pk": false,
+    "fk": null
+   },
+   "read": {
+    "format": "boolean",
+    "type": "boolean",
+    "required": false,
+    "default": false,
+    "pk": false,
+    "fk": null
+   },
+   "created_at": {
+    "format": "timestamp with time zone",
+    "type": "string",
+    "required": false,
+    "default": "now()",
+    "pk": false,
+    "fk": null
+   }
+  }
+ },
+ "rpcs": []
+}

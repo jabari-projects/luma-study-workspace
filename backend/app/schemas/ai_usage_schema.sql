@@ -87,7 +87,7 @@ begin
       )
     ';
   else
-    raise exception ''Could not create ai_usage table because public.profiles has neither id nor user_id.'';
+    raise exception 'Could not create ai_usage table because public.profiles has neither id nor user_id.';
   end if;
 end $$;
 

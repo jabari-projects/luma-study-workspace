@@ -55,7 +55,7 @@ begin
         )
       ';
     else
-      raise exception ''Could not create public.notes because public.profiles has neither id nor user_id.'';
+      raise exception 'Could not create public.notes because public.profiles has neither id nor user_id.';
     end if;
   end if;
 end $$;
@@ -115,7 +115,7 @@ begin
         )
       ';
     else
-      raise exception ''Could not create public.summaries because public.profiles has neither id nor user_id.'';
+      raise exception 'Could not create public.summaries because public.profiles has neither id nor user_id.';
     end if;
   end if;
 end $$;
@@ -161,7 +161,7 @@ begin
         )
       ';
     else
-      raise exception ''Could not create public.transcripts because public.profiles has neither id nor user_id.'';
+      raise exception 'Could not create public.transcripts because public.profiles has neither id nor user_id.';
     end if;
   end if;
 end $$;

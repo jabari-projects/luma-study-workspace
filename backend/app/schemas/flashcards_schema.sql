@@ -38,3 +38,13 @@ create index if not exists flashcards_published_at_idx
 
 create index if not exists flashcards_updated_at_idx
   on public.flashcards (updated_at desc);
+
+-- Decks: one flashcards row holds many cards plus each card's review schedule.
+alter table public.flashcards
+  add column if not exists cards jsonb not null default '[]'::jsonb;
+
+update public.flashcards
+set cards = jsonb_build_array(
+  jsonb_build_object('id', id::text || '-0', 'front', front, 'back', back, 'review', null)
+)
+where (cards is null or cards = '[]'::jsonb) and front is not null and back is not null;

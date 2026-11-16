@@ -24,3 +24,13 @@ coverage/
 *.sqlite3
 *.pem
 *.key
+
+# Playwright MCP output (screenshots, page snapshots)
+.playwright-mcp/
+
+# Secrets and local tool output (added 2026-11-16)
+*.env
+.vercel/
+.supabase/
+.playwright-mcp/
+backend_temp/

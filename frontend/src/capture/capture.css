@@ -1,0 +1,887 @@
+/* Capture screens: Voice to Notes + Import to Notes. Uses the tokens from styles.css. */
+
+.capture-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  align-items: start;
+  gap: clamp(18px, 3vw, 32px);
+}
+
+.capture-source,
+.capture-results {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.back-to-source {
+  display: none;
+  justify-self: start;
+}
+
+.privacy-note {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.capture-tip {
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+.capture-tip ol {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding-left: 22px;
+  color: var(--ink);
+}
+
+.capture-tip li::marker {
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
+/* ---------------------------------------------- recorder deck */
+
+.recorder-deck {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  border: 2px solid var(--ink);
+  border-radius: 22px;
+  padding: 22px 18px 20px;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+    var(--card);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.reels {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reel {
+  width: 46px;
+  height: 46px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--ink) 0 4px, transparent 5px),
+    conic-gradient(
+      var(--paper-2) 0 15%,
+      var(--card) 15% 33%,
+      var(--paper-2) 33% 48%,
+      var(--card) 48% 66%,
+      var(--paper-2) 66% 81%,
+      var(--card) 81%
+    );
+}
+
+.tape-window {
+  width: 74px;
+  height: 18px;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: linear-gradient(90deg, #5b4636 0 30%, transparent 30% 70%, #5b4636 70%);
+}
+
+.recorder-deck.is-live .reel {
+  animation: spin 2.4s linear infinite;
+}
+
+.star-mic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 104px;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  color: var(--on-accent);
+  background: var(--accent);
+  box-shadow: var(--print);
+  font-size: 2.6rem;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.star-mic::after {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.star-mic:hover:not(:disabled) {
+  transform: scale(1.04);
+}
+
+.star-mic.on {
+  background: var(--danger);
+}
+
+.star-mic.on::after {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  animation: ripple 1.6s ease-out infinite;
+}
+
+@keyframes ripple {
+  from {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+.level-meter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 44px;
+}
+
+.level-meter span {
+  width: 7px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transform: scaleY(0.08);
+  transition: transform 0.08s linear;
+}
+
+.recorder-deck:not(.is-live) .level-meter span {
+  background: var(--line-strong);
+}
+
+.rec-status {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.upload-link {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 12px;
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.upload-link svg {
+  grid-row: span 2;
+  color: var(--accent);
+  font-size: 1.6rem;
+}
+
+.upload-link small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.upload-link input,
+.paper-tray input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-link:hover,
+.upload-link:focus-within,
+.paper-tray:hover,
+.paper-tray:focus-within {
+  border-color: var(--ink);
+}
+
+.audio-ready {
+  gap: 12px;
+}
+
+.audio-ready audio {
+  width: 100%;
+}
+
+.ready-label {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.heard summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.heard p {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------- import */
+
+.source-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.source-tab {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  min-height: 70px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  padding: 8px 6px;
+  background: var(--card);
+  font-size: 0.85rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.source-tab svg {
+  color: var(--muted);
+  font-size: 1.5rem;
+}
+
+.source-tab:hover {
+  border-color: var(--ink);
+}
+
+.source-tab.active {
+  border-color: var(--ink);
+  background: var(--accent-soft);
+  box-shadow: var(--print);
+  transform: translate(-1px, -1px);
+}
+
+.source-tab.active svg {
+  color: var(--accent);
+}
+
+.source-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.paste-pad {
+  min-height: 220px;
+  border-color: var(--line-strong);
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 29px, color-mix(in srgb, var(--accent) 14%, transparent) 29px 30px) 0 9px,
+    var(--card);
+  line-height: 30px;
+}
+
+.paper-tray {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  overflow: hidden;
+  border: 2px dashed var(--line-strong);
+  border-bottom: 8px solid var(--line-strong);
+  border-radius: 20px 20px 14px 14px;
+  padding: 36px 18px 28px;
+  background: var(--paper-2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.paper-tray svg {
+  color: var(--accent);
+}
+
+.paper-tray small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tray-sheet {
+  position: absolute;
+  top: -80px;
+  left: 50%;
+  width: 120px;
+  height: 70px;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: var(--card);
+  transform: translateX(-50%) rotate(-4deg);
+  transition: top 0.3s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.paper-tray.is-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.paper-tray.is-over .tray-sheet {
+  top: -20px;
+}
+
+.link-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.link-field p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.yt-steps {
+  display: grid;
+  gap: 12px;
+}
+
+.yt-steps > .ghost-button {
+  justify-self: start;
+}
+
+.how-to {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 14px 36px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.extract-preview {
+  gap: 10px;
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.word-count {
+  flex: none;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--scribble);
+  color: #221d35;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.preview-label {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.preview-text {
+  max-height: 220px;
+  overflow: auto;
+  border-left: 4px solid var(--accent-border);
+  padding: 4px 12px;
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* --------------------------------------------- working steps */
+
+.working-panel {
+  justify-items: start;
+}
+
+.working-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.working-steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+}
+
+.working-steps li.done,
+.working-steps li.now {
+  color: var(--ink);
+}
+
+.step-dot {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  background: var(--line);
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+.working-steps li.done .step-dot {
+  background: var(--scribble);
+}
+
+.working-steps li.now .step-dot {
+  background: var(--accent);
+  animation: twinkle 1s ease-in-out infinite;
+}
+
+@keyframes twinkle {
+  50% {
+    opacity: 0.6;
+    transform: scale(0.75) rotate(20deg);
+  }
+}
+
+.limit-nudge {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 18px;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  padding: 18px 20px;
+  background:
+    radial-gradient(circle at 92% 20%, rgba(255, 255, 255, 0.35) 0 2px, transparent 3px),
+    radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.3) 0 1.5px, transparent 2.5px),
+    linear-gradient(135deg, #2b2650, #3d3470);
+  color: #f5efe1;
+  box-shadow: var(--print);
+}
+
+.limit-nudge h2 {
+  margin: 0 0 2px;
+  color: inherit;
+}
+
+.limit-nudge p {
+  margin: 0;
+  color: #ddd6f3;
+}
+
+.limit-nudge svg {
+  color: #f7c35c;
+}
+
+.limit-nudge .button-row {
+  grid-column: 1 / -1;
+}
+
+.limit-nudge .ghost-button {
+  color: #f5efe1;
+}
+
+/* -------------------------------------------------- workbench */
+
+.workbench {
+  display: grid;
+  gap: 16px;
+  border: 2px solid var(--ink);
+  border-radius: 20px;
+  padding: clamp(16px, 3vw, 24px);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.workbench h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.wb-title {
+  border-width: 0 0 2px;
+  border-radius: 0;
+  padding: 6px 2px;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 1.1rem + 1vw, 1.9rem);
+  font-weight: 650;
+}
+
+.wb-title:focus {
+  box-shadow: none;
+}
+
+.wb-notes {
+  min-height: 260px;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 25px, color-mix(in srgb, var(--accent) 12%, transparent) 25px 26px) 0 9px,
+    var(--card);
+  line-height: 26px;
+}
+
+.term-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.term-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 4px 2px 12px;
+  background: var(--accent-soft);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.term-chips button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.term-chips button:hover {
+  background: var(--card);
+}
+
+.card-tray {
+  display: grid;
+  gap: 10px;
+  border-top: 2px dashed var(--line);
+  padding-top: 16px;
+}
+
+.card-tray > p {
+  margin: 0;
+}
+
+.tray-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.tray-head svg {
+  color: var(--scribble);
+}
+
+.tray-count {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.mini-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mini-card {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  border: 2px solid var(--ink);
+  border-top: 8px solid var(--accent);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--print);
+  rotate: var(--tilt, 0deg);
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
+}
+
+.mini-card.tossed {
+  border-top-color: var(--line-strong);
+  box-shadow: none;
+  opacity: 0.5;
+  filter: grayscale(0.8);
+}
+
+.mini-card-face {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 0;
+  padding: 12px 14px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mini-q {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.mini-a {
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.mini-card-edit {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.mini-card-edit textarea {
+  min-height: 60px;
+}
+
+.mini-card-edit .small {
+  justify-self: start;
+}
+
+.mini-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 2px solid var(--ink);
+}
+
+.keep-button,
+.toss-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.keep-button {
+  border-right: 2px solid var(--ink);
+  border-bottom-left-radius: 10px;
+}
+
+.toss-button {
+  border-bottom-right-radius: 10px;
+}
+
+.keep-button.on {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.toss-button.on {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.tray-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wb-actions {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  padding: 10px;
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+
+.wb-save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reset-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+/* ---------------------------------------- focus, pause, notes */
+
+/* The real file inputs are invisible, so show the focus ring on their box. */
+.upload-link:has(input:focus-visible),
+.paper-tray:has(input:focus-visible) {
+  outline: 3px solid var(--scribble);
+  outline-offset: 2px;
+}
+
+.recorder-deck.is-paused .level-meter span {
+  background: var(--line-strong);
+  transform: scaleY(0.08) !important;
+}
+
+.recorder-deck.is-paused .star-mic.on::after {
+  animation: none;
+}
+
+.back-to-notes {
+  justify-self: start;
+}
+
+/* Keep focused fields clear of the sticky save bar. */
+html:has(.workbench) {
+  scroll-padding-bottom: 110px;
+}
+
+.workbench :is(input, textarea, button):focus-visible {
+  scroll-margin-bottom: 110px;
+}
+
+/* ------------------------------------------------- responsive */
+
+@media (max-width: 1099px) {
+  .capture-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 899px) {
+  .capture-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* After the notes are made, the results take over. The source is one tap away. */
+  .capture-source.collapsed > :not(.back-to-source) {
+    display: none;
+  }
+
+  .capture-source.collapsed .back-to-source {
+    display: inline-flex;
+  }
+
+  .capture-layout.has-results .capture-tip {
+    display: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .source-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .source-tab {
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    min-height: 54px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+
+  .star-mic {
+    width: 96px;
+    height: 96px;
+  }
+
+  .link-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mini-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wb-actions {
+    bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .wb-save {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  }
+
+  .wb-save > button {
+    min-height: 48px;
+    padding: 0 10px;
+    font-size: 0.9rem;
+    white-space: normal;
+    line-height: 1.15;
+  }
+
+  .wb-actions > .ghost-button {
+    min-height: 30px;
+    font-size: 0.85rem;
+  }
+
+  html:has(.workbench) {
+    scroll-padding-bottom: calc(var(--tabbar-h) + 150px + env(safe-area-inset-bottom));
+  }
+
+  .workbench :is(input, textarea, button):focus-visible {
+    scroll-margin-bottom: calc(var(--tabbar-h) + 150px + env(safe-area-inset-bottom));
+  }
+
+  .wb-actions > .ghost-button,
+  .reset-confirm {
+    justify-content: center;
+  }
+
+  .limit-nudge {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

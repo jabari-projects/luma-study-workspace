@@ -94,10 +94,12 @@ def _profile_lookup(user_ids: list[str]) -> dict[str, dict]:
 
 
 def _username_for(profile: Optional[dict], user_id: str, published_by: object = None) -> str:
-    if isinstance(published_by, str) and published_by.strip():
-        return published_by.strip()
+    # The owner's current username wins: a stored published_by may be stale
+    # (renamed account) or spoofed (rows published before the server set it).
     if profile and isinstance(profile.get("username"), str) and profile["username"].strip():
         return profile["username"]
+    if isinstance(published_by, str) and published_by.strip():
+        return published_by.strip()
     return f"student-{user_id[:8]}"
 
 
