@@ -14,7 +14,7 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const AUDIO_ACCEPT = "audio/*,.mp3,.m4a,.wav,.webm,.ogg"
 const BAR_COUNT = 14
 
-type Stage = "capture" | "working" | "review"
+type Stage = "capture" | "working" | "transcript" | "review"
 
 export function AudioToNotesPage() {
   const barsRef = useRef<HTMLDivElement>(null)
@@ -58,27 +58,45 @@ export function AudioToNotesPage() {
     setFile(chosen)
   }
 
-  const run = async () => {
+  // Step 1: turn the sound into words. The student checks and fixes them next.
+  const listen = async () => {
     if (!audioToSend) return
     setError(null)
     setLimit(null)
     setStage("working")
     setStep(0)
     try {
-      const heard = transcript || (await transcribeAudio(audioToSend.blob, audioToSend.filename))
+      const heard = await transcribeAudio(audioToSend.blob, audioToSend.filename)
       setTranscript(heard)
-      setStep(1)
-      const timer = window.setTimeout(() => setStep(2), 6000)
-      try {
-        setDraft(await makeNotes(heard, "audio", audioToSend.label))
-      } finally {
-        window.clearTimeout(timer)
-      }
-      setStage("review")
+      setStage("transcript")
     } catch (err: unknown) {
       setStage("capture")
       if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
       else setError(err instanceof Error ? err.message : "Something went wrong. Your recording is still here.")
+    }
+  }
+
+  // Step 2: make notes from the (possibly corrected) words.
+  const makeFromWords = async () => {
+    const words = transcript.trim()
+    if (!words) {
+      setError("There are no words to make notes from. Type some, or start over.")
+      return
+    }
+    setError(null)
+    setLimit(null)
+    setStage("working")
+    setStep(1)
+    const timer = window.setTimeout(() => setStep(2), 6000)
+    try {
+      setDraft(await makeNotes(words, "audio", audioToSend?.label ?? "Recording"))
+      setStage("review")
+    } catch (err: unknown) {
+      setStage("transcript")
+      if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
+      else setError(err instanceof Error ? err.message : "Something went wrong. Your words are still here.")
+    } finally {
+      window.clearTimeout(timer)
     }
   }
 
@@ -219,7 +237,7 @@ export function AudioToNotesPage() {
             </label>
           ) : null}
 
-          {audioToSend && !live && stage !== "working" && recorder.state !== "asking" ? (
+          {audioToSend && !live && stage !== "working" && stage !== "transcript" && recorder.state !== "asking" ? (
             <div className="audio-ready paper-panel">
               <p className="ready-label">{file ? `File: ${file.name}` : "Your recording"}</p>
               {recorder.recording && !file ? <audio controls src={recorder.recording.url} /> : null}
@@ -230,9 +248,15 @@ export function AudioToNotesPage() {
                 </details>
               ) : null}
               <div className="button-row">
-                <button type="button" className={draft ? "secondary-button" : "primary-button"} onClick={() => void run()}>
-                  {draft ? "Make new notes" : "Make my notes"}
-                </button>
+                {transcript ? (
+                  <button type="button" className={draft ? "secondary-button" : "primary-button"} onClick={() => setStage("transcript")}>
+                    Fix the words and make new notes
+                  </button>
+                ) : (
+                  <button type="button" className="primary-button" onClick={() => void listen()}>
+                    Turn it into words
+                  </button>
+                )}
                 <button type="button" className="ghost-button" onClick={startOver}>
                   Start over
                 </button>
@@ -249,6 +273,32 @@ export function AudioToNotesPage() {
         <div className="capture-results">
           {stage === "working" ? (
             <WorkingSteps steps={["Listening...", "Writing notes...", "Making cards..."]} current={step} />
+          ) : null}
+          {stage === "transcript" ? (
+            <section className="paper-panel transcript-editor" aria-labelledby="transcript-heading">
+              <h2 id="transcript-heading">Check the words</h2>
+              <p className="muted">
+                Fix names, numbers or anything we heard wrong. Your notes are made from these words.
+              </p>
+              <label>
+                What we heard
+                <textarea
+                  value={transcript}
+                  onChange={(event) => setTranscript(event.target.value)}
+                  rows={10}
+                  spellCheck
+                />
+              </label>
+              <div className="button-row">
+                <button type="button" className="primary-button" onClick={() => void makeFromWords()}>
+                  Make my notes
+                </button>
+                <button type="button" className="ghost-button" onClick={startOver}>
+                  Start over
+                </button>
+              </div>
+              <p className="field-hint">Free plan: making notes uses 1 notes turn.</p>
+            </section>
           ) : null}
           {stage === "review" && draft ? <NotesWorkbench draft={draft} onChange={setDraft} onStartOver={startOver} /> : null}
           {stage === "capture" && !draft ? (
