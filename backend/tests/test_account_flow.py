@@ -599,3 +599,14 @@ def test_codes_tickets_and_passwords_never_logged(web, db, sent_emails, clock, d
     verify(web, code2, body["ticket"])
     for secret in (code, code2, body["ticket"], "brand-new-pass", "new@example.com"):
         assert secret not in debug_logs.text, secret
+
+
+@pytest.mark.parametrize("address", ["Student.Name@icloud.com", "kid+school@me.com", "a.b@mac.com"])
+def test_icloud_addresses_sign_up_normally(web, db, sent_emails, clock, address):
+    body = start(web, email=address, username="icloud_user")
+    assert body["email"] == address.lower()
+    code = code_from_email(sent_emails[0]["html"])
+    assert sent_emails[0]["to"] == address.lower()
+    assert verify(web, code, body["ticket"], email=address).status_code == 200
+    # Apple addresses keep their dots and +tags (only Gmail dots are merged for the AI allowance).
+    assert ai_allowance.normalize_email(address).split("@")[0].count(".") == address.split("@")[0].split("+")[0].count(".")
