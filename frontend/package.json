@@ -7,17 +7,31 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mock-api": "node dev/mock-api.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "5.3.0",
+    "@fontsource-variable/fraunces": "5.3.0",
+    "@fontsource/gochi-hand": "5.3.0",
+    "@formkit/auto-animate": "0.10.0",
+    "@phosphor-icons/react": "2.1.10",
     "@supabase/supabase-js": "^2.101.1",
     "axios": "^1.14.0",
+    "canvas-confetti": "1.9.4",
+    "mammoth": "1.13.0",
+    "motion": "14.9.0",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.14.0"
+    "react-router-dom": "^7.14.0",
+    "rough-notation": "0.5.1",
+    "sonner": "2.0.8",
+    "ts-fsrs": "5.4.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@types/canvas-confetti": "1.9.0",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

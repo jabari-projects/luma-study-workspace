@@ -5,16 +5,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user_id
+from .publishing import apply_update_publish_rules, build_create_publish_fields, require_title_text
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 TABLE_NAME = "notes"
+STUDY_TYPE = "note"
 
 
 class NoteCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
     tags: list[str] = Field(default_factory=list)
+    # Accepted so the current frontend keeps working, but ignored: new items
+    # are always private and the server sets the publish metadata.
     is_public: bool = False
     published_at: Optional[str] = None
     published_by: Optional[str] = None
@@ -85,6 +89,7 @@ def _get_note_or_404(user_id: str, note_id: str) -> dict:
 
 @router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
 def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_user_id)):
+    require_title_text(payload.title)
     response = (
         get_supabase()
         .table(TABLE_NAME)
@@ -94,11 +99,7 @@ def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_u
                 "title": payload.title,
                 "content": payload.content,
                 "tags": payload.tags,
-                "is_public": payload.is_public,
-                "published_at": payload.published_at,
-                "published_by": payload.published_by,
-                "study_type": payload.study_type or "note",
-                "updated_at": payload.updated_at or datetime.utcnow().isoformat(),
+                **build_create_publish_fields(STUDY_TYPE),
             }
         )
         .execute()
@@ -129,11 +130,13 @@ def get_note(note_id: str, user_id: str = Depends(get_current_user_id)):
 
 @router.put("/{note_id}", response_model=NoteResponse)
 def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends(get_current_user_id)):
-    _get_note_or_404(user_id, note_id)
+    existing_row = _get_note_or_404(user_id, note_id)
 
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
+    require_title_text(updates.get("title"))
+    updates = apply_update_publish_rules(existing_row, updates, user_id=user_id, study_type=STUDY_TYPE)
 
     updates["updated_at"] = datetime.utcnow().isoformat()
     get_supabase().table(TABLE_NAME).update(updates).eq("id", note_id).eq("user_id", user_id).execute()

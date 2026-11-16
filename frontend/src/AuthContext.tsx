@@ -1,3 +1,4 @@
+import { AxiosError } from "axios"
 import {
   useCallback,
   useEffect,
@@ -14,7 +15,7 @@ import {
   signupWithBackend,
   writeStoredSession,
 } from "./api"
-import type { AuthContextValue, LoginInput, SignupInput } from "./auth"
+import type { AuthContextValue, LoginInput, SignupInput, VerifyEmailInput } from "./auth"
 import type { AuthSession, Profile, StoredAuthSession } from "./api"
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -69,8 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user: response.data,
           })
         }
-      } catch {
-        if (active) {
+      } catch (error: unknown) {
+        // Only forget the login when the server says it is no longer valid.
+        // A network hiccup or a server error keeps the student signed in.
+        const status = error instanceof AxiosError ? error.response?.status : undefined
+        if (active && (status === 401 || status === 403)) {
           persistSession(null)
         }
       } finally {
@@ -100,25 +104,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // The login token is valid even when profile hydration is unavailable.
       }
+      return response.data.user
     },
     [persistSession, refreshProfile],
   )
 
-  const signup = useCallback(
-    async (input: SignupInput) => {
-      const session = await signupWithBackend(input)
-      persistSession({
-        accessToken: session.access_token,
-        user: session.user,
-      })
+  // Signup no longer logs in: the account waits for the emailed code.
+  const signup = useCallback(async (input: SignupInput) => signupWithBackend(input), [])
 
-      try {
-        await refreshProfile()
-      } catch {
-        // The signup session is still useful if optional profile hydration fails.
-      }
+  const verifyEmail = useCallback(
+    async (input: VerifyEmailInput) => {
+      const response = await api.post<AuthSession>("/auth/verify-email", input)
+      persistSession({
+        accessToken: response.data.access_token,
+        user: { ...response.data.user, email_verified: true },
+      })
     },
-    [persistSession, refreshProfile],
+    [persistSession],
   )
 
   const logout = useCallback(() => {
@@ -147,11 +149,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(session?.accessToken),
       login,
       signup,
+      verifyEmail,
       logout,
       refreshProfile,
       setProfile,
     }),
-    [loading, login, logout, refreshProfile, session, setProfile, signup],
+    [loading, login, logout, refreshProfile, session, setProfile, signup, verifyEmail],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

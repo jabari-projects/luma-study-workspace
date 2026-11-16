@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react"
 
-import type { BasicUser, Profile } from "./api"
+import type { BasicUser, Profile, SignupPending } from "./api"
 
 export type SignupInput = {
   email: string
@@ -13,13 +13,24 @@ export type LoginInput = {
   password: string
 }
 
+export type VerifyEmailInput = {
+  code: string
+  /** Pending signup: the email and this browser's ticket. Logged in: leave both out. */
+  email?: string
+  ticket?: string
+}
+
 export type AuthContextValue = {
   user: Profile | BasicUser | null
   accessToken: string | null
   loading: boolean
   isAuthenticated: boolean
-  login: (input: LoginInput) => Promise<void>
-  signup: (input: SignupInput) => Promise<void>
+  /** Logs in and returns the user (check email_verified). */
+  login: (input: LoginInput) => Promise<BasicUser>
+  /** Starts an account. No session yet: the emailed code logs the user in. */
+  signup: (input: SignupInput) => Promise<SignupPending>
+  /** Checks an emailed code; on success the user is logged in and verified. */
+  verifyEmail: (input: VerifyEmailInput) => Promise<void>
   logout: () => void
   refreshProfile: () => Promise<void>
   setProfile: (profile: Profile) => void
