@@ -53,10 +53,7 @@ export function LimitNudge({ message, onClose }: { message: string; onClose: () 
         <p>{message} Your work is still here.</p>
       </div>
       <div className="button-row">
-        <Link className="primary-button small" to="/subscribe">
-          See Premium
-        </Link>
-        <button type="button" className="ghost-button small" onClick={onClose}>
+        <button type="button" className="primary-button small" onClick={onClose}>
           Okay
         </button>
       </div>

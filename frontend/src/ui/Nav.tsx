@@ -7,7 +7,6 @@ import {
   CalendarCheck,
   DownloadSimple,
   Cards,
-  Crown,
   GearSix,
   House,
   Image,
@@ -16,7 +15,6 @@ import {
   Microphone,
   Notebook,
   Plus,
-  Robot,
   SignOut,
   Article,
   X,
@@ -48,13 +46,11 @@ const navGroups: { title: string; items: NavItem[] }[] = [
     title: "Explore",
     items: [
       { to: "/search", label: "Search", icon: MagnifyingGlass },
-      { to: "/ai-tutor", label: "AI Tutor", icon: Robot },
     ],
   },
   {
     title: "You",
     items: [
-      { to: "/subscribe", label: "Subscription", icon: Crown },
       { to: "/settings", label: "Settings", icon: GearSix },
     ],
   },
@@ -64,7 +60,7 @@ const tabItems: NavItem[] = [
   { to: "/dashboard", label: "Today", icon: House },
   { to: "/flashcards", label: "Study", icon: Cards, match: ["/flashcards", "/quizzes", "/study-sessions"] },
   { to: "/search", label: "Search", icon: MagnifyingGlass },
-  { to: "/settings", label: "Me", icon: GearSix, match: ["/settings", "/subscribe"] },
+  { to: "/settings", label: "Me", icon: GearSix, match: ["/settings"] },
 ]
 
 const createItems: (NavItem & { hint: string })[] = [
@@ -75,7 +71,6 @@ const createItems: (NavItem & { hint: string })[] = [
   { to: "/import", label: "Import to notes", hint: "File, link or video", icon: DownloadSimple },
   { to: "/image-to-notes", label: "Image to notes", hint: "Snap a page", icon: Image },
   { to: "/study-sessions", label: "Study plan", hint: "Plan your study time", icon: CalendarCheck },
-  { to: "/ai-tutor", label: "Ask the tutor", hint: "Get help studying", icon: Robot },
   { to: "/quizzes", label: "Quiz", hint: "Test yourself", icon: ListChecks },
 ]
 

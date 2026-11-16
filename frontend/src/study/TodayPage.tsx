@@ -10,7 +10,7 @@ import {
   Notebook,
   Play,
   Plus,
-  Robot,
+  MagnifyingGlass,
   Sparkle,
 } from "@phosphor-icons/react"
 
@@ -31,7 +31,7 @@ const tools = [
   { to: "/summaries", title: "Summaries", text: "Save short versions of your lessons.", icon: Article, endpoint: "/summaries", tone: "sand" },
   { to: "/voice-input", title: "Voice to Notes", text: "Upload audio and turn it into text.", icon: Microphone, endpoint: null, tone: "lilac" },
   { to: "/import", title: "Import to Notes", text: "Turn a file, link, or video into notes.", icon: DownloadSimple, endpoint: null, tone: "sky" },
-  { to: "/ai-tutor", title: "AI Tutor", text: "Get help studying from your AI tutor.", icon: Robot, endpoint: null, tone: "ink" },
+  { to: "/search", title: "Search", text: "Find study sets other students shared.", icon: MagnifyingGlass, endpoint: null, tone: "ink" },
 ]
 
 function greeting(): string {

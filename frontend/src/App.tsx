@@ -24,11 +24,13 @@ import { AudioToNotesPage } from "./capture/AudioPage"
 import {
   ForgotPasswordPage,
   LoginPage,
+  AccountDeletedPage,
   ResetPasswordPage,
   SignupPage,
   VerifyEmailBanner,
   VerifyEmailPage,
 } from "./account/AccountPages"
+import { AdminReportsPage, ReportButton } from "./account/Reporting"
 import { ImportPage } from "./capture/ImportPage"
 
 type FieldKind = "text" | "textarea" | "tags" | "number"
@@ -457,12 +459,13 @@ function AppLayout() {
           <Route path="/voice-input" element={<AudioToNotesPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/audio-to-notes" element={<Navigate to="/voice-input" replace />} />
-          <Route path="/ai-tutor" element={<AiTutorPage />} />
-          <Route path="/transcripts" element={<Navigate to="/ai-tutor" replace />} />
+          <Route path="/ai-tutor" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/transcripts" element={<Navigate to="/dashboard" replace />} />
           <Route path="/study-session" element={<Navigate to="/study-sessions" replace />} />
           <Route path="/quiz" element={<Navigate to="/quizzes" replace />} />
-          <Route path="/subscribe" element={<SubscribePage />} />
+          <Route path="/subscribe" element={<Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin/reports" element={<AdminReportsPage />} />
           <Route path="/profile" element={<Navigate to="/settings" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
@@ -494,6 +497,7 @@ function RootRoutes() {
         }
       />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/account-deleted" element={<AccountDeletedPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
@@ -758,60 +762,6 @@ function ImageToNotesPage() {
   )
 }
 
-function AiTutorPage() {
-  const [message, setMessage] = useState("")
-  const [audioName, setAudioName] = useState("")
-  const [imageName, setImageName] = useState("")
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="Study help"
-        title="AI Tutor"
-        description="Get help studying from your AI tutor."
-      />
-      <section className="split-layout">
-        <form className="form-panel">
-          <h2>Chat</h2>
-          <label>
-            Message
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder="Ask about your notes..."
-            />
-          </label>
-          <button type="button" className="primary-button">
-            Send
-          </button>
-        </form>
-        <section className="form-panel">
-          <h2>Add More</h2>
-          <p className="muted">For now, your tutor uses your own notes. Ask for public notes if you want them.</p>
-          <label>
-            Voice
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={(event) => setAudioName(event.target.files?.[0]?.name ?? "")}
-            />
-          </label>
-          {audioName ? <p className="muted">Selected: {audioName}</p> : null}
-          <label>
-            Image
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => setImageName(event.target.files?.[0]?.name ?? "")}
-            />
-          </label>
-          {imageName ? <p className="muted">Selected: {imageName}</p> : null}
-        </section>
-      </section>
-    </>
-  )
-}
-
 function SearchPage() {
   const [activeTab, setActiveTab] = useState<"topics" | "users">("topics")
   const [query, setQuery] = useState("")
@@ -999,6 +949,7 @@ function PublicStudyCard({ item }: { item: PublicStudyItem }) {
           ))}
         </div>
       ) : null}
+      <ReportButton itemType={item.study_type} itemId={item.id} title={item.title} />
     </article>
   )
 }
@@ -1022,6 +973,15 @@ function SettingsPage() {
         <EmailSettingsForm key={`email-${settingsKey}`} profile={profile} setNotice={setNotice} />
         <ThemeSettingsForm key={`theme-${settingsKey}`} profile={profile} setNotice={setNotice} />
         <AccountHelpPanel profile={profile} setNotice={setNotice} />
+        {profile?.is_admin ? (
+          <section className="form-panel">
+            <h2>Reports</h2>
+            <p>Check public study sets that students reported.</p>
+            <Link className="secondary-button" to="/admin/reports">
+              Open the review queue
+            </Link>
+          </section>
+        ) : null}
         <DeleteAccountPanel setNotice={setNotice} />
       </section>
     </>
@@ -1227,9 +1187,9 @@ function DeleteAccountPanel({
 }: {
   setNotice: (notice: Notice | null) => void
 }) {
-  const { logout } = useAuth()
   const navigate = useNavigate()
   const [confirmText, setConfirmText] = useState("")
+  const [deleting, setDeleting] = useState(false)
 
   const deleteAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1240,63 +1200,53 @@ function DeleteAccountPanel({
       return
     }
 
+    setDeleting(true)
     try {
-      await api.delete("/me/account")
-      logout()
-      navigate("/", { replace: true })
+      const response = await api.delete<{ message?: string; retained?: string[] }>("/me/account")
+      // Show the result on a public page first, then forget the (now useless) session.
+      // The result page logs out once it's showing (logging out here would
+      // bounce this protected page to /login first).
+      navigate("/account-deleted", { replace: true, state: { kept: response.data.retained ?? [] } })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not delete account.") })
+    } finally {
+      setDeleting(false)
     }
   }
 
   return (
     <form className="form-panel danger-zone" onSubmit={deleteAccount}>
-      <h2>Delete Account</h2>
-      <p>This removes your account and study work.</p>
+      <h2>Delete account</h2>
+      <p>
+        This deletes your account and everything in it: notes, flashcards, summaries, study plans, your
+        picture and theme images. It can't be undone.
+      </p>
+      <details>
+        <summary>What stays after you delete?</summary>
+        <ul>
+          <li>If you paid for Premium, payment records stay with Stripe because tax law requires them.</li>
+          <li>Copies already sent to our AI helpers follow their own deletion rules.</li>
+          <li>Database backups age out on our hosting provider's schedule.</li>
+          <li>
+            A scrambled code made from your email (not the email itself) stays for a few days, so the free AI
+            limit can't be reset by making a new account.
+          </li>
+          <li>Reports you sent about public content stay for safety review, without your name.</li>
+        </ul>
+      </details>
       <label>
-        Type delete
-        <input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} />
+        Type delete to confirm
+        <input
+          value={confirmText}
+          autoComplete="off"
+          autoCapitalize="none"
+          onChange={(event) => setConfirmText(event.target.value)}
+        />
       </label>
-      <button className="danger-button" type="submit">
-        Delete account
+      <button className="danger-button" type="submit" disabled={deleting}>
+        {deleting ? "Deleting..." : "Delete my account"}
       </button>
     </form>
-  )
-}
-
-function SubscribePage() {
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const startCheckout = async () => {
-    setLoading(true)
-    setNotice(null)
-
-    try {
-      const response = await api.post<{ url: string }>("/api/create-checkout-session")
-      window.location.assign(response.data.url)
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not start checkout.") })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="Premium"
-        title="Subscription"
-        description="Get extra features and higher limits with Luma Premium."
-      />
-      <NoticeBanner notice={notice} />
-      <section className="form-panel">
-        <p>Press the button below to upgrade.</p>
-        <button className="primary-button" type="button" onClick={() => void startCheckout()} disabled={loading}>
-          {loading ? "Starting..." : "Upgrade"}
-        </button>
-      </section>
-    </>
   )
 }
 

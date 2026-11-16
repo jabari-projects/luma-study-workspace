@@ -47,6 +47,7 @@ from .passwords import (
 )
 from .rate_limits import SlidingWindowLimiter
 from .public_search import router as public_search_router
+from .reports import router as reports_router
 from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
@@ -398,6 +399,7 @@ app.include_router(summaries_router)
 app.include_router(transcripts_router)
 app.include_router(analytics_router)
 app.include_router(public_search_router)
+app.include_router(reports_router)
 app.include_router(capture_router)
 
 
@@ -619,6 +621,7 @@ class ProfileResponse(BaseModel):
     birthday: Optional[str] = None
     subscription_status: str = "free"
     email_verified: bool = False
+    is_admin: bool = False
 
 
 class UsernameUpdateRequest(BaseModel):
@@ -899,7 +902,7 @@ def build_profile_response(user_id: str):
 
     user_data_response = (
         supabase.table("users")
-        .select("email, username, email_verified")
+        .select("email, username, email_verified, role")
         .eq("id", user_id)
         .maybe_single()
         .execute()
@@ -922,6 +925,7 @@ def build_profile_response(user_id: str):
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
+        "is_admin": user_data.get("role") == "admin",
     }
 
 
@@ -2246,7 +2250,7 @@ def generate_notes(payload: GenerateNotesRequest, request: Request):
             not has_premium_subscription(ai_user["subscription_status"])
             and has_free_ai_daily_limit(ai_user["id"], "notes")
         ):
-            return JSONResponse(status_code=403, content={"error": "Upgrade to Premium"})
+            return JSONResponse(status_code=403, content={"error": "You made all your free notes for today. Come back tomorrow."})
 
         try:
             notes = generate_notes_with_ai(payload.image)
@@ -2334,7 +2338,7 @@ def transcribe_audio(
                 status_code=403,
                 content={
                     "error": "You used all your free recordings for today. "
-                    "Come back tomorrow or upgrade to Premium."
+                    "Come back tomorrow."
                 },
             )
 
@@ -2348,7 +2352,7 @@ def transcribe_audio(
                 status_code=403,
                 content={
                     "error": "You made all your free notes for today, so we saved your talk-to-text turn. "
-                    "Come back tomorrow or upgrade to Premium."
+                    "Come back tomorrow."
                 },
             )
 
@@ -2737,7 +2741,7 @@ def get_my_profile(user=Depends(get_current_user)):
 
     user_data_response = (
         supabase.table("users")
-        .select("email, username, email_verified")
+        .select("email, username, email_verified, role")
         .eq("id", user["id"])
         .maybe_single()
         .execute()
@@ -2761,6 +2765,7 @@ def get_my_profile(user=Depends(get_current_user)):
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
+        "is_admin": user_data.get("role") == "admin",
     }
 
 
@@ -2775,7 +2780,7 @@ def update_my_profile(payload: ProfileUpdateRequest, user=Depends(get_current_us
 
     user_data_response = (
         supabase.table("users")
-        .select("email, username, email_verified")
+        .select("email, username, email_verified, role")
         .eq("id", user["id"])
         .maybe_single()
         .execute()
@@ -2799,6 +2804,7 @@ def update_my_profile(payload: ProfileUpdateRequest, user=Depends(get_current_us
         "birthday": updated_profile.get("birthday"),
         "subscription_status": updated_profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
+        "is_admin": user_data.get("role") == "admin",
     }
 
 

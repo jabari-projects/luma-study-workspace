@@ -30,6 +30,7 @@ export type Profile = BasicUser & {
   birthday?: string | null
   subscription_status: string
   email_verified: boolean
+  is_admin?: boolean
 }
 
 export type AuthSession = {
