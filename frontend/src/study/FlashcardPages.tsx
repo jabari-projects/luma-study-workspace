@@ -675,11 +675,12 @@ function StudySession({
 
   return (
     <section className="study-room">
+      <h1 className="sr-only">Studying {deck.title || "your deck"}</h1>
       <header className="study-top">
         <Link className="icon-button" to={`/flashcards/${deck.id}`} aria-label="Stop studying">
           <ArrowLeft weight="bold" aria-hidden="true" />
         </Link>
-        <div className="progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+        <div className="progress-track" role="progressbar" aria-label="Cards done" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
           <span style={{ width: `${progress}%` }} />
         </div>
         <span className="study-count">{queue.length} left</span>

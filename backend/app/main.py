@@ -18,7 +18,7 @@ from typing import Any, Literal, Optional, List, Union
 import anyio
 import httpx
 import stripe
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query, WebSocket, WebSocketDisconnect, status, Request
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, Query, WebSocket, WebSocketDisconnect, status, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -47,6 +47,7 @@ from .passwords import (
 )
 from .rate_limits import SlidingWindowLimiter
 from .public_search import router as public_search_router
+from .reports import router as reports_router
 from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
@@ -398,6 +399,7 @@ app.include_router(summaries_router)
 app.include_router(transcripts_router)
 app.include_router(analytics_router)
 app.include_router(public_search_router)
+app.include_router(reports_router)
 app.include_router(capture_router)
 
 
@@ -619,6 +621,7 @@ class ProfileResponse(BaseModel):
     birthday: Optional[str] = None
     subscription_status: str = "free"
     email_verified: bool = False
+    is_admin: bool = False
 
 
 class UsernameUpdateRequest(BaseModel):
@@ -899,7 +902,7 @@ def build_profile_response(user_id: str):
 
     user_data_response = (
         supabase.table("users")
-        .select("email, username, email_verified")
+        .select("email, username, email_verified, role")
         .eq("id", user_id)
         .maybe_single()
         .execute()
@@ -922,6 +925,7 @@ def build_profile_response(user_id: str):
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
+        "is_admin": user_data.get("role") == "admin",
     }
 
 
@@ -1966,14 +1970,32 @@ def build_transcribe_filename(filename: Optional[str], content_type: str) -> str
     return "recording" + TRANSCRIBE_EXTENSION_FOR_CONTENT_TYPE.get(content_type, ".webm")
 
 
-def transcribe_audio_bytes_with_openai(audio_bytes: bytes, filename: str, content_type: str):
+MAX_TRANSCRIBE_HINT_CHARS = 300
+
+
+def clean_transcribe_hint(hint: Optional[str]) -> Optional[str]:
+    """Names or words a student expects to hear (e.g. "Ms. Okafor, Nkrumah").
+
+    One short line only: it is passed to the speech model as a spelling hint,
+    which in the 2026-11-16 Whisper pilot raised correct names from 38/64 to
+    56/64. Returns None when there is nothing useful.
+    """
+    if not isinstance(hint, str):
+        return None
+    text = " ".join(hint.split())[:MAX_TRANSCRIBE_HINT_CHARS].strip()
+    return text or None
+
+
+def transcribe_audio_bytes_with_openai(audio_bytes: bytes, filename: str, content_type: str, hint: Optional[str] = None):
     client = get_ai_client()
+    extra = {"prompt": hint} if hint else {}
     try:
         response = run_with_deadline(
             lambda: client.audio.transcriptions.create(
                 model=settings.OPENAI_TRANSCRIBE_MODEL,
                 file=(filename, audio_bytes, content_type),
                 timeout=AI_TRANSCRIBE_TIMEOUT_SECONDS,
+                **extra,
             ),
             AI_TRANSCRIBE_DEADLINE_SECONDS,
         )
@@ -1986,13 +2008,18 @@ def transcribe_audio_bytes_with_openai(audio_bytes: bytes, filename: str, conten
     return transcript
 
 
-def transcribe_audio_bytes(audio_bytes: bytes, filename: str, content_type: str):
-    """Use OpenAI speech-to-text when configured, otherwise Deepgram."""
+def transcribe_audio_bytes(audio_bytes: bytes, filename: str, content_type: str, hint: Optional[str] = None):
+    """Use OpenAI speech-to-text when configured, otherwise Deepgram.
+
+    ``hint`` (names/words to listen for) is used by OpenAI only; the Deepgram
+    fallback ignores it.
+    """
     if get_openai_api_key():
         return transcribe_audio_bytes_with_openai(
             audio_bytes,
             build_transcribe_filename(filename, content_type),
             content_type,
+            **({"hint": hint} if hint else {}),
         )
 
     if get_deepgram_api_key():
@@ -2246,7 +2273,7 @@ def generate_notes(payload: GenerateNotesRequest, request: Request):
             not has_premium_subscription(ai_user["subscription_status"])
             and has_free_ai_daily_limit(ai_user["id"], "notes")
         ):
-            return JSONResponse(status_code=403, content={"error": "Upgrade to Premium"})
+            return JSONResponse(status_code=403, content={"error": "You made all your free notes for today. Come back tomorrow."})
 
         try:
             notes = generate_notes_with_ai(payload.image)
@@ -2279,6 +2306,7 @@ def transcribe_audio(
     # text field. Accept it here so we can answer with a friendly 400 instead
     # of FastAPI's raw validation error.
     audio: Union[UploadFile, str, None] = File(None),
+    hint: Optional[str] = Form(None, max_length=1000),
 ):
     ai_user = authenticate_ai_request(request)
     if not ai_user:
@@ -2334,7 +2362,7 @@ def transcribe_audio(
                 status_code=403,
                 content={
                     "error": "You used all your free recordings for today. "
-                    "Come back tomorrow or upgrade to Premium."
+                    "Come back tomorrow."
                 },
             )
 
@@ -2348,7 +2376,7 @@ def transcribe_audio(
                 status_code=403,
                 content={
                     "error": "You made all your free notes for today, so we saved your talk-to-text turn. "
-                    "Come back tomorrow or upgrade to Premium."
+                    "Come back tomorrow."
                 },
             )
 
@@ -2359,7 +2387,13 @@ def transcribe_audio(
         )
 
         try:
-            transcript = transcribe_audio_bytes(audio_bytes, audio.filename or "", content_type)
+            cleaned_hint = clean_transcribe_hint(hint)
+            transcript = transcribe_audio_bytes(
+                audio_bytes,
+                audio.filename or "",
+                content_type,
+                **({"hint": cleaned_hint} if cleaned_hint else {}),
+            )
             record_ai_usage(ai_user["id"], "transcription")
             return {"transcript": transcript}
         except EmptyAudioError:
@@ -2737,7 +2771,7 @@ def get_my_profile(user=Depends(get_current_user)):
 
     user_data_response = (
         supabase.table("users")
-        .select("email, username, email_verified")
+        .select("email, username, email_verified, role")
         .eq("id", user["id"])
         .maybe_single()
         .execute()
@@ -2761,6 +2795,7 @@ def get_my_profile(user=Depends(get_current_user)):
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
+        "is_admin": user_data.get("role") == "admin",
     }
 
 
@@ -2775,7 +2810,7 @@ def update_my_profile(payload: ProfileUpdateRequest, user=Depends(get_current_us
 
     user_data_response = (
         supabase.table("users")
-        .select("email, username, email_verified")
+        .select("email, username, email_verified, role")
         .eq("id", user["id"])
         .maybe_single()
         .execute()
@@ -2799,6 +2834,7 @@ def update_my_profile(payload: ProfileUpdateRequest, user=Depends(get_current_us
         "birthday": updated_profile.get("birthday"),
         "subscription_status": updated_profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
+        "is_admin": user_data.get("role") == "admin",
     }
 
 

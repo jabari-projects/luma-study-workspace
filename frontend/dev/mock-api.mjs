@@ -20,6 +20,7 @@ const accounts = new Map() // email -> account
 const sessions = new Map() // token -> account id
 const resetTokens = new Map() // token -> { id, expires }
 const pending = new Map() // signup ticket -> { email, username, password, code } (no account yet)
+const reports = [] // fake review queue
 function addAccount(email, username, password, verified, id = randomUUID()) {
   const account = { id, email, username, password, email_verified: verified, code: null, lastSent: 0, version: 1 }
   accounts.set(email, account)
@@ -195,6 +196,46 @@ http
       return send(res, 200, { success: true, message: "Password reset successful" })
     }
 
+    // --- public-content reports (fake review queue) ---
+    if (url.pathname === "/public/reports" && req.method === "POST") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Not authenticated" })
+      const item = decks.find((d) => d.id === body.item_id && d.is_public)
+      if (!item) return send(res, 404, { detail: "We couldn't find that public item. It may have been removed." })
+      if (!reports.some((r) => r.reporter === a.id && r.item_id === body.item_id && r.status === "open")) {
+        reports.unshift({ id: randomUUID(), item_type: body.item_type, item_id: body.item_id, item_title: item.title,
+          reason: body.reason, details: body.details || null, status: "open", created_at: new Date().toISOString(), reporter: a.id })
+        console.log(`[FAKE REPORT] ${body.reason} on ${item.title}`)
+      }
+      return send(res, 201, { success: true, message: "Thanks. A Luma helper will look at this." })
+    }
+    if (parts[0] === "admin" && parts[1] === "reports") {
+      const a = accountFor(req)
+      if (!a || a.id !== "u1") return send(res, 403, { detail: "Admin access required" })
+      const strip = ({ reporter, ...rest }) => rest
+      if (req.method === "PATCH" && parts[2]) {
+        const r = reports.find((x) => x.id === parts[2])
+        if (!r) return send(res, 404, { detail: "Report not found" })
+        r.status = body.status
+        r.reviewed_at = new Date().toISOString()
+        return send(res, 200, strip(r))
+      }
+      const status = url.searchParams.get("status") || "open"
+      return send(res, 200, reports.filter((r) => status === "all" || r.status === status).map(strip))
+    }
+    if (url.pathname === "/me/account" && req.method === "DELETE") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Not authenticated" })
+      accounts.delete(a.email)
+      return send(res, 200, { success: true, message: "Your account and study data were deleted.", retained: [
+        "If you paid for Premium, payment records stay with Stripe because tax law requires them",
+        "Copies already sent to our AI providers follow their own deletion rules",
+        "Database backups age out on our hosting provider's schedule",
+        "A scrambled code made from your email (not the email itself) stays for a few days, so the free AI limit can't be reset by deleting and making a new account",
+        "Reports you sent about public content stay for safety review, without your name",
+      ] })
+    }
+
     // --- capture endpoints (fake AI) ---
     if (["/api/transcribe", "/api/notes-from-text", "/api/generate-notes"].includes(url.pathname)) {
       const blocked = aiGate(req)
@@ -265,7 +306,7 @@ http
       if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
       if (a.id !== "u1") return send(res, 200, { ...publicUser(a), subscription_status: "free", theme_mode: "light" })
       if (req.method === "PUT") profile = { ...profile, ...body }
-      return send(res, 200, { ...profile, email_verified: a.email_verified })
+      return send(res, 200, { ...profile, email_verified: a.email_verified, is_admin: true })
     }
     if (parts[0] === "flashcards") {
       if (parts.length === 1 && req.method === "GET") return send(res, 200, decks.map(shape))

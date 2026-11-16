@@ -102,6 +102,7 @@ CHILD_TABLES = (
     "study_sessions",
     "summaries",
     "transcripts",
+    "email_codes",
 )
 
 # Older tables that exist in the live database but that today's code no longer uses.
@@ -126,6 +127,11 @@ SUCCESS_MESSAGE = "Your account and study data were deleted."
 RETAINED_PAYMENTS = "If you paid for Premium, payment records stay with Stripe because tax law requires them"
 RETAINED_AI = "Copies already sent to our AI providers follow their own deletion rules"
 RETAINED_BACKUPS = "Database backups age out on our hosting provider's schedule"
+RETAINED_ALLOWANCE = (
+    "A scrambled code made from your email (not the email itself) stays for a few days, "
+    "so the free AI limit can't be reset by deleting and making a new account"
+)
+RETAINED_REPORTS = "Reports you sent about public content stay for safety review, without your name"
 
 
 @dataclass
@@ -169,7 +175,7 @@ class DeletionReport:
 
     @property
     def retained(self) -> list[str]:
-        return [RETAINED_PAYMENTS, RETAINED_AI, RETAINED_BACKUPS]
+        return [RETAINED_PAYMENTS, RETAINED_AI, RETAINED_BACKUPS, RETAINED_ALLOWANCE, RETAINED_REPORTS]
 
 
 class _StepFailed(Exception):
@@ -420,6 +426,40 @@ def step_delete_rows(user_id: str, deps: DeletionDeps, table: str, column: str =
     return StepResult(name, DELETED if count else NOTHING_FOUND, count=count)
 
 
+def step_delete_pending_signups(user_id: str, deps: DeletionDeps) -> StepResult:
+    """Remove unfinished signups for this account's email (they hold a password hash)."""
+    name = "table_email_codes_pending"
+    user = _load_user(deps.db, user_id)
+    email = str((user or {}).get("email") or "").strip().lower()
+    if not email:
+        return StepResult(name, NOTHING_FOUND)
+    try:
+        response = (
+            deps.db.table("email_codes").delete().eq("email", email).eq("purpose", "signup").execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        if _is_missing_table(exc):
+            return StepResult(name, NOTHING_FOUND, reason="table not present")
+        raise
+    count = len(_rows(response))
+    return StepResult(name, DELETED if count else NOTHING_FOUND, count=count)
+
+
+def step_anonymize_reports(user_id: str, deps: DeletionDeps) -> StepResult:
+    """Keep reports about public content for review, but drop who sent them."""
+    name = "content_reports_reporter"
+    try:
+        response = (
+            deps.db.table("content_reports").update({"reporter_id": None}).eq("reporter_id", user_id).execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        if _is_missing_table(exc):
+            return StepResult(name, NOTHING_FOUND, reason="table not present")
+        raise
+    count = len(_rows(response))
+    return StepResult(name, ANONYMIZED if count else NOTHING_FOUND, count=count)
+
+
 def step_delete_legacy_subscriptions(user_id: str, deps: DeletionDeps) -> StepResult:
     """Remove this user's rows from the old public.subscriptions table.
 
@@ -491,6 +531,8 @@ def delete_account_data(user_id: str, deps: DeletionDeps) -> DeletionReport:
     for bucket, template in STORAGE_PREFIXES:
         plan.append((f"storage_{bucket}", lambda b=bucket, t=template: step_remove_storage(uid, deps, b, t)))
     plan.append(("notifications_actor", lambda: step_anonymize_actor(uid, deps)))
+    plan.append(("table_email_codes_pending", lambda: step_delete_pending_signups(uid, deps)))
+    plan.append(("content_reports_reporter", lambda: step_anonymize_reports(uid, deps)))
     for table in CHILD_TABLES:
         plan.append((f"table_{table}", lambda t=table: step_delete_rows(uid, deps, t)))
     for table in LEGACY_TOKEN_TABLES:

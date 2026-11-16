@@ -789,3 +789,37 @@ export function VerifyEmailBanner() {
     </div>
   )
 }
+
+/* --------------------------------------------------------- after deleting */
+
+export function AccountDeletedPage() {
+  const location = useLocation()
+  const { logout } = useAuth()
+  useEffect(() => {
+    // The account no longer exists, so its session is useless now.
+    logout()
+  }, [logout])
+  const kept = ((location.state as { kept?: string[] } | null)?.kept ?? []).filter(Boolean)
+  return (
+    <AuthShell
+      title="Your account is deleted"
+      intro="Your account, notes, cards, summaries, study plans and uploads are gone."
+      footer={
+        <p>
+          <Link to="/">Go to the start page</Link>
+        </p>
+      }
+    >
+      {kept.length ? (
+        <section className="form-panel auth-form" aria-labelledby="kept-heading">
+          <h2 id="kept-heading">A few records stay, and here is why</h2>
+          <ul>
+            {kept.map((line) => (
+              <li key={line}>{line}.</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </AuthShell>
+  )
+}

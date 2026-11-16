@@ -41,7 +41,7 @@ LOGIN_AGAIN_MESSAGE = "Please log in again."
 SLOW_DOWN_MESSAGE = "You're going too fast. Wait a minute, then try again."
 TOO_FEW_WORDS_MESSAGE = "We need a few more words to make notes."
 DAILY_LIMIT_MESSAGE = (
-    "You made all your free notes for today. Come back tomorrow or upgrade to Premium."
+    "You made all your free notes for today. Come back tomorrow."
 )
 NOTES_UNAVAILABLE_MESSAGE = "Making notes is not working right now. Try again later."
 NOTES_FAILED_MESSAGE = "We couldn't make notes this time. Try again."

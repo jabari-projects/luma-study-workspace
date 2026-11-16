@@ -118,7 +118,7 @@ def test_notes_from_text_daily_limit(client, monkeypatch):
     res = client.post("/api/notes-from-text", json={"text": LONG_TEXT, "source_kind": "paste"})
     assert res.status_code == 403
     assert res.json() == {
-        "error": "You made all your free notes for today. Come back tomorrow or upgrade to Premium."
+        "error": "You made all your free notes for today. Come back tomorrow."
     }
 
 
