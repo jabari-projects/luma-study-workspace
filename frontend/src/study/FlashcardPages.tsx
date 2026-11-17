@@ -380,7 +380,12 @@ export function DeckEditorPage() {
     <>
       <PageHeader
         eyebrow={isNew ? "New deck" : "Edit deck"}
-        title={isNew ? "Make a deck" : "Edit your deck"}
+        title={
+          <>
+            {isNew ? "Make a " : "Edit your "}
+            <Scribble type="underline">deck</Scribble>
+          </>
+        }
         description="Question on the front. Answer on the back."
         actions={
           <Link className="ghost-button" to={isNew ? "/flashcards" : `/flashcards/${itemId}`}>
@@ -390,7 +395,7 @@ export function DeckEditorPage() {
       />
       <NoticeBanner notice={!isNew && error ? { type: "error", text: error } : notice} />
       <form className="deck-editor" onSubmit={save}>
-        <section className="paper-panel editor-head">
+        <section className="editor-head">
           <label>
             Title
             <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" maxLength={200} />
@@ -447,7 +452,7 @@ export function DeckEditorPage() {
         </div>
 
         {pasteOpen ? (
-          <section className="paper-panel paste-panel">
+          <section className="ruled-block paste-panel">
             <label>
               One card per line, like <code>Question - Answer</code>
               <textarea

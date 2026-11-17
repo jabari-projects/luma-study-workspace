@@ -179,8 +179,9 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
       </header>
       <NoticeBanner notice={notice} />
 
-      <div className="note-layout">
-        <article className="note-sheet" aria-label={title}>
+      {/* The note on a sheet of paper, and a quiet margin beside it for studying it. */}
+      <div className="with-margin note-layout">
+        <article className="sheet-note note-sheet" aria-label={title}>
           {content.trim() ? <NoteMarkdown source={content} /> : <p className="muted">This note is empty.</p>}
           {Array.isArray(item.tags) && item.tags.length > 0 ? (
             <p className="tag-row">
@@ -191,7 +192,7 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
           ) : null}
         </article>
 
-        <aside className="note-study paper-panel" aria-labelledby="study-this">
+        <aside className="margin note-study" aria-labelledby="study-this">
           <h2 id="study-this">
             <Cards weight="duotone" aria-hidden="true" /> Study this {kindLabel.toLowerCase()}
           </h2>

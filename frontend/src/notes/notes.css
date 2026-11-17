@@ -1,22 +1,11 @@
-/* Note pages: a clean sheet of paper plus a "study this" side panel. */
+/* Note pages: the note on a sheet of paper (.sheet-note) in the main column, and a quiet
+   "study this" margin beside it from 1100px (.with-margin). */
 
-.note-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
-  align-items: start;
-  gap: clamp(18px, 3vw, 32px);
-}
-
-.note-sheet {
-  position: relative;
+/* Plain card paper with the red margin line. The text has its own rhythm, so no ruled lines. */
+.sheet-note.note-sheet {
   min-width: 0;
-  border: 2px solid var(--ink);
-  border-radius: 18px;
-  padding: clamp(20px, 4vw, 40px) clamp(18px, 4vw, 44px) clamp(20px, 4vw, 36px) clamp(30px, 5vw, 60px);
-  background:
-    linear-gradient(90deg, transparent calc(clamp(18px, 3vw, 40px) - 1px), color-mix(in srgb, var(--danger) 30%, transparent) calc(clamp(18px, 3vw, 40px) - 1px) clamp(18px, 3vw, 40px), transparent clamp(18px, 3vw, 40px)),
-    var(--card);
-  box-shadow: 6px 6px 0 var(--ink);
+  max-width: none;
+  background: var(--card);
 }
 
 .note-body {
@@ -87,9 +76,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   overflow: hidden;
-  border: 2px solid var(--ink);
-  border-top: 6px solid var(--accent);
-  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
 }
 
 .note-card-q,
@@ -102,7 +90,7 @@
 }
 
 .note-card-a {
-  border-left: 2px dashed var(--line-strong);
+  border-left: 1px dashed var(--line-strong);
   background: var(--accent-soft);
 }
 
@@ -111,18 +99,19 @@
 }
 
 .note-study {
-  position: sticky;
-  top: 24px;
+  display: grid;
+  align-content: start;
   gap: 12px;
-  /* Stay clear of the floating Publish button at the bottom of the screen. */
-  max-height: calc(100vh - 130px);
-  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
 }
 
 .note-study h2 {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
+  font-size: 1.15rem;
 }
 
 .note-study h2 svg {
@@ -137,16 +126,17 @@
   list-style: none;
 }
 
+/* Small index cards: a thin line and a soft shadow. */
 .found-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
-  border: 2px solid var(--ink);
-  border-top: 6px solid var(--accent);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   padding: 8px 8px 8px 12px;
   background: var(--card);
+  box-shadow: var(--shadow-sheet);
   rotate: var(--tilt, 0deg);
   transition:
     opacity 0.2s ease,
@@ -154,7 +144,7 @@
 }
 
 .found-card.tossed {
-  border-top-color: var(--line-strong);
+  box-shadow: none;
   opacity: 0.55;
   filter: grayscale(0.8);
 }
@@ -215,15 +205,19 @@
   text-align: center;
 }
 
-@media (max-width: 899px) {
-  .note-layout {
-    grid-template-columns: minmax(0, 1fr);
+/* Wide screens: the margin stays in view and scrolls on its own, clear of the Publish button. */
+@media (min-width: 1100px) {
+  .note-layout > .note-study {
+    max-height: calc(100vh - 130px);
+    overflow-y: auto;
+    border-top: 0;
+    padding-top: 0;
+    padding-bottom: 8px;
   }
+}
 
+@media (max-width: 1099px) {
   .note-study {
-    position: static;
-    max-height: none;
-    overflow: visible;
     margin-bottom: 72px;
   }
 }
@@ -238,9 +232,6 @@
     border-top: 2px dashed var(--line-strong);
   }
 
-  .note-sheet {
-    box-shadow: 4px 4px 0 var(--ink);
-  }
 }
 
 /* =======================================================================

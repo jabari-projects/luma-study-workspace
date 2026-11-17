@@ -5,6 +5,7 @@ import { Flag } from "@phosphor-icons/react"
 import { api, getErrorMessage } from "../api"
 import { NoticeBanner, PageHeader } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
+import { Scribble } from "../ui/Scribble"
 
 const REASONS: { value: string; label: string }[] = [
   { value: "bullying", label: "Mean or bullying" },
@@ -144,6 +145,26 @@ type Report = {
 
 const STATUS_FILTERS = ["open", "reviewing", "resolved", "dismissed", "all"] as const
 
+const STATUS_LABELS: Record<string, string> = {
+  open: "Open",
+  reviewing: "Reviewing",
+  resolved: "Resolved",
+  dismissed: "Dismissed",
+  all: "All",
+}
+
+const ITEM_LABELS: Record<string, string> = {
+  flashcards: "Flashcards",
+  note: "Note",
+  summary: "Summary",
+}
+
+/** A friendly, sentence-case name for a raw value from the API (never throws on an empty one). */
+function labelFrom(table: Record<string, string>, value: string | null | undefined, fallback: string): string {
+  if (!value) return fallback
+  return table[value] ?? value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
+}
+
 /** Review queue for Luma helpers (users with the admin role). */
 export function AdminReportsPage() {
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("open")
@@ -195,20 +216,20 @@ export function AdminReportsPage() {
   return (
     <>
       <PageHeader
-        title="Reports"
+        title={<Scribble type="underline">Reports</Scribble>}
         description="Check public study sets that students reported. Unpublishing is done on the item itself."
       />
       <NoticeBanner notice={notice} />
-      <div className="button-row" role="group" aria-label="Show reports">
+      <div className="choice-chips" role="group" aria-label="Show reports">
         {STATUS_FILTERS.map((option) => (
           <button
             key={option}
             type="button"
-            className={option === status ? "primary-button small" : "secondary-button small"}
+            className="chip"
             aria-pressed={option === status}
             onClick={() => setStatus(option)}
           >
-            {option[0].toUpperCase() + option.slice(1)}
+            {labelFrom(STATUS_LABELS, option, option)}
           </button>
         ))}
       </div>
@@ -219,22 +240,26 @@ export function AdminReportsPage() {
       ) : (
         <ul className="report-list">
           {reports.map((report) => (
-            <li key={report.id} className="form-panel">
-              <h2>{report.item_title || "Untitled study set"}</h2>
-              <p>
-                <strong>{REASONS.find((r) => r.value === report.reason)?.label ?? report.reason}</strong>
-                {" · "}
-                {report.item_type} · {report.status}
-                {report.created_at ? ` · ${new Date(report.created_at).toLocaleString()}` : ""}
-              </p>
-              {report.details ? <p>{report.details}</p> : null}
-              <div className="button-row">
+            <li key={report.id} className="report-row">
+              <div className="report-main">
+                <p className="report-kind">
+                  {labelFrom(ITEM_LABELS, report.item_type, "Study set")}
+                  {report.created_at ? ` · ${new Date(report.created_at).toLocaleString()}` : ""}
+                </p>
+                <h2>{report.item_title || "Untitled study set"}</h2>
+                <p className="report-reason">
+                  <strong>{REASONS.find((r) => r.value === report.reason)?.label ?? report.reason}</strong>
+                </p>
+                {report.details ? <p className="report-details">{report.details}</p> : null}
+              </div>
+              <span className={`status-chip ${report.status ?? ""}`}>{labelFrom(STATUS_LABELS, report.status, "Open")}</span>
+              <div className="button-row report-actions">
                 {report.status !== "reviewing" ? (
                   <button type="button" className="secondary-button small" onClick={() => void update(report, "reviewing")}>
                     Mark reviewing
                   </button>
                 ) : null}
-                <button type="button" className="primary-button small" onClick={() => void update(report, "resolved")}>
+                <button type="button" className="secondary-button small" onClick={() => void update(report, "resolved")}>
                   Resolved
                 </button>
                 <button type="button" className="ghost-button small" onClick={() => void update(report, "dismissed")}>

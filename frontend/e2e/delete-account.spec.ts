@@ -22,8 +22,9 @@ async function signUp(page: Page, email: string, username: string, adding = fals
   await expect(page).toHaveURL(/\/dashboard/)
 }
 
+/** The last Settings group: its heading names the region, and the delete form sits inside it. */
 function deletePanel(page: Page) {
-  return page.locator("form.danger-zone").filter({ has: page.getByRole("heading", { name: "Delete account" }) })
+  return page.getByRole("region", { name: "Delete account" }).filter({ has: page.locator("form.danger-zone") })
 }
 
 async function openDeletePanel(page: Page) {

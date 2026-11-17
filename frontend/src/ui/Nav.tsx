@@ -40,7 +40,7 @@ const NOTES: NavItem = {
   match: ["/notes", "/summaries"],
 }
 const SEARCH: NavItem = { to: "/search", label: "Search", icon: MagnifyingGlass, match: ["/search", "/discover", "/saved"] }
-const SETTINGS: NavItem = { to: "/settings", label: "Settings", icon: GearSix, match: ["/settings", "/admin"] }
+const SETTINGS: NavItem = { to: "/settings", label: "Settings", icon: GearSix, match: ["/settings"] }
 
 /**
  * Sidebar (desktop), icon rail (tablet) and phone bottom bar. Settings sits apart: at the

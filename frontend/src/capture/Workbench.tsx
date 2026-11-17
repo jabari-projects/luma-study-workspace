@@ -23,7 +23,7 @@ export function WorkingSteps({ steps, current }: { steps: string[]; current: num
     panel.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })
   }, [])
   return (
-    <section className="working-panel paper-panel" aria-busy="true" ref={panelRef} tabIndex={-1} aria-label="Making your notes">
+    <section className="working-panel" aria-busy="true" ref={panelRef} tabIndex={-1} aria-label="Making your notes">
       <ol className="working-steps">
         {steps.map((step, index) => (
           <li key={step} className={index < current ? "done" : index === current ? "now" : ""}>
@@ -187,135 +187,142 @@ export function NotesWorkbench({
         <p className="notice info">That was a lot of words! We used the first part.</p>
       ) : null}
 
-      <label className="wb-title-label">
-        Name your notes
-        <input
-          ref={titleRef}
-          className="wb-title"
-          value={draft.title}
-          maxLength={200}
-          onChange={(event) => update({ title: event.target.value })}
-        />
-      </label>
+      {/* The draft is a sheet of note paper; the cards sit beside it in the margin on wide screens. */}
+      <div className="with-margin wb-layout">
+        <div className="wb-main">
+          <label className="wb-title-label">
+            Name your notes
+            <input
+              ref={titleRef}
+              className="wb-title"
+              value={draft.title}
+              maxLength={200}
+              onChange={(event) => update({ title: event.target.value })}
+            />
+          </label>
 
-      {draft.summary ? (
-        <label>
-          Short version
-          <textarea className="wb-summary" rows={3} value={draft.summary} onChange={(event) => update({ summary: event.target.value })} />
-        </label>
-      ) : null}
+          {draft.summary ? (
+            <label>
+              Short version
+              <textarea className="wb-summary" rows={3} value={draft.summary} onChange={(event) => update({ summary: event.target.value })} />
+            </label>
+          ) : null}
 
-      <label>
-        Your notes (you can change them)
-        <textarea className="wb-notes" rows={12} value={draft.notes} onChange={(event) => update({ notes: event.target.value })} />
-      </label>
+          <div className="wb-notes-field">
+            <label htmlFor="wb-notes">Your notes (you can change them)</label>
+            <div className="sheet-note editor-sheet">
+              <textarea id="wb-notes" className="wb-notes" rows={12} value={draft.notes} onChange={(event) => update({ notes: event.target.value })} />
+            </div>
+          </div>
 
-      {draft.keyTerms.length > 0 ? (
-        <div className="wb-terms">
-          <h3>Key words</h3>
-          <ul className="term-chips">
-            {draft.keyTerms.map((term) => (
-              <li key={term}>
-                <span>{term}</span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${term}`}
-                  onClick={() => update({ keyTerms: draft.keyTerms.filter((item) => item !== term) })}
+          {draft.keyTerms.length > 0 ? (
+            <div className="wb-terms">
+              <h3>Key words</h3>
+              <ul className="term-chips">
+                {draft.keyTerms.map((term) => (
+                  <li key={term}>
+                    <span>{term}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${term}`}
+                      onClick={() => update({ keyTerms: draft.keyTerms.filter((item) => item !== term) })}
+                    >
+                      <X weight="bold" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <aside className="margin card-tray" aria-labelledby="tray-title">
+          <div className="tray-head">
+            <h3 id="tray-title">
+              <Sparkle weight="fill" aria-hidden="true" /> Cards we made for you
+            </h3>
+            <p className="tray-count" aria-live="polite">
+              Keeping {kept.length} of {draft.cards.length}
+            </p>
+          </div>
+          <p className="muted small-text">Keep the good ones. Toss the rest. Tap a card to change it.</p>
+          <ul className="mini-card-grid" role="list">
+            <AnimatePresence initial={false}>
+              {draft.cards.map((card, index) => (
+                <motion.li
+                  key={card.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className={card.keep ? "mini-card" : "mini-card tossed"}
+                  style={{ "--tilt": `${[-1, 0.8, -0.5, 1.2][index % 4]}deg` } as CSSProperties}
+                  aria-label={`Card ${index + 1} of ${draft.cards.length}, ${card.keep ? "kept" : "tossed"}`}
                 >
-                  <X weight="bold" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="card-tray">
-        <div className="tray-head">
-          <h3>
-            <Sparkle weight="fill" aria-hidden="true" /> Cards we made for you
-          </h3>
-          <p className="tray-count" aria-live="polite">
-            Keeping {kept.length} of {draft.cards.length}
-          </p>
-        </div>
-        <p className="muted small-text">Keep the good ones. Toss the rest. Tap a card to change it.</p>
-        <ul className="mini-card-grid" role="list">
-          <AnimatePresence initial={false}>
-            {draft.cards.map((card, index) => (
-              <motion.li
-                key={card.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className={card.keep ? "mini-card" : "mini-card tossed"}
-                style={{ "--tilt": `${[-1, 0.8, -0.5, 1.2][index % 4]}deg` } as CSSProperties}
-                aria-label={`Card ${index + 1} of ${draft.cards.length}, ${card.keep ? "kept" : "tossed"}`}
-              >
-                {editing === card.id ? (
-                  <div className="mini-card-edit">
-                    <label>
-                      Question
-                      <textarea rows={2} maxLength={4000} value={card.front} onChange={(event) => updateCard(card.id, { front: event.target.value })} />
-                    </label>
-                    <label>
-                      Answer
-                      <textarea rows={2} maxLength={4000} value={card.back} onChange={(event) => updateCard(card.id, { back: event.target.value })} />
-                    </label>
-                    <button type="button" className="secondary-button small" onClick={() => setEditing(null)}>
-                      Done
+                  {editing === card.id ? (
+                    <div className="mini-card-edit">
+                      <label>
+                        Question
+                        <textarea rows={2} maxLength={4000} value={card.front} onChange={(event) => updateCard(card.id, { front: event.target.value })} />
+                      </label>
+                      <label>
+                        Answer
+                        <textarea rows={2} maxLength={4000} value={card.back} onChange={(event) => updateCard(card.id, { back: event.target.value })} />
+                      </label>
+                      <button type="button" className="secondary-button small" onClick={() => setEditing(null)}>
+                        Done
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="mini-card-face" onClick={() => setEditing(card.id)}>
+                      {/* Named by the card's own words (WCAG 2.5.3); the hidden text says what a tap does. */}
+                      <span className="mini-q">{card.front || "Add a question"}</span>
+                      <span className="mini-a">{card.back || "Add an answer"}</span>
+                      <span className="sr-only">. Change card {index + 1}</span>
+                    </button>
+                  )}
+                  <div className="mini-card-actions">
+                    <button
+                      type="button"
+                      className={card.keep ? "keep-button on" : "keep-button"}
+                      aria-pressed={card.keep}
+                      onClick={() => updateCard(card.id, { keep: true })}
+                    >
+                      <Check weight="bold" aria-hidden="true" /> Keep
+                    </button>
+                    <button
+                      type="button"
+                      className={!card.keep ? "toss-button on" : "toss-button"}
+                      aria-pressed={!card.keep}
+                      onClick={() => updateCard(card.id, { keep: false })}
+                    >
+                      <X weight="bold" aria-hidden="true" /> Toss
                     </button>
                   </div>
-                ) : (
-                  <button type="button" className="mini-card-face" onClick={() => setEditing(card.id)}>
-                    {/* Named by the card's own words (WCAG 2.5.3); the hidden text says what a tap does. */}
-                    <span className="mini-q">{card.front || "Add a question"}</span>
-                    <span className="mini-a">{card.back || "Add an answer"}</span>
-                    <span className="sr-only">. Change card {index + 1}</span>
-                  </button>
-                )}
-                <div className="mini-card-actions">
-                  <button
-                    type="button"
-                    className={card.keep ? "keep-button on" : "keep-button"}
-                    aria-pressed={card.keep}
-                    onClick={() => updateCard(card.id, { keep: true })}
-                  >
-                    <Check weight="bold" aria-hidden="true" /> Keep
-                  </button>
-                  <button
-                    type="button"
-                    className={!card.keep ? "toss-button on" : "toss-button"}
-                    aria-pressed={!card.keep}
-                    onClick={() => updateCard(card.id, { keep: false })}
-                  >
-                    <X weight="bold" aria-hidden="true" /> Toss
-                  </button>
-                </div>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-        <div className="tray-actions">
-          <button
-            type="button"
-            className="ghost-button small"
-            onClick={() => {
-              const card = newDraftCard()
-              update({ cards: [...draft.cards, card] })
-              setEditing(card.id)
-            }}
-          >
-            <Plus weight="bold" aria-hidden="true" /> Add a card
-          </button>
-          <button type="button" className="ghost-button small" onClick={() => update({ cards: draft.cards.map((card) => ({ ...card, keep: true })) })}>
-            Keep all
-          </button>
-          <button type="button" className="ghost-button small" onClick={() => update({ cards: draft.cards.map((card) => ({ ...card, keep: false })) })}>
-            Toss all
-          </button>
-        </div>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+          <div className="tray-actions">
+            <button
+              type="button"
+              className="ghost-button small"
+              onClick={() => {
+                const card = newDraftCard()
+                update({ cards: [...draft.cards, card] })
+                setEditing(card.id)
+              }}
+            >
+              <Plus weight="bold" aria-hidden="true" /> Add a card
+            </button>
+            <button type="button" className="ghost-button small" onClick={() => update({ cards: draft.cards.map((card) => ({ ...card, keep: true })) })}>
+              Keep all
+            </button>
+            <button type="button" className="ghost-button small" onClick={() => update({ cards: draft.cards.map((card) => ({ ...card, keep: false })) })}>
+              Toss all
+            </button>
+          </div>
+        </aside>
       </div>
 
       <div className="wb-actions">

@@ -22,14 +22,15 @@ export function PageHeader({
   description?: ReactNode
   actions?: ReactNode
 }) {
+  // The "Margins" page head: a small kicker, the title, one short line, and actions on the right.
   return (
-    <header className="page-header">
+    <header className="page-head">
       <div>
-        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+        {eyebrow ? <p className="kicker">{eyebrow}</p> : null}
         <h1>{title}</h1>
-        {description ? <p>{description}</p> : null}
+        {description ? <p className="lede">{description}</p> : null}
       </div>
-      {actions ? <div className="page-actions">{actions}</div> : null}
+      {actions ? <div className="page-head-actions page-actions">{actions}</div> : null}
     </header>
   )
 }

@@ -239,7 +239,7 @@ export function AudioToNotesPage() {
           ) : null}
 
           {audioToSend && !live && stage !== "working" && stage !== "transcript" && recorder.state !== "asking" ? (
-            <div className="audio-ready paper-panel">
+            <div className="audio-ready ruled-block">
               <p className="ready-label">{file ? `File: ${file.name}` : "Your recording"}</p>
               {recorder.recording && !file ? <audio controls src={recorder.recording.url} /> : null}
               {transcript ? (
@@ -291,7 +291,7 @@ export function AudioToNotesPage() {
             <WorkingSteps steps={["Listening...", "Writing notes...", "Making cards..."]} current={step} />
           ) : null}
           {stage === "transcript" ? (
-            <section className="paper-panel transcript-editor" aria-labelledby="transcript-heading">
+            <section className="ruled-block transcript-editor" aria-labelledby="transcript-heading">
               <h2 id="transcript-heading">Check the words</h2>
               <p className="muted">
                 Fix names, numbers or anything we heard wrong. Your notes are made from these words.

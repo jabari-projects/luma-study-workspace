@@ -6,6 +6,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
 import { SEEDED, expectNoSeriousA11yIssues, loginAndWait, setThemeMode } from "./helpers"
+import { APP_PAGES, PUBLIC_PAGES } from "./pages"
 
 /** Waits until the page has its heading and any loading spinners are gone, so axe sees the real page. */
 async function settle(page: Page) {
@@ -42,12 +43,8 @@ for (const scheme of ["light", "dark"] as const) {
   test.describe(`public pages, OS color scheme ${scheme}`, () => {
     test.use({ colorScheme: scheme })
 
-    test("login, signup and forgot password have no serious axe issues", async ({ page }, info) => {
-      for (const [path, label] of [
-        ["/login", "login"],
-        ["/signup", "signup"],
-        ["/forgot-password", "forgot-password"],
-      ] as const) {
+    test("the start page and every sign-in page have no serious axe issues", async ({ page }, info) => {
+      for (const { path, label } of PUBLIC_PAGES) {
         await page.goto(path)
         await settle(page)
         // Public pages never get a theme (only the signed-in app does).
@@ -59,21 +56,9 @@ for (const scheme of ["light", "dark"] as const) {
 }
 
 // --------------------------------------------------------------- signed-in pages
-const appPages = [
-  { path: "/dashboard", label: "dashboard" },
-  { path: "/notes", label: "notes-hub" },
-  { path: "/notes/new", label: "new-note" },
-  { path: "/notes/import", label: "import" },
-  { path: "/notes/voice", label: "voice-to-notes" },
-  { path: "/flashcards", label: "study-hub" },
-  { path: "/quizzes", label: "quiz-setup" },
-  { path: "/study-sessions", label: "study-plans" },
-  { path: "/settings", label: "settings" },
-]
-
 for (const theme of ["light", "dark"] as const) {
   test.describe(`app pages, ${theme} theme`, () => {
-    for (const { path, label } of appPages) {
+    for (const { path, label } of APP_PAGES) {
       test(`${label} has no serious axe issues (${theme})`, async ({ page }, info) => {
         await setThemeMode(page, SEEDED.demo.email, theme)
         await loginAndWait(page, SEEDED.demo.email)
@@ -135,22 +120,25 @@ for (const theme of ["light", "dark"] as const) {
 test.describe("app pages, automatic theme (Chicago time)", () => {
   test.use({ timezoneId: "America/Chicago" })
 
+  // Every app page with Automatic on: at 8 pm the clock picks dark, at 10 am light.
   for (const { time, expected } of [
     { time: "2026-11-16T20:00:00-06:00", expected: "dark" },
     { time: "2026-11-16T10:00:00-06:00", expected: "light" },
   ] as const) {
-    test(`at ${time.slice(11, 16)} the page is ${expected} with no serious axe issues`, async ({ page }, info) => {
+    test(`every app page at ${time.slice(11, 16)} is ${expected} with no serious axe issues`, async ({ page }, info) => {
+      test.setTimeout(300_000)
       try {
         await setThemeMode(page, SEEDED.demo.email, "auto")
         await page.clock.setFixedTime(new Date(time))
         await loginAndWait(page, SEEDED.demo.email)
-        for (const path of ["/dashboard", "/settings"]) {
+        for (const { path, label } of APP_PAGES) {
           if (path !== "/dashboard") await page.goto(path)
           await expect(page.locator("html")).toHaveAttribute("data-theme", expected)
           await settle(page)
-          await expectNoSeriousA11yIssuesExceptKnown(page, `${path.slice(1)}-auto-${expected}`, info)
+          await expectNoSeriousA11yIssuesExceptKnown(page, `${label}-auto-${expected}`, info)
         }
         // Settings says which one Automatic shows right now.
+        await page.goto("/settings")
         await expect(page.getByText(`Right now: ${expected}.`)).toBeVisible()
       } finally {
         await setThemeMode(page, SEEDED.demo.email, "light")

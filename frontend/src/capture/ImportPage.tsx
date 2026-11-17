@@ -206,7 +206,7 @@ export function ImportPage() {
             </button>
           ) : null}
 
-          <div className="source-tabs" role="tablist" aria-label="Where is it from?" onKeyDown={onTabKey}>
+          <div className="tabs source-tabs" role="tablist" aria-label="Where is it from?" onKeyDown={onTabKey}>
             {tabs.map((item, index) => (
               <button
                 key={item.id}
@@ -219,7 +219,7 @@ export function ImportPage() {
                 aria-selected={tab === item.id}
                 aria-controls={tab === item.id ? `src-panel-${item.id}` : undefined}
                 tabIndex={tab === item.id ? 0 : -1}
-                className={tab === item.id ? "source-tab active" : "source-tab"}
+                className="tab source-tab"
                 onClick={() => chooseTab(item.id)}
                 disabled={stage === "working"}
               >
@@ -353,7 +353,7 @@ export function ImportPage() {
           ) : null}
 
           {source && stage !== "working" ? (
-            <section className="extract-preview paper-panel" aria-label="What we found">
+            <section className="extract-preview ruled-block" aria-label="What we found">
               <div className="preview-head">
                 <h2>What we found</h2>
                 <span className="word-count">{words.toLocaleString()} words</span>

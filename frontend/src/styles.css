@@ -479,27 +479,27 @@ input[type="radio"] {
 
 /* ----------------------------------------------------------------- panels */
 
-.paper-panel,
-.form-panel,
-.detail-panel,
-.status-panel,
-.output-block,
-.public-card {
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--card);
-  box-shadow: var(--print-soft);
-}
-
-.paper-panel,
-.form-panel {
+/* A sheet: soft card paper for a whole form that stands alone (the sign-in pages). */
+.sheet {
   display: grid;
   gap: 14px;
-  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: clamp(20px, 4vw, 28px);
+  background: var(--card);
+  box-shadow: var(--shadow-sheet);
 }
 
-.form-panel h2,
-.paper-panel h2 {
+/* A ruled block: a group of controls under a thin line. No box. */
+.ruled-block {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.sheet h2,
+.ruled-block h2 {
   margin-bottom: 0;
 }
 
@@ -532,6 +532,7 @@ input[type="radio"] {
 .loading-card,
 .status-panel {
   display: flex;
+  color: var(--muted);
   align-items: center;
   gap: 14px;
   padding: 20px;
@@ -777,19 +778,6 @@ input[type="radio"] {
 }
 
 /* ------------------------------------------------------------ page header */
-
-.page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 22px;
-}
-
-.page-header p:last-child {
-  margin-bottom: 0;
-  font-size: 1.05rem;
-}
 
 .page-actions {
   display: flex;
@@ -1671,7 +1659,9 @@ input[type="radio"] {
 }
 
 .editor-head {
+  display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
 }
 
 .card-editor-list {
@@ -2266,63 +2256,6 @@ input[type="radio"] {
 
 /* ------------------------------------------------------- detail screens */
 
-.detail-meta small,
-.detail-content small {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.detail-content p {
-  margin: 2px 0 0;
-  color: var(--ink);
-  white-space: pre-wrap;
-}
-
-.visibility-pill {
-  justify-self: start;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.visibility-pill.public {
-  color: var(--success);
-  background: var(--success-soft);
-}
-
-.visibility-pill.private {
-  color: var(--muted);
-  background: var(--paper-2);
-}
-
-.detail-panel {
-  display: grid;
-  gap: 18px;
-  padding: clamp(16px, 3vw, 26px);
-}
-
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 32px;
-  border-bottom: 2px dashed var(--line);
-  padding-bottom: 14px;
-}
-
-.detail-meta p {
-  margin: 2px 0 0;
-  color: var(--ink);
-}
-
-.detail-content {
-  display: grid;
-  gap: 16px;
-}
-
 .floating-publish {
   position: fixed;
   right: 24px;
@@ -2376,88 +2309,7 @@ input[type="radio"] {
   margin: 0;
 }
 
-.output-block {
-  margin-top: 16px;
-  padding: 18px;
-}
-
-.output-block pre {
-  margin: 0;
-  color: var(--ink);
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* search */
-
-.public-results,
-.public-section {
-  display: grid;
-  gap: 16px;
-}
-
-.public-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-}
-
-.public-card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-}
-
-.card-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.public-details {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 0.88rem;
-}
-
-.public-details dt {
-  color: var(--muted);
-}
-
-.public-details dd {
-  margin: 0;
-}
-
-.user-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* settings */
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  align-items: start;
-  gap: 18px;
-}
-
-.theme-panel {
-  min-height: 360px;
-  /* The three theme choices sit side by side only when the panel is wide enough. */
-  container-type: inline-size;
-}
+/* settings: see "Settings page" further down */
 
 .color-grid {
   display: grid;
@@ -2643,10 +2495,6 @@ input[type="radio"] {
   color: var(--ink);
 }
 
-.danger-zone {
-  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
-  background: var(--danger-soft);
-}
 
 /* -------------------------------------------------- landing + auth pages */
 
@@ -2661,24 +2509,6 @@ input[type="radio"] {
 
 .auth-screen > section {
   width: min(460px, 100%);
-}
-
-.auth-screen .form-panel {
-  border-color: var(--ink);
-  box-shadow: 6px 6px 0 var(--ink);
-}
-
-.auth-screen .page-header {
-  display: block;
-}
-
-.auth-link {
-  margin: 14px 0 0;
-  text-align: center;
-}
-
-.auth-link a {
-  font-weight: 700;
 }
 
 .hero {
@@ -3032,12 +2862,6 @@ input[type="radio"] {
     line-height: 1.3;
   }
 
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-    margin-bottom: 16px;
-  }
-
   .page-actions > * {
     flex: 1;
   }
@@ -3261,11 +3085,6 @@ input[type="radio"] {
   overflow-wrap: anywhere;
 }
 
-.auth-form {
-  border-color: var(--ink);
-  box-shadow: 6px 6px 0 var(--ink);
-}
-
 .auth-message-slot:empty {
   display: none;
 }
@@ -3451,8 +3270,8 @@ input[aria-invalid="true"] {
     padding-top: 20px;
   }
 
-  .auth-form {
-    box-shadow: 4px 4px 0 var(--ink);
+  .auth-form.sheet {
+    padding: 18px 16px;
   }
 }
 
@@ -3483,8 +3302,8 @@ input[aria-invalid="true"] {
 
 .report-list {
   display: grid;
-  gap: 14px;
-  margin: 16px 0 0;
+  margin: 18px 0 0;
+  border-top: 1px solid var(--line);
   padding: 0;
   list-style: none;
 }
@@ -3765,4 +3584,439 @@ button.account-row:hover {
   .account-sheet .account-list {
     padding-bottom: 4px;
   }
+}
+
+/* =======================================================================
+   Settings page: one column (max 760px). A strip of section links on top
+   (a sticky column on the left from 1100px), then each group with its name
+   and a short help line above its controls. Thin rules between groups, no boxes.
+   ======================================================================= */
+
+.settings-page {
+  max-width: 760px;
+}
+
+/* The section links draw the rule under the title (phones and tablets). */
+.settings-page > .page-head {
+  margin-bottom: 4px;
+  border-bottom: 0;
+  padding-bottom: 6px;
+}
+
+.settings-index {
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-index ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-index a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.settings-index a:hover {
+  color: var(--ink);
+  text-decoration: underline 2px var(--scribble);
+  text-underline-offset: 6px;
+}
+
+.settings-main {
+  min-width: 0;
+}
+
+.settings-main > .notice {
+  margin: 16px 0 0;
+}
+
+.settings-section {
+  display: grid;
+  gap: 16px 32px;
+  border-bottom: 1px solid var(--line);
+  padding: 28px 0;
+  scroll-margin-top: 24px;
+}
+
+.settings-section:last-child {
+  border-bottom: 0;
+}
+
+.settings-label h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+}
+
+.settings-label p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.settings-section.danger .settings-label h2 {
+  color: var(--danger);
+}
+
+.settings-body {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  min-width: 0;
+}
+
+.settings-body h3 {
+  margin: 0 0 4px;
+  font-size: 1.02rem;
+}
+
+.settings-row {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-row .field-hint {
+  margin: 0;
+}
+
+/* A field and its Save button on one line; the button drops below when there is no room. */
+.input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.input-row input {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+}
+
+.theme-form {
+  display: grid;
+  gap: 14px;
+  /* The three theme choices sit side by side only when there is room. */
+  container-type: inline-size;
+}
+
+.theme-form h3 + .color-preview-bar {
+  margin-top: -6px;
+}
+
+/* Delete account: last, in red, and with a red line instead of a box. */
+.danger-zone {
+  display: grid;
+  gap: 14px;
+  border-left: 3px solid var(--danger);
+  padding-left: 18px;
+}
+
+.danger-zone > p {
+  margin: 0;
+  color: var(--ink);
+}
+
+/* Accounts on this device: ruled rows instead of boxes. */
+.account-list.panel .account-row {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 12px 4px;
+  background: transparent;
+}
+
+.account-list.panel .account-row[aria-current="true"] {
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.account-list.panel .account-rows {
+  gap: 0;
+}
+
+/* Wide screens: the section links stay in view in a column of their own, beside the
+   settings (never on top of them), and each group puts its name beside its controls. */
+@media (min-width: 1100px) {
+  .settings-page {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 760px);
+    gap: 0 28px;
+    max-width: none;
+  }
+
+  .settings-page > .page-head {
+    grid-column: 1 / -1;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 22px;
+  }
+
+  .settings-index {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    border-bottom: 0;
+    padding-top: 22px;
+  }
+
+  .settings-index ul {
+    flex-direction: column;
+  }
+
+  .settings-index a {
+    min-height: 40px;
+    line-height: 1.25;
+  }
+
+  /* The index already names each group, so the group name and help sit above its
+     controls here instead of in a second column beside them. */
+}
+
+@media (max-width: 719px) {
+  .settings-index ul {
+    gap: 0 16px;
+  }
+
+  .settings-section {
+    padding: 22px 0;
+    scroll-margin-top: 72px;
+  }
+
+  .danger-zone {
+    padding-left: 14px;
+  }
+}
+
+/* =======================================================================
+   Search: a search line, two plain tabs, then ruled lists. One column on
+   phones and tablets, two borderless columns from 1100px. No card grid.
+   ======================================================================= */
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 760px;
+  margin: 0 0 14px;
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.search-field svg {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  color: var(--muted);
+  font-size: 1.15rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-field input {
+  min-height: 50px;
+  border-radius: 999px;
+  padding-left: 44px;
+}
+
+/* The browser's own clear (x) is blue; paint it in the muted ink so it matches the page. */
+.search-field input::-webkit-search-cancel-button {
+  width: 24px;
+  height: 24px;
+  margin: 0 2px 0 8px;
+  background-color: var(--muted);
+  cursor: pointer;
+  appearance: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+}
+
+.search-field input::-webkit-search-cancel-button:hover {
+  background-color: var(--ink);
+}
+
+.search-results {
+  display: grid;
+  gap: 30px;
+}
+
+.result-group,
+.person {
+  display: grid;
+  gap: 2px;
+}
+
+.result-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result-list > li {
+  border-bottom: 1px solid var(--line);
+}
+
+.result {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px 4px;
+}
+
+.result-kind {
+  margin: 0;
+  color: var(--star-ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.result h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+/* Two lines of the preview, like a peek. */
+.result-preview {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.result .report-control {
+  margin-top: 0;
+}
+
+.result .report-toggle {
+  margin-left: -12px;
+}
+
+.person-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.person-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.person-head p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 1100px) {
+  .result-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 40px;
+  }
+}
+
+/* =======================================================================
+   Review queue (admin): filter chips, then one ruled row per report with
+   a status chip. No boxes.
+   ======================================================================= */
+
+.report-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "main status"
+    "actions actions";
+  align-items: start;
+  gap: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 4px;
+}
+
+.report-main {
+  grid-area: main;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.report-main h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.report-main p {
+  margin: 0;
+}
+
+.report-kind {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.report-reason {
+  color: var(--ink);
+}
+
+.report-details {
+  max-width: var(--measure);
+}
+
+.report-actions {
+  grid-area: actions;
+}
+
+.status-chip {
+  grid-area: status;
+  border: 1.5px solid var(--field-border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-chip.open {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-chip.reviewing {
+  border-color: var(--star-ink);
+  color: var(--star-ink);
+}
+
+.status-chip.resolved {
+  border-color: var(--success);
+  color: var(--success);
 }
