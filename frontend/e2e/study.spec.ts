@@ -1,9 +1,9 @@
 // Study area: deck shelf, deck editor, deck page, flashcard study session,
-// quiz from a deck (/quizzes?deck=) and the Today page counts + week strip.
+// quiz from a deck (/quizzes?deck=) and the Home page next step + week strip.
 // Runs against the FAKE API only. Seeded decks are only read, never changed;
 // anything that changes data uses a brand-new made-up account.
 import AxeBuilder from "@axe-core/playwright"
-import { expect, test, type Page, type TestInfo } from "@playwright/test"
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test"
 
 import { PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait } from "./helpers"
 
@@ -52,13 +52,35 @@ async function createDeck(page: Page, title: string, cards: Card[], tags = "") {
   return page.url().split("/").pop()!
 }
 
+/** The thing at the center of this element is the element itself, so a tap lands on it. */
+async function expectNotCovered(target: Locator) {
+  await expect(target).toBeInViewport({ ratio: 1 })
+  const onTop = await target.evaluate((el) => {
+    const box = el.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+    return hit === el || el.contains(hit)
+  })
+  expect(onTop).toBe(true)
+}
+
+/** The two boxes on screen do not touch, e.g. a floating button and the row it could hide. */
+async function expectApart(a: Locator, b: Locator) {
+  const [boxA, boxB] = [await a.boundingBox(), await b.boundingBox()]
+  expect(boxA).not.toBeNull()
+  expect(boxB).not.toBeNull()
+  const overlap =
+    boxA!.x < boxB!.x + boxB!.width && boxB!.x < boxA!.x + boxA!.width && boxA!.y < boxB!.y + boxB!.height && boxB!.y < boxA!.y + boxA!.height
+  expect(overlap, JSON.stringify({ boxA, boxB })).toBe(false)
+}
+
 /** A number in the deck page's stat row, e.g. deckStat(page, "ready now"). */
 function deckStat(page: Page, label: string) {
   return page.locator(".deck-hero-info .stat-row > div").filter({ has: page.getByText(label, { exact: true }) }).locator("strong")
 }
 
+/** Home's slim week strip: seven stars and "N of 4 days this week". */
 function weekPanel(page: Page) {
-  return page.locator("section.glow-week")
+  return page.locator("section.week-strip")
 }
 
 /** The flashcard in the study room, showing its question / its answer. */
@@ -144,7 +166,7 @@ test.describe("make a deck (fresh account)", () => {
   test("empty shelf, editor checks, save, open, edit and delete", async ({ page }, info) => {
     await signUpFresh(page, info)
 
-    // Empty states on Today, Flashcards and Quizzes.
+    // Empty states on Home, Flashcards and Quizzes.
     await expect(page.getByRole("heading", { name: "Make your first flashcard deck" })).toBeVisible()
     await page.goto("/flashcards")
     await expect(page.getByRole("heading", { name: "No decks yet" })).toBeVisible()
@@ -225,6 +247,11 @@ test.describe("make a deck (fresh account)", () => {
     await page.getByRole("button", { name: "Keep it" }).click()
     await expect(page.getByRole("heading", { level: 1, name: "Made Up Facts v2" })).toBeVisible()
     await page.getByRole("button", { name: "Delete deck" }).click()
+    // Scrolled to the very bottom, nothing floats over "Yes, delete" (the Publish button, the tab bar).
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await expectNotCovered(page.getByRole("button", { name: "Yes, delete" }))
+    await expectNotCovered(page.getByRole("button", { name: "Keep it" }))
+    await expectApart(page.locator(".quiet-zone .button-row"), page.getByRole("button", { name: "Publish", exact: true }))
     await page.getByRole("button", { name: "Yes, delete" }).click()
     await expect(page).toHaveURL(/\/flashcards$/)
     await expect(page.getByRole("heading", { name: "No decks yet" })).toBeVisible()
@@ -236,12 +263,19 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await signUpFresh(page, info)
     const deckId = await createDeck(page, "Practice Deck", CARDS)
 
-    // Today before studying: the new deck is the next step; the week is empty.
+    // Home before studying: the new deck is the next step; the week is empty.
     await page.goto("/dashboard")
-    await expect(page.getByRole("heading", { level: 2, name: "Review 3 cards in “Practice Deck”" })).toBeVisible()
-    await expect(page.getByText("3 cards are ready across your decks", { exact: false })).toBeVisible()
-    await expect(page.getByText("3 flashcards in 1 deck")).toBeVisible()
-    await expect(weekPanel(page)).toContainText("0/4 done")
+    const nextStep = page.getByRole("region", { name: "Review 3 cards in “Practice Deck”" })
+    await expect(nextStep.getByRole("heading", { level: 2, name: "Review 3 cards in “Practice Deck”" })).toBeVisible()
+    await expect(nextStep.getByText("Up next")).toBeVisible()
+    // One deck, 3 cards at about 12 seconds each: rounds up to 1 minute.
+    const readyLine = nextStep.getByText("3 cards are ready. About 1 minute.")
+    await expect(readyLine).toBeVisible()
+    // "1 minute" never breaks across two lines.
+    expect(await readyLine.textContent()).toContain("1\u00a0minute")
+    await expect(weekPanel(page)).toHaveAccessibleName("This week")
+    await expect(weekPanel(page)).toContainText("0 of 4 days this week")
+    await expect(weekPanel(page)).not.toContainText("Goal reached")
     await expect(weekPanel(page).locator("li")).toHaveCount(7)
     await expect(weekPanel(page).locator("li.lit")).toHaveCount(0)
     await expect(weekPanel(page).locator("li.today")).toContainText("no study yet")
@@ -306,10 +340,10 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await expect(shelfCard.getByRole("link", { name: "Practice", exact: true })).toBeVisible()
     await expect(page.getByText("All caught up. Your cards are glowing!")).toBeVisible()
 
-    // Today after studying: caught up, today's star is lit with 4 reviews.
+    // Home after studying: caught up, today's star is lit with 4 reviews.
     await page.goto("/dashboard")
     await expect(page.getByRole("heading", { level: 2, name: "You're all caught up!" })).toBeVisible()
-    await expect(weekPanel(page)).toContainText("1/4 done")
+    await expect(weekPanel(page)).toContainText("1 of 4 days this week")
     await expect(weekPanel(page).locator("li.lit")).toHaveCount(1)
     await expect(weekPanel(page).locator("li.today")).toHaveClass(/lit/)
     await expect(weekPanel(page).locator("li.today")).toContainText("studied 4 cards")
@@ -360,10 +394,26 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await expect(page.locator(".score-ring")).toContainText("100%")
     await expect(page.getByText("You got every one right!")).toBeVisible()
 
-    // Today counts the quiz answers too: 4 reviews + 3 + 1 = 8, still one day.
+    // Home counts the quiz answers too: 4 reviews + 3 + 1 = 8, still one day.
     await page.goto("/dashboard")
     await expect(weekPanel(page).locator("li.today")).toContainText("studied 8 cards")
-    await expect(weekPanel(page)).toContainText("1/4 done")
+    await expect(weekPanel(page)).toContainText("1 of 4 days this week")
+  })
+
+  test("Up next counts every deck, and the time matches that count", async ({ page }, info) => {
+    await signUpFresh(page, info)
+    await createDeck(page, "Small Deck", CARDS)
+    await createDeck(page, "Bigger Deck", [...CARDS, { front: "Number of legs on a spider", back: "Eight" }])
+
+    await page.goto("/dashboard")
+    // The button studies the deck with the most cards ready...
+    const nextStep = page.getByRole("region", { name: "Review 4 cards in “Bigger Deck”" })
+    await expect(nextStep.getByRole("heading", { level: 2 })).toBeVisible()
+    // ...and the line counts all 7. 7 cards at about 12 seconds each is 84 seconds, so 2 minutes
+    // (the top deck alone would be 1 minute).
+    const readyLine = nextStep.getByText("7 cards are ready across your decks. About 2 minutes.")
+    await expect(readyLine).toBeVisible()
+    expect(await readyLine.textContent()).toContain("2\u00a0minutes")
   })
 
   test("quiz link preselects that deck; typed answers forgive small typos", async ({ page }) => {

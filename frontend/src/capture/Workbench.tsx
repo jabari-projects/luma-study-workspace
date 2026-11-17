@@ -100,7 +100,12 @@ export function NotesWorkbench({
   const kept = draft.cards.filter((card) => card.keep && card.front.trim() && card.back.trim())
 
   useEffect(() => {
-    titleRef.current?.focus()
+    const title = titleRef.current
+    if (!title) return
+    title.focus({ preventScroll: true })
+    // Show the focused title in the middle of the screen. This also stops the waiting
+    // panel's smooth scroll, which could leave the title under the phone's top bar.
+    title.scrollIntoView({ block: "center" })
   }, [])
 
   const update = (patch: Partial<NotesDraft>) => onChange({ ...draft, ...patch })

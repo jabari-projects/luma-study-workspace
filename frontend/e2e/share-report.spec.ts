@@ -86,8 +86,14 @@ function resultCard(page: Page, title: string) {
 test.describe("Search entry point", () => {
   test("there is exactly one visible Search entry, and on phone it is in the bottom bar", async ({ page }, info) => {
     await loginAndWait(page, SEEDED.sam.email)
-    const visibleSearch = page.getByRole("link", { name: "Search", exact: true }).filter({ visible: true })
+    // Wait until Home has drawn its content (sam has no decks yet).
+    await expect(page.getByRole("heading", { level: 2, name: "Make your first flashcard deck" })).toBeVisible()
+    // Any link whose name STARTS with Search or Discover counts, so a tile like
+    // "Search Find study sets other students shared." can't hide from this check.
+    const visibleSearch = page.getByRole("link", { name: /^(Search|Discover)/ }).filter({ visible: true })
     await expect(visibleSearch).toHaveCount(1)
+    // Home itself has no Search or Discover link; the navigation has the only one.
+    await expect(page.locator('main a[href="/search"], main a[href="/discover"]')).toHaveCount(0)
 
     if (info.project.name === "phone") {
       const bottomBar = page.locator("nav.tab-bar")

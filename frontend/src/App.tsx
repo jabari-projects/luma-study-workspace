@@ -893,7 +893,7 @@ function SearchPage() {
       <div className="tabs" role="group" aria-label="Search choices">
         <button
           type="button"
-          className={activeTab === "topics" ? "tab-button active" : "tab-button"}
+          className="tab"
           aria-pressed={activeTab === "topics"}
           onClick={() => setActiveTab("topics")}
         >
@@ -901,7 +901,7 @@ function SearchPage() {
         </button>
         <button
           type="button"
-          className={activeTab === "users" ? "tab-button active" : "tab-button"}
+          className="tab"
           aria-pressed={activeTab === "users"}
           onClick={() => setActiveTab("users")}
         >

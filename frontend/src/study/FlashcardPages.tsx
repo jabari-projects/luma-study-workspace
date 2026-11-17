@@ -403,7 +403,7 @@ export function DeckPage() {
         <div className="deck-hero-stack" aria-hidden="true">
           <span />
           <span />
-          <div className="index-card">
+          <div className="deck-hero-card">
             <p>{deck.cards[0]?.front ?? "Add a card"}</p>
           </div>
         </div>
