@@ -1,0 +1,6 @@
+# Crawlers may visit every page. Signed-in pages tell search engines not to
+# list them (an X-Robots-Tag header from the host plus a robots meta tag).
+# Do not add Disallow lines for those pages: a crawler that is kept out never
+# reads the noindex, and the bare address can still show up in search.
+User-agent: *
+Allow: /

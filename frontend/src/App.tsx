@@ -474,6 +474,16 @@ function AppLayout() {
     }
   }, [themeMode, accent])
 
+  // Signed-in pages are a student's own space: ask search engines not to list them.
+  // The landing and sign-in pages stay without this tag.
+  useEffect(() => {
+    const meta = document.createElement("meta")
+    meta.name = "robots"
+    meta.content = "noindex"
+    document.head.appendChild(meta)
+    return () => meta.remove()
+  }, [])
+
   const handleLogout = () => {
     if (activeAccountId) {
       signOut(activeAccountId)
