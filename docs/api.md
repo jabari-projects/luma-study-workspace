@@ -45,12 +45,15 @@ All collection routes are user-scoped by the bearer token.
 
 Notes, flashcards, and summaries accept publishing fields used by public search. Their exact validation schemas are defined beside each router in `backend/app/`.
 
-## Public discovery and analytics
+## Shared study sets and analytics
+
+Shared study sets are for signed-in students only. Both search routes need a bearer token (401 without one). Results show the owner's username and nothing else about them: no user id, display name, photo or counts. Every API response carries `X-Robots-Tag: noindex, nofollow`, and `GET /robots.txt` disallows everything.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| GET | `/public/topics?query=` | Searches public notes, flashcards, and summaries by their content or tags. |
-| GET | `/public/users?query=` | Searches users with public study materials. |
+| GET | `/public/topics?query=` | Signed in. Searches shared notes, flashcards, and summaries by their title, content or tags (never by a stored or old name), newest first, up to 80. Each item: `id, study_type, title, preview, tags, username, published_at, created_at`. `preview` is plain text with Markdown marks removed. `username` is the owner's current username, or `student` if it is unknown. |
+| GET | `/public/users?query=` | Signed in. Finds students who shared something, by username only (3+ letters; shorter queries return `[]`). Each result: `username, items`. Looks the username up first, so a student who shared long ago is still found. Usernames are letters, numbers and `_`, so any other character returns `[]`. Up to 40 people, each with their newest 24 items. Closest name first, then A to Z. |
+| GET | `/robots.txt` | `Disallow: /` for every crawler. |
 | POST | `/analytics/events` | Accepts an authenticated batch of analytics events. |
 
 ## Profile, notifications, and realtime
@@ -65,7 +68,6 @@ Notes, flashcards, and summaries accept publishing fields used by public search.
 | DELETE | `/me/account` | Delete the current account and related application data. |
 | GET | `/notifications` | List the current user's notifications. |
 | POST | `/notifications/read` | Mark submitted notification IDs as read. |
-| GET | `/users/search?query=` | Search profiles by username. |
 | WS | `/ws` | Authenticated WebSocket connection, with the token supplied as a query parameter or authorization header. |
 
 ## AI, transcription, and subscription endpoints

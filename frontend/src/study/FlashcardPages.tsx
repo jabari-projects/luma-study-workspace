@@ -21,7 +21,9 @@ import {
 
 import { api, getErrorMessage, getTabAccountId } from "../api"
 import { studyIntroKey } from "../accounts"
-import { NoticeBanner, PageHeader, PublishActionButton } from "../ui/common"
+import { NoticeBanner, PageHeader } from "../ui/common"
+import { ShareControl } from "../ui/Share"
+import { sharedLine, useShareName } from "../ui/sharing"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import {
@@ -489,6 +491,7 @@ export function DeckPage() {
   const { deck, setDeck, loading, error } = useDeck(itemId)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const shareName = useShareName()
 
   if (loading) return <LoadingCard text="Opening your deck..." />
   if (!deck) {
@@ -517,13 +520,23 @@ export function DeckPage() {
   return (
     <>
       <PageHeader
-        eyebrow={`Flashcards · ${deck.is_public ? "Public" : "Private"}`}
+        eyebrow={`Flashcards · ${deck.is_public ? "Shared" : "Private"}`}
         title={deck.title}
-        description={deck.published_by && deck.is_public ? `Shared by ${deck.published_by}` : "Your deck"}
+        description={deck.is_public ? sharedLine(shareName) : "Your deck"}
         actions={
-          <Link className="ghost-button" to={STUDY_HUB}>
-            <ArrowLeft weight="bold" aria-hidden="true" /> Back to Study
-          </Link>
+          <>
+            <ShareControl
+              endpoint="/flashcards"
+              studyType="flashcards"
+              noun="deck"
+              item={deck}
+              onUpdated={(updated) => setDeck(normalizeDeck(updated))}
+              setNotice={setNotice}
+            />
+            <Link className="ghost-button" to={STUDY_HUB}>
+              <ArrowLeft weight="bold" aria-hidden="true" /> Back to Study
+            </Link>
+          </>
         }
       />
       <NoticeBanner notice={notice} />
@@ -618,14 +631,6 @@ export function DeckPage() {
           </button>
         )}
       </section>
-
-      <PublishActionButton
-        endpoint="/flashcards"
-        studyType="flashcards"
-        item={deck}
-        onUpdated={(updated) => setDeck(normalizeDeck(updated))}
-        setNotice={setNotice}
-      />
     </>
   )
 }

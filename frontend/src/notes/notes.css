@@ -693,3 +693,25 @@
 .note-head h1 {
   overflow-wrap: anywhere;
 }
+
+/* Under 960px the title gets the whole width and Edit, Share and Delete sit in one row below it. */
+@media (max-width: 959px) {
+  .page-head.note-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* On phones the three actions get a little tighter so Delete stays on the same row. */
+@media (max-width: 479px) {
+  .note-head .page-head-actions {
+    gap: 8px;
+  }
+
+  .note-head .page-head-actions > .secondary-button {
+    padding: 0 14px;
+  }
+
+  .note-head .page-head-actions > .ghost-button {
+    padding: 0 8px;
+  }
+}

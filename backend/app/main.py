@@ -21,7 +21,7 @@ import stripe
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, Query, WebSocket, WebSocketDisconnect, status, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from openai import APIConnectionError, APIStatusError, AuthenticationError, OpenAI, OpenAIError
 from pydantic import BaseModel, EmailStr, Field
@@ -509,6 +509,18 @@ def get_websocket_user(websocket: WebSocket):
     return validate_access_token(token)
 
 
+# Nothing the API serves belongs in a search engine: shared study sets are for
+# signed-in students only (owner decision, 2026-11-16).
+ROBOTS_HEADER_VALUE = "noindex, nofollow"
+
+
+@app.middleware("http")
+async def add_robots_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = ROBOTS_HEADER_VALUE
+    return response
+
+
 @app.middleware("http")
 async def log_http_requests(request: Request, call_next):
     started_at = time.perf_counter()
@@ -645,13 +657,6 @@ class AccountDeleteResponse(BaseModel):
     success: bool
     message: str
     retained: Optional[List[str]] = None
-
-
-class UserSearchResponse(BaseModel):
-    id: str
-    username: str
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
 
 
 class VerificationStatusResponse(BaseModel):
@@ -2091,6 +2096,12 @@ def transcribe_audio_bytes_with_deepgram(audio_bytes: bytes, content_type: str):
     return transcript
 
 
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+def robots_txt():
+    """Ask every crawler to stay out of the API."""
+    return "User-agent: *\nDisallow: /\n"
+
+
 @app.get("/health", response_model=HealthResponse)
 def health_check():
     """Liveness only: the server process is up. It does NOT check the database, so a 200
@@ -3033,33 +3044,6 @@ async def websocket_endpoint(websocket: WebSocket):
         pass
     finally:
         await connection_manager.disconnect(user_id, websocket)
-
-@app.get("/users/search", response_model=List[UserSearchResponse])
-def search_users(query: str = Query(..., min_length=1, max_length=50)):
-    response = (
-        supabase.table("profiles")
-        .select("user_id, username, display_name, avatar_url")
-        .ilike("username", f"%{query}%")
-        .limit(20)
-        .execute()
-    )
-
-    if response is None or response.data is None:
-        return []
-
-    results = []
-    for row in response.data:
-        results.append(
-            {
-                "id": row["user_id"],
-                "username": row["username"],
-                "display_name": row.get("display_name"),
-                "avatar_url": row.get("avatar_url"),
-            }
-        )
-
-    return results
-
 
 @app.post("/internal/supabase/user-updated")
 async def supabase_user_updated(payload: dict, request: Request):

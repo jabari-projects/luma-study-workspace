@@ -8,28 +8,26 @@ import { NoticeBanner } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import type { Notice, StudyType } from "../ui/common"
 
+// Shaped like backend/app/public_search.py. A shared item carries the username only:
+// no user id, no name, no photo and no counts (owner decision).
 type PublicStudyItem = {
   id: string
   study_type: StudyType
   title: string
   preview: string
   tags: string[]
-  user_id: string
   username: string
-  display_name?: string | null
   published_at?: string | null
-  published_by?: string | null
   created_at: string
 }
 
 type PublicUser = {
-  id: string
   username: string
-  display_name?: string | null
-  avatar_url?: string | null
-  public_count: number
   items: PublicStudyItem[]
 }
+
+/** People search needs this many letters (the server says the same). */
+const MIN_PEOPLE_QUERY = 3
 
 const STUDY_GROUPS: Array<{ type: StudyType; title: string }> = [
   { type: "note", title: "Notes" },
@@ -71,6 +69,8 @@ export function SearchPage() {
   const [users, setUsers] = useState<PublicUser[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [loading, setLoading] = useState(false)
+  // The last people search that was sent, or null before the first one.
+  const [peopleQuery, setPeopleQuery] = useState<string | null>(null)
   const groupedTopics = groupPublicItems(topics)
 
   const searchPublicTopics = useCallback(async (searchQuery: string) => {
@@ -83,23 +83,29 @@ export function SearchPage() {
       })
       setTopics(response.data)
     } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not search study materials.") })
+      setNotice({ type: "error", text: getErrorMessage(error, "We couldn't search shared notes. Try again.") })
     } finally {
       setLoading(false)
     }
   }, [])
 
   const searchPublicUsers = useCallback(async (searchQuery: string) => {
-    setLoading(true)
+    const wanted = searchQuery.trim().replace(/^@/, "")
     setNotice(null)
+    setPeopleQuery(wanted)
+    if (wanted.length < MIN_PEOPLE_QUERY) {
+      setUsers([])
+      return
+    }
+    setLoading(true)
 
     try {
       const response = await api.get<PublicUser[]>("/public/users", {
-        params: { query: searchQuery },
+        params: { query: wanted },
       })
       setUsers(response.data)
     } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not search users.") })
+      setNotice({ type: "error", text: getErrorMessage(error, "We couldn't search for people. Try again.") })
     } finally {
       setLoading(false)
     }
@@ -148,7 +154,7 @@ export function SearchPage() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={activeTab === "topics" ? "Try math, history or science" : "Type a username"}
+            placeholder={activeTab === "topics" ? "Try math, history or science" : "Find a username"}
           />
         </span>
         <button className="primary-button" type="submit">
@@ -179,7 +185,7 @@ export function SearchPage() {
       {activeTab === "topics" ? (
         <div className="search-results" aria-live="polite">
           {loading ? <p className="muted">Loading...</p> : null}
-          {!loading && topics.length === 0 ? <p className="muted">No public study sets found.</p> : null}
+          {!loading && topics.length === 0 ? <p className="muted">No shared notes or cards found.</p> : null}
           {STUDY_GROUPS.map((group) =>
             groupedTopics[group.type].length ? (
               <section className="result-group" key={group.type} aria-labelledby={`results-${group.type}`}>
@@ -200,19 +206,18 @@ export function SearchPage() {
       ) : (
         <div className="search-results" aria-live="polite">
           {loading ? <p className="muted">Loading...</p> : null}
-          {!loading && users.length === 0 ? <p className="muted">No public study sets found for that user.</p> : null}
+          {!loading && users.length === 0 ? (
+            <p className="muted">
+              {peopleQuery === null || peopleQuery.length < MIN_PEOPLE_QUERY
+                ? "Type at least 3 letters of a username."
+                : "No one with that username has shared anything yet."}
+            </p>
+          ) : null}
           {users.map((user) => (
-            <section className="person" key={user.id} aria-labelledby={`person-${user.id}`}>
+            <section className="person" key={user.username} aria-labelledby={`person-${user.username}`}>
+              {/* Username only: no name, no photo, no counts. */}
               <div className="person-head">
-                <span className="avatar" aria-hidden="true">
-                  {(user.display_name || user.username).slice(0, 1).toUpperCase()}
-                </span>
-                <div>
-                  <h2 id={`person-${user.id}`}>{user.display_name || user.username}</h2>
-                  <p>
-                    @{user.username} · {user.public_count} public study set{user.public_count === 1 ? "" : "s"}
-                  </p>
-                </div>
+                <h2 id={`person-${user.username}`}>@{user.username}</h2>
               </div>
               <ul className="result-list">
                 {user.items.map((item) => (
@@ -238,7 +243,7 @@ function PublicStudyCard({ item }: { item: PublicStudyItem }) {
       <h3 id={titleId}>{item.title}</h3>
       <p className="result-preview">{item.preview || "No text yet."}</p>
       <p className="result-meta">
-        <span>Published by @{item.published_by || item.username}</span>
+        <span>Shared by @{item.username}</span>
         {date ? <span>{date}</span> : null}
       </p>
       {item.tags.length ? (

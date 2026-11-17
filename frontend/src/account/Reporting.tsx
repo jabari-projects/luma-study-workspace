@@ -17,7 +17,7 @@ const REASONS: { value: string; label: string }[] = [
   { value: "other", label: "Something else" },
 ]
 
-/** A small "Report" control for a public study set. */
+/** A small "Report" control for a shared study set. */
 export function ReportButton({ itemType, itemId, title }: { itemType: StudyType; itemId: string; title: string }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState("")
@@ -217,7 +217,7 @@ export function AdminReportsPage() {
     <>
       <PageHeader
         title={<Scribble type="underline">Reports</Scribble>}
-        description="Check public study sets that students reported. Unpublishing is done on the item itself."
+        description="Check shared study sets that students reported. To stop sharing one, use Stop sharing on the item itself."
       />
       <NoticeBanner notice={notice} />
       <div className="choice-chips" role="group" aria-label="Show reports">

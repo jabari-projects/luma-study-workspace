@@ -85,6 +85,20 @@ class FakeQuery:
         self.filters.append((column, (kind, pattern)))
         return self
 
+    def ilike(self, column, pattern):
+        # SQL ILIKE: % is any run, _ is one character, a backslash makes the next one literal.
+        regex, i = "", 0
+        while i < len(pattern):
+            ch = pattern[i]
+            if ch == "\\" and i + 1 < len(pattern):
+                regex += re.escape(pattern[i + 1])
+                i += 2
+                continue
+            regex += ".*" if ch == "%" else "." if ch == "_" else re.escape(ch)
+            i += 1
+        self.filters.append((column, ("__ilike__", re.compile(f"^{regex}$", re.IGNORECASE | re.DOTALL))))
+        return self
+
     def order(self, *_args, **_kwargs):
         return self
 
@@ -113,6 +127,10 @@ class FakeQuery:
                     return False
             elif isinstance(value, tuple) and value and value[0] == "__gt__":
                 if row.get(column) is None or not row.get(column) > value[1]:
+                    return False
+            elif isinstance(value, tuple) and value and value[0] == "__ilike__":
+                cell = row.get(column)
+                if not isinstance(cell, str) or not value[1].match(cell):
                     return False
             elif isinstance(value, tuple) and value and value[0] in ("__like__", "__not_like__"):
                 cell, prefix = row.get(column), value[1].rstrip("%")

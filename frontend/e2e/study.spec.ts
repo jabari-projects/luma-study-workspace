@@ -366,11 +366,11 @@ test.describe("make a deck (fresh account)", () => {
     await page.getByRole("button", { name: "Keep it" }).click()
     await expect(page.getByRole("heading", { level: 1, name: "Made Up Facts v2" })).toBeVisible()
     await page.getByRole("button", { name: "Delete deck" }).click()
-    // Scrolled to the very bottom, nothing floats over "Yes, delete" (the Publish button, the tab bar).
+    // Scrolled to the very bottom, nothing floats over "Yes, delete" (the tab bar; Share now sits in the header).
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
     await expectNotCovered(page.getByRole("button", { name: "Yes, delete" }))
     await expectNotCovered(page.getByRole("button", { name: "Keep it" }))
-    await expectApart(page.locator(".quiet-zone .button-row"), page.getByRole("button", { name: "Publish", exact: true }))
+    await expectApart(page.locator(".quiet-zone .button-row"), page.locator("header.page-head").getByRole("button", { name: "Share", exact: true }))
     await page.getByRole("button", { name: "Yes, delete" }).click()
     await expect(page).toHaveURL(/\/flashcards$/)
     await expect(page.getByRole("heading", { name: "Make a deck first" })).toBeVisible()

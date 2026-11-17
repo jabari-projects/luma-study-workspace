@@ -8,8 +8,10 @@ import { api, getErrorMessage, getTabAccountId } from "../api"
 import { CaptureError, makeNotes } from "../capture/capture-api"
 import { newCardId } from "../study/deck"
 import { ConfirmDialog } from "../ui/ConfirmDialog"
-import { NoticeBanner, PageHeader, PublishActionButton } from "../ui/common"
+import { NoticeBanner, PageHeader } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
+import { ShareControl } from "../ui/Share"
+import { sharedLine, useShareName } from "../ui/sharing"
 import { NoteMarkdown } from "./markdown"
 import { aiCardsToFound, findCardsInNote } from "./findCards"
 import type { FoundCard } from "./findCards"
@@ -20,7 +22,6 @@ type NoteItem = {
   content?: string
   tags?: string[]
   is_public?: boolean
-  published_by?: string | null
   created_at?: string
   updated_at?: string | null
   [key: string]: unknown
@@ -47,6 +48,7 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
   const [saving, setSaving] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const shareName = useShareName()
 
   useEffect(() => {
     if (!itemId) return
@@ -160,10 +162,10 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
           <Link className="back-link" to={backTo}>
             <ArrowLeft weight="bold" aria-hidden="true" /> Back to notes
           </Link>
-          <p className="kicker">{`${kindLabel} · ${item.is_public ? "Public" : "Private"}`}</p>
+          <p className="kicker">{`${kindLabel} · ${item.is_public ? "Shared" : "Private"}`}</p>
           <h1>{title}</h1>
           <p className="lede">
-            {[friendlyDate(item.updated_at ?? item.created_at), item.is_public && item.published_by ? `Shared by ${item.published_by}` : ""]
+            {[friendlyDate(item.updated_at ?? item.created_at), item.is_public ? sharedLine(shareName) : ""]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -172,6 +174,14 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
           <Link className="secondary-button" to={`${endpoint}/${itemId}/edit`}>
             <PencilSimple weight="bold" aria-hidden="true" /> Edit
           </Link>
+          <ShareControl
+            endpoint={endpoint}
+            studyType={studyType}
+            noun={kindLabel.toLowerCase()}
+            item={item}
+            onUpdated={(updated) => setState({ id: itemId, item: updated, error: null })}
+            setNotice={setNotice}
+          />
           <button type="button" className="ghost-button danger-text" onClick={() => setConfirmingDelete(true)}>
             <Trash weight="bold" aria-hidden="true" /> Delete
           </button>
@@ -264,14 +274,6 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
           onCancel={() => setConfirmingDelete(false)}
         />
       ) : null}
-
-      <PublishActionButton
-        endpoint={endpoint}
-        studyType={studyType}
-        item={item}
-        onUpdated={(updated) => setState({ id: itemId, item: updated, error: null })}
-        setNotice={setNotice}
-      />
     </>
   )
 }

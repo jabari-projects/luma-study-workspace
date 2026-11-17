@@ -387,12 +387,12 @@ test.describe("making notes", () => {
     const row = hubRow(page, myTitle)
     await expect(row).toBeVisible()
 
-    // The row menu: Open, Edit, Delete. Escape closes it and puts focus back.
+    // The row menu: Open, Edit, Share, Delete (an item's options live on the item). Escape closes it and puts focus back.
     const more = row.getByRole("button", { name: `More for ${myTitle}` })
     await expect(more).toHaveAttribute("aria-haspopup", "menu")
     await more.click()
     const menu = page.getByRole("menu", { name: `More for ${myTitle}` })
-    await expect(menu.getByRole("menuitem")).toHaveText(["Open", "Edit", "Delete"])
+    await expect(menu.getByRole("menuitem")).toHaveText(["Open", "Edit", "Share", "Delete"])
     await expect(menu.getByRole("menuitem", { name: "Open" })).toBeFocused()
     await expectNoSeriousA11yIssues(page, "notes-row-menu", info)
     await page.keyboard.press("Escape")

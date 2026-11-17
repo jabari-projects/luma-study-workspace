@@ -131,7 +131,7 @@ RETAINED_ALLOWANCE = (
     "A scrambled code made from your email (not the email itself) stays for a few days, "
     "so the free AI limit can't be reset by deleting and making a new account"
 )
-RETAINED_REPORTS = "Reports you sent about public content stay for safety review, without your name"
+RETAINED_REPORTS = "Reports you sent about shared content stay for safety review, without your name"
 
 
 @dataclass

@@ -69,6 +69,21 @@ function sendCode(account) {
   return true
 }
 const err = (detail, error_code, extra = {}) => ({ detail, error_code, ...extra })
+// Shared-item previews read as plain words, like _clip in backend/app/public_search.py:
+// no #, **, _, `, list dashes, quotes, rules or "::" card separators.
+function clipPreview(value, limit = 220) {
+  const plain = String(value || "")
+    .replace(/^[ \t]*(?:[-*_][ \t]*){3,}$/gm, " ")
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?)/gm, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[ \t]*::[ \t]*/g, " - ")
+    .replace(/\*+|~~|`+|(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ")
+  return plain.length <= limit ? plain : `${plain.slice(0, limit - 3).trimEnd()}...`
+}
 const aiGate = (req) => {
   const a = accountFor(req)
   if (!a) return [401, { error: "Please log in again." }]
@@ -121,6 +136,8 @@ function send(res, code, body) {
     "access-control-allow-credentials": "true",
     "access-control-allow-headers": "authorization, content-type",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    // Like the backend: nothing the API serves belongs in a search engine.
+    "x-robots-tag": "noindex, nofollow",
   })
   res.end(body === undefined ? "" : JSON.stringify(body))
 }
@@ -273,7 +290,7 @@ http
         "Copies already sent to our AI providers follow their own deletion rules",
         "Database backups age out on our hosting provider's schedule",
         "A scrambled code made from your email (not the email itself) stays for a few days, so the free AI limit can't be reset by deleting and making a new account",
-        "Reports you sent about public content stay for safety review, without your name",
+        "Reports you sent about shared content stay for safety review, without your name",
       ] })
     }
 
@@ -345,22 +362,49 @@ http
       return send(res, 200, item)
     }
 
-    // --- public search (fake data, shaped like backend/app/public_search.py) ---
+    // --- shared search (fake data, shaped like backend/app/public_search.py) ---
+    // Signed in only. Each item carries the owner's CURRENT username and nothing else
+    // about them: no user id, no display name, no photo, no counts. The stored
+    // published_by is never shown or searched (it can hold an old name).
     if (url.pathname === "/public/topics" || url.pathname === "/public/users") {
-      const q = (url.searchParams.get("query") || "").replace(/^#/, "").toLowerCase()
-      const publicItems = decks
-        .filter((d) => d.is_public)
-        .map((d) => ({
-          id: d.id, study_type: "flashcards", title: d.title, preview: d.cards.map((c) => c.front).join(" · ").slice(0, 220),
-          tags: d.tags, user_id: d.user_id, username: "jabari", display_name: null, published_at: d.published_at,
-          published_by: "jabari", created_at: d.created_at,
+      if (!accountFor(req)) return send(res, 401, { detail: "Not authenticated" })
+      const nameOf = (userId) => byId(userId)?.username || "student"
+      const sharedRows = (ownerIds) => [
+        ...notes.filter((n) => n.is_public).map((n) => ({ row: n, study_type: "note", text: [n.content || ""], preview: n.content || "" })),
+        ...decks.filter((d) => d.is_public).map((d) => ({ row: d, study_type: "flashcards", text: [d.cards[0]?.front || "", d.cards[0]?.back || ""], preview: d.cards[0]?.front || d.cards[0]?.back || "" })),
+        ...summaries.filter((s) => s.is_public).map((s) => ({ row: s, study_type: "summary", text: [s.content || ""], preview: s.content || "" })),
+      ]
+        .filter(({ row }) => (row.title || "") && (!ownerIds || ownerIds.has(row.user_id)))
+        .map(({ row, study_type, text, preview }) => ({
+          ownerId: row.user_id,
+          haystack: [row.title, ...text, ...(row.tags || [])].join(" ").toLowerCase(),
+          item: {
+            id: row.id, study_type, title: row.title, preview: clipPreview(preview), tags: row.tags || [],
+            username: nameOf(row.user_id), published_at: row.published_at || row.created_at, created_at: row.created_at,
+          },
         }))
-        .filter((item) => !q || `${item.title} ${item.preview} ${item.tags.join(" ")}`.toLowerCase().includes(q))
-      if (url.pathname === "/public/topics") return send(res, 200, publicItems)
-      const users = publicItems.length && (!q || "jabari".includes(q) || publicItems.length)
-        ? [{ id: "u1", username: "jabari", display_name: null, avatar_url: null, public_count: publicItems.length, items: publicItems }]
-        : []
-      return send(res, 200, users)
+        .sort((a, b) => String(b.item.published_at).localeCompare(String(a.item.published_at)))
+      if (url.pathname === "/public/topics") {
+        const q = (url.searchParams.get("query") || "").trim().replace(/^#/, "").toLowerCase()
+        return send(res, 200, sharedRows().filter(({ haystack }) => !q || haystack.includes(q)).map(({ item }) => item).slice(0, 80))
+      }
+      // People: usernames only, 3+ letters, closest name first, never by how much someone shared.
+      // Like the server, look the name up first, then fetch only those students' shared items,
+      // so someone who shared long ago is still found.
+      const wanted = (url.searchParams.get("query") || "").trim().replace(/^@/, "").toLowerCase()
+      if (wanted.length < 3 || !/^[a-z0-9_]+$/.test(wanted)) return send(res, 200, [])
+      const named = new Set([...accounts.values()].filter((a) => a.username.toLowerCase().includes(wanted)).map((a) => a.id))
+      const byOwner = new Map()
+      for (const { ownerId, item } of sharedRows(named)) byOwner.set(ownerId, [...(byOwner.get(ownerId) || []), item])
+      const rank = (name) => (name === wanted ? 0 : name.startsWith(wanted) ? 1 : 2)
+      const users = [...byOwner.entries()]
+        .map(([ownerId, items]) => ({ username: nameOf(ownerId), items: items.slice(0, 24) }))
+        .sort((a, b) => rank(a.username.toLowerCase()) - rank(b.username.toLowerCase()) || a.username.toLowerCase().localeCompare(b.username.toLowerCase()))
+      return send(res, 200, users.slice(0, 40))
+    }
+    if (url.pathname === "/robots.txt") {
+      res.writeHead(200, { "content-type": "text/plain", "x-robots-tag": "noindex, nofollow" })
+      return res.end("User-agent: *\nDisallow: /\n")
     }
 
     if (url.pathname === "/health") return send(res, 200, { status: "ok" })

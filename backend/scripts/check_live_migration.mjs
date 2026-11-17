@@ -496,8 +496,10 @@ await step("update_profile avatar_url and custom_theme_image_url", async () => {
 })
 await step("set_subscription_status / billing.refresh_subscription_status update", () =>
   update(db, "profiles", { subscription_status: "premium" }, { user_id: U4 }))
-await step("users/search select (user_id, username, display_name, avatar_url) ilike", () =>
-  db.query(`select user_id, username, display_name, avatar_url from public.profiles where username ilike $1 limit 20`, ["%fo%"]))
+await step("public_search people lookup (user_id, username) ilike, exact then contains", async () => {
+  await db.query(`select user_id, username from public.profiles where username ilike $1 limit 5`, ["four\\_b"])
+  await db.query(`select user_id, username from public.profiles where username ilike $1 limit 100`, ["%fo%"])
+})
 
 const publishCreate = (studyType) => ({ is_public: false, published_at: null, published_by: null, study_type: studyType, updated_at: nowIso() })
 const publishOn = (studyType) => ({ is_public: true, published_at: nowIso(), published_by: "four_b", study_type: studyType, updated_at: utcNaiveIso() })
@@ -551,12 +553,18 @@ await step("list selects (select * where user_id order by created_at desc) for a
   }
 })
 await step("public search selects (exact column lists, is_public = true order by published_at desc limit 100)", async () => {
-  const n = await db.query(`select id, user_id, title, content, tags, created_at, is_public, published_at, published_by, study_type from public.notes where is_public = true order by published_at desc limit 100`)
-  const f = await db.query(`select id, user_id, title, front, back, tags, created_at, is_public, published_at, published_by, study_type from public.flashcards where is_public = true order by published_at desc limit 100`)
-  const s = await db.query(`select id, user_id, title, content, tags, created_at, is_public, published_at, published_by, study_type from public.summaries where is_public = true order by published_at desc limit 100`)
+  const n = await db.query(`select id, user_id, title, content, tags, created_at, is_public, published_at, study_type from public.notes where is_public = true order by published_at desc limit 100`)
+  const f = await db.query(`select id, user_id, title, front, back, tags, created_at, is_public, published_at, study_type from public.flashcards where is_public = true order by published_at desc limit 100`)
+  const s = await db.query(`select id, user_id, title, content, tags, created_at, is_public, published_at, study_type from public.summaries where is_public = true order by published_at desc limit 100`)
   if (f.rows.length !== 2) throw new Error(`expected 2 public flashcards, got ${f.rows.length}`)
-  await db.query(`select user_id, username, display_name, avatar_url from public.profiles where user_id::text = any($1::text[])`, [[U1, U4]])
+  await db.query(`select user_id, username from public.profiles where user_id::text = any($1::text[])`, [[U1, U4]])
   return [n.rows.length, f.rows.length, s.rows.length]
+})
+await step("public_search people items (is_public = true and user_id in the looked-up ids, limit 500)", async () => {
+  for (const t of ["notes", "summaries"]) {
+    await db.query(`select id, user_id, title, content, tags, created_at, is_public, published_at, study_type from public.${t} where is_public = true and user_id::text = any($1::text[]) order by published_at desc limit 500`, [[U1, U4]])
+  }
+  await db.query(`select id, user_id, title, front, back, tags, created_at, is_public, published_at, study_type from public.flashcards where is_public = true and user_id::text = any($1::text[]) order by published_at desc limit 500`, [[U1, U4]])
 })
 await step("ai_usage insert with only (user_id, type, created_at)", async () => {
   const rows = await insert(db, "ai_usage", { user_id: U4, type: "notes", created_at: utcNaiveIso() })

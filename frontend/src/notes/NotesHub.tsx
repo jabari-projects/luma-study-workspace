@@ -6,11 +6,13 @@ import {
   ArrowSquareOut,
   DownloadSimple,
   Image,
+  LockSimple,
   MagnifyingGlass,
   Microphone,
   Notebook,
   PencilSimple,
   PencilSimpleLine,
+  ShareNetwork,
   TextAlignLeft,
   Trash,
 } from "@phosphor-icons/react"
@@ -21,6 +23,8 @@ import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner } from "../ui/common"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
+import { ShareDialog } from "../ui/Share"
+import { hasTitle, setSharing, shareCopy, useShareName } from "../ui/sharing"
 import { RowMenu } from "./RowMenu"
 import type { RowMenuHandle } from "./RowMenu"
 import {
@@ -71,6 +75,9 @@ export function NotesHub() {
   const [find, setFind] = useState("")
   const [deleting, setDeleting] = useState<HubItem | null>(null)
   const [removing, setRemoving] = useState(false)
+  const [sharing, setSharingItem] = useState<HubItem | null>(null)
+  const [shareBusy, setShareBusy] = useState(false)
+  const shareName = useShareName()
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const panelRef = useRef<HTMLDivElement>(null)
   const menuRefs = useRef(new Map<string, RowMenuHandle>())
@@ -164,6 +171,36 @@ export function NotesHub() {
       setDeleting(null)
     } finally {
       setRemoving(false)
+    }
+  }
+
+  /** Share asks first (others will see it). Stop sharing happens right away: only the owner sees it after. */
+  const changeSharing = async (target: HubItem, share: boolean) => {
+    const noun = KIND[target.kind].label.toLowerCase()
+    const copy = shareCopy(noun, shareName)
+    if (share && !hasTitle(target)) {
+      setSharingItem(null)
+      setNotice({ type: "error", text: copy.needsTitle })
+      return
+    }
+    setShareBusy(true)
+    setNotice(null)
+    try {
+      const updated = await setSharing<RawItem>(KIND[target.kind].endpoint, target, share, target.kind, shareName)
+      setItems((current) =>
+        current.map((item) => (item.id === target.id && item.kind === target.kind ? { ...item, ...updated, kind: target.kind } : item)),
+      )
+      toast.success(share ? copy.shared : copy.stopped)
+      // The menu closed without a box to hand focus back, so put it on this row's ⋮ again.
+      if (!share) menuRefs.current.get(`${target.kind}-${target.id}`)?.focusButton()
+    } catch (error: unknown) {
+      setNotice({
+        type: "error",
+        text: getErrorMessage(error, share ? `We couldn't share this ${noun}. Try again.` : `We couldn't stop sharing this ${noun}. Try again.`),
+      })
+    } finally {
+      setShareBusy(false)
+      setSharingItem(null)
     }
   }
 
@@ -300,6 +337,9 @@ export function NotesHub() {
                       items={[
                         { label: "Open", to: `${kind.path}/${item.id}`, icon: <ArrowSquareOut aria-hidden="true" /> },
                         { label: "Edit", to: `${kind.path}/${item.id}/edit`, icon: <PencilSimple aria-hidden="true" /> },
+                        item.is_public
+                          ? { label: "Stop sharing", onSelect: () => void changeSharing(item, false), icon: <LockSimple aria-hidden="true" /> }
+                          : { label: "Share", onSelect: () => setSharingItem(item), icon: <ShareNetwork aria-hidden="true" /> },
                         { label: "Delete", onSelect: () => setDeleting(item), danger: true, icon: <Trash aria-hidden="true" /> },
                       ]}
                     />
@@ -322,6 +362,17 @@ export function NotesHub() {
           onConfirm={() => void confirmDelete()}
           onCancel={() => setDeleting(null)}
           returnFocus={() => menuRefs.current.get(`${deleting.kind}-${deleting.id}`)?.button() ?? panelRef.current}
+        />
+      ) : null}
+
+      {sharing ? (
+        <ShareDialog
+          noun={KIND[sharing.kind].label.toLowerCase()}
+          username={shareName}
+          busy={shareBusy}
+          onConfirm={() => void changeSharing(sharing, true)}
+          onCancel={() => setSharingItem(null)}
+          returnFocus={() => menuRefs.current.get(`${sharing.kind}-${sharing.id}`)?.button() ?? panelRef.current}
         />
       ) : null}
     </div>
