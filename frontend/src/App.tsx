@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react"
 import { Toaster, toast } from "sonner"
 import {
@@ -17,8 +17,10 @@ import { NoticeBanner, PageHeader } from "./ui/common"
 import type { Notice, StudyType } from "./ui/common"
 import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
 import { AccountsPanel, SignedOutElsewhere } from "./ui/AccountMenu"
-import { useAccountActions } from "./ui/accountActions"
-import { DEFAULT_ACCENT, textOnAccent, themeColors } from "./ui/themeColors"
+import { isBusyPath, useAccountActions } from "./ui/accountActions"
+import { DEFAULT_ACCENT, themeColors } from "./ui/themeColors"
+import { applyTheme, clearTheme, normalizeMode, resolveMode, useResolvedTheme } from "./ui/theme"
+import type { ThemeMode } from "./ui/theme"
 import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
 import { QuizPage } from "./study/QuizPage"
@@ -191,8 +193,6 @@ const collectionConfigs: CollectionConfig[] = [
     ],
   },
 ]
-
-type ThemeMode = "light" | "dark"
 
 const initialHealthState: HealthState = {
   status: "checking",
@@ -417,23 +417,25 @@ function AppLayout() {
   const navigate = useNavigate()
   const profile = useProfile()
   const initials = (user?.username ?? user?.email ?? "L").slice(0, 1).toUpperCase()
-  const themeMode = profile?.theme_mode === "dark" ? "dark" : "light"
-  const accent = profile?.theme_color || DEFAULT_ACCENT
+  const { pathname } = useLocation()
+  const { resolved, accent } = useResolvedTheme({
+    accountId: activeAccountId,
+    // undefined until the profile is loaded: the theme saved on this device is used until then.
+    profileMode: profile ? (profile.theme_mode ?? null) : undefined,
+    profileAccent: profile?.theme_color,
+    profileVersion: profile,
+    busy: isBusyPath(pathname),
+    pathname,
+  })
 
   // Apply the theme to the whole page so the background, sheets and modals match.
   // Other accent shades are mixed from --accent in styles.css for light and dark mode.
-  useEffect(() => {
+  // A layout effect, so a new account's theme is in place before the first paint.
+  useLayoutEffect(() => {
     const root = document.documentElement
-    root.dataset.theme = themeMode
-    root.style.setProperty("--accent", accent)
-    // Keep text on accent-filled buttons readable for every theme color (4.5:1 or more).
-    root.style.setProperty("--on-accent", textOnAccent(accent))
-    return () => {
-      delete root.dataset.theme
-      root.style.removeProperty("--accent")
-      root.style.removeProperty("--on-accent")
-    }
-  }, [themeMode, accent])
+    applyTheme(root, resolved, accent)
+    return () => clearTheme(root)
+  }, [resolved, accent])
 
   // Signed-in pages are a student's own space: ask search engines not to list them.
   // The landing and sign-in pages stay without this tag.
@@ -505,7 +507,14 @@ function AppLayout() {
 }
 
 function RootRoutes() {
-  const { activeAccountId } = useAuth()
+  const { activeAccountId, isAuthenticated, loading } = useAuth()
+
+  // public/theme-boot.js may paint a saved theme before the app knows the account can't be
+  // used (for example its sign-in ended). Pages outside the signed-in app stay light.
+  useLayoutEffect(() => {
+    if (!loading && !isAuthenticated) clearTheme(document.documentElement)
+  }, [loading, isAuthenticated])
+
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
@@ -1096,6 +1105,38 @@ function EmailSettingsForm({
   )
 }
 
+const THEME_MODE_CHOICES: Array<{ value: ThemeMode; name: string; help: string }> = [
+  { value: "light", name: "Light", help: "Cream paper all day." },
+  { value: "dark", name: "Dark", help: "Easy on your eyes at night." },
+  { value: "auto", name: "Automatic", help: "Light in the day, dark from 7 pm to 7 am." },
+]
+
+/** A tiny page drawn in that theme's own colors (data-theme scopes the color tokens). */
+function ThemeModePreview({ mode, accent }: { mode: ThemeMode; accent: string }) {
+  const style = { "--theme-choice": accent } as CSSProperties
+  if (mode === "auto") {
+    return (
+      <span className="mode-preview split" aria-hidden="true" style={style}>
+        <span className="mode-preview-half" data-theme="light">
+          <span className="mode-preview-dot" />
+          <span className="mode-preview-line" />
+        </span>
+        <span className="mode-preview-half" data-theme="dark">
+          <span className="mode-preview-dot" />
+          <span className="mode-preview-line" />
+        </span>
+      </span>
+    )
+  }
+  return (
+    <span className="mode-preview" data-theme={mode} aria-hidden="true" style={style}>
+      <span className="mode-preview-dot" />
+      <span className="mode-preview-line" />
+      <span className="mode-preview-line" />
+    </span>
+  )
+}
+
 function ThemeSettingsForm({
   profile,
   setNotice,
@@ -1105,7 +1146,7 @@ function ThemeSettingsForm({
 }) {
   const { setProfile } = useAuth()
   const [themeColor, setThemeColor] = useState(profile?.theme_color ?? DEFAULT_ACCENT)
-  const [themeMode, setThemeMode] = useState<ThemeMode>(profile?.theme_mode === "dark" ? "dark" : "light")
+  const [themeMode, setThemeMode] = useState<ThemeMode>(normalizeMode(profile?.theme_mode))
   const previewStyle = { "--theme-choice": themeColor } as CSSProperties
 
   const saveTheme = async (event: FormEvent<HTMLFormElement>) => {
@@ -1126,11 +1167,34 @@ function ThemeSettingsForm({
 
   return (
     <form className="form-panel theme-panel" onSubmit={saveTheme}>
-      <h2>Theme</h2>
-      <div className="theme-preview" data-theme={themeMode} style={previewStyle}>
-        <span />
-        <strong>{themeMode === "dark" ? "Dark" : "Light"}</strong>
-      </div>
+      <h2 id="theme-settings-title">Theme</h2>
+      <fieldset className="mode-toggle" role="radiogroup" aria-labelledby="theme-settings-title">
+        {THEME_MODE_CHOICES.map((choice) => (
+          <label key={choice.value} className={themeMode === choice.value ? "mode-option active" : "mode-option"}>
+            <input
+              type="radio"
+              name="theme-mode"
+              value={choice.value}
+              checked={themeMode === choice.value}
+              onChange={() => setThemeMode(choice.value)}
+              aria-labelledby={`theme-mode-${choice.value}`}
+              aria-describedby={`theme-mode-${choice.value}-help`}
+            />
+            <ThemeModePreview mode={choice.value} accent={themeColor} />
+            <span className="mode-name" id={`theme-mode-${choice.value}`}>
+              {choice.name}
+            </span>
+            <span className="mode-help" id={`theme-mode-${choice.value}-help`}>
+              {choice.help}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {themeMode === "auto" ? (
+        <p className="mode-now" role="status">
+          Right now: {resolveMode("auto")}.
+        </p>
+      ) : null}
       <div className="color-preview-bar" style={previewStyle}>
         <span />
         <strong>{themeColors.find((color) => color.value === themeColor)?.name ?? "Color"}</strong>
@@ -1147,22 +1211,6 @@ function ThemeSettingsForm({
             onClick={() => setThemeColor(color.value)}
           />
         ))}
-      </div>
-      <div className="mode-toggle" aria-label="Light or dark mode">
-        <button
-          type="button"
-          className={themeMode === "light" ? "active" : ""}
-          onClick={() => setThemeMode("light")}
-        >
-          Light
-        </button>
-        <button
-          type="button"
-          className={themeMode === "dark" ? "active" : ""}
-          onClick={() => setThemeMode("dark")}
-        >
-          Dark
-        </button>
       </div>
       <button className="primary-button" type="submit">
         Save theme

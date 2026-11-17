@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 import { annotate } from "rough-notation"
 
+import { useDocumentTheme } from "./theme"
+
 type ScribbleType = "underline" | "highlight" | "circle" | "box" | "bracket"
 
 /** Hand-drawn mark that sketches itself around a word once it appears. */
@@ -17,6 +19,10 @@ export function Scribble({
   delay?: number
 }) {
   const ref = useRef<HTMLSpanElement>(null)
+  // Redraw in the new theme's yellow when the page switches between light and dark.
+  const theme = useDocumentTheme()
+  // After the first drawing, a redraw (new theme) shows at once instead of sketching again.
+  const drawnRef = useRef(false)
 
   useEffect(() => {
     const element = ref.current
@@ -37,6 +43,7 @@ export function Scribble({
         multiline: true,
       })
       mark.show()
+      drawnRef.current = true
       return mark
     }
 
@@ -68,7 +75,12 @@ export function Scribble({
     // Wait for web fonts so the mark is drawn where the word ends up, not where it started.
     const fontsReady = document.fonts?.ready ?? Promise.resolve()
     void fontsReady.then(() => {
-      if (!cancelled) timer = window.setTimeout(() => (annotation = draw(true)), delay)
+      if (cancelled) return
+      if (drawnRef.current) {
+        annotation = draw(false)
+      } else {
+        timer = window.setTimeout(() => (annotation = draw(true)), delay)
+      }
     })
     return () => {
       cancelled = true
@@ -77,7 +89,7 @@ export function Scribble({
       window.clearTimeout(redrawTimer)
       annotation?.remove()
     }
-  }, [color, delay, type])
+  }, [color, delay, type, theme])
 
   return (
     <span ref={ref} className="scribble">

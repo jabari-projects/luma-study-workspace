@@ -178,13 +178,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const alreadyListed = Boolean(readBook().accounts[user.id])
       writeStoredSession({ accessToken: response.data.access_token, user })
       setSignedOutElsewhere(null)
-      resync()
 
+      // Load the profile before this tab shows the account as signed in, so the first
+      // page already knows the student's theme (no light dashboard before a dark one).
       try {
         await refreshProfile(user.id)
       } catch {
         // The login token is valid even when profile hydration is unavailable.
       }
+      resync()
       return { user, alreadyListed }
     },
     [refreshProfile, resync],

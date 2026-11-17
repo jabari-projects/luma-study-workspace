@@ -1,12 +1,14 @@
 // Theme checks against the FAKE API (dev/mock-api.mjs): every accent color is
 // readable in light and dark, the dark page is not tinted by the accent, focus
-// rings are solid ink, and a profile with no saved color shows Teal.
+// rings are solid ink, a profile with no saved color shows Teal, and Light / Dark /
+// Automatic works (Settings radios, no flash on load, the 7 am / 7 pm clock, other
+// tabs following, and sign-out clearing the copy kept on this device).
 // Made-up accounts only; each test puts back the colors it changes.
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
 import { DEFAULT_ACCENT, themeColors } from "../src/ui/themeColors"
-import { SEEDED, expectFocusRing, loginAndWait, setProfileTheme, setThemeMode } from "./helpers"
+import { PASSWORD, SEEDED, expectFocusRing, loginAndWait, setProfileTheme, setThemeMode } from "./helpers"
 
 /** Waits for the heading, data, and entrance animations, so the colors axe sees are final. */
 async function settle(page: Page) {
@@ -193,22 +195,326 @@ test("with no saved color, Settings shows Teal picked (not Red) and saving keeps
   }
 })
 
-test("the Settings theme preview shows the picked mode in its own colors", async ({ page }) => {
+// ------------------------------------------------------- Light / Dark / Automatic
+/** Every localStorage key on this page that holds a saved theme. */
+const themeCacheKeys = (page: Page) =>
+  page.evaluate(() => Object.keys(window.localStorage).filter((key) => key.startsWith("luma.theme:")))
+
+test("Settings has a Theme radio group with Light, Dark and Automatic, and the choice survives a reload", async ({ page }) => {
   try {
     await setThemeMode(page, SEEDED.demo.email, "light")
     await loginAndWait(page, SEEDED.demo.email)
     await page.goto("/settings")
     await settle(page)
-    const preview = page.locator(".theme-preview")
-    await expect(preview).toHaveAttribute("data-theme", "light")
-    const lightBg = await preview.evaluate((el) => getComputedStyle(el).backgroundColor)
-    await page.getByRole("button", { name: "Dark", exact: true }).click()
-    await expect(preview).toHaveAttribute("data-theme", "dark")
-    // Only the preview changes; the page stays light until the theme is saved.
+
+    const group = page.getByRole("radiogroup", { name: "Theme" })
+    await expect(group.getByRole("radio")).toHaveCount(3)
+    const light = group.getByRole("radio", { name: "Light", exact: true })
+    const dark = group.getByRole("radio", { name: "Dark", exact: true })
+    const auto = group.getByRole("radio", { name: "Automatic", exact: true })
+    await expect(light).toBeChecked()
+    await expect(dark).not.toBeChecked()
+    await expect(auto).not.toBeChecked()
+    await expect(light).toHaveAccessibleDescription("Cream paper all day.")
+    await expect(dark).toHaveAccessibleDescription("Easy on your eyes at night.")
+    await expect(auto).toHaveAccessibleDescription("Light in the day, dark from 7 pm to 7 am.")
+
+    // Each choice has a tiny page drawn in its own theme's colors.
+    const previewOf = (value: string) => group.locator(`label.mode-option:has(input[value="${value}"]) .mode-preview`)
+    await expect(previewOf("light")).toHaveCSS("background-color", "rgb(251, 246, 236)") // light --paper #fbf6ec
+    await expect(previewOf("dark")).toHaveCSS("background-color", "rgb(21, 20, 15)") // dark --paper #15140f
+    // Automatic shows both halves.
+    await expect(previewOf("auto").locator('[data-theme="light"]')).toHaveCSS("background-color", "rgb(251, 246, 236)")
+    await expect(previewOf("auto").locator('[data-theme="dark"]')).toHaveCSS("background-color", "rgb(21, 20, 15)")
+
+    // The checked radio takes keyboard focus with a round ink ring (a 20 x 20 box, not a tall oval).
+    await expectFocusRing(light)
+    const box = await light.boundingBox()
+    expect(box, "the Light radio has a box").not.toBeNull()
+    expect(Math.round(box!.width)).toBe(20)
+    expect(Math.round(box!.height)).toBe(20)
+    await expect(light).toHaveCSS("border-radius", "50%")
+
+    // Picking only changes the form; the page changes when the theme is saved.
+    await expect(page.getByText(/^Right now:/)).toHaveCount(0)
+    await auto.check()
+    await expect(auto).toBeChecked()
+    await expect(page.getByText(/^Right now: (light|dark)\.$/)).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
-    await expect(preview).toHaveCSS("background-color", "rgb(33, 31, 25)") // dark --card #211f19
-    expect(lightBg).toBe("rgb(255, 253, 248)") // light --card #fffdf8
+
+    await dark.check()
+    await expect(page.getByText(/^Right now:/)).toHaveCount(0)
+    await page.getByRole("button", { name: "Save theme" }).click()
+    await expect(page.getByText("Theme saved.")).toBeVisible()
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+
+    await page.reload()
+    await settle(page)
+    await expect(dark).toBeChecked()
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+
+    // Automatic saves too (the fake API keeps "auto" like the real one).
+    await auto.check()
+    await page.getByRole("button", { name: "Save theme" }).click()
+    await expect(page.getByText("Theme saved.")).toBeVisible()
+    await page.reload()
+    await settle(page)
+    await expect(auto).toBeChecked()
+    await expect(page.getByText(/^Right now: (light|dark)\.$/)).toBeVisible()
   } finally {
     await setThemeMode(page, SEEDED.demo.email, "light")
+  }
+})
+
+test("a student on Dark never sees the light page on reload, even while the profile is slow", async ({ page }) => {
+  try {
+    await setThemeMode(page, SEEDED.demo.email, "dark")
+    await loginAndWait(page, SEEDED.demo.email)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+    // The app keeps a copy on this device for the next load.
+    await expect.poll(() => themeCacheKeys(page)).toEqual(["luma.theme:u1"])
+
+    // Record the theme when the HTML is ready, and every change after that.
+    await page.addInitScript(() => {
+      const log: string[] = []
+      ;(window as unknown as { __themeLog: string[] }).__themeLog = log
+      const now = () => document.documentElement.dataset.theme ?? "none"
+      document.addEventListener("DOMContentLoaded", () => log.push(`ready:${now()}`))
+      new MutationObserver(() => log.push(`change:${now()}`)).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      })
+    })
+    // The profile (which also says "dark") takes 2 seconds to come back.
+    let profileAnswered = false
+    await page.route("**/me/profile", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await route.continue()
+      profileAnswered = true
+    })
+
+    await page.reload({ waitUntil: "domcontentloaded" })
+    // While the profile is still on its way, the page is already dark.
+    await expect(page.locator("#root")).not.toBeEmpty()
+    const early = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme ?? "none",
+      bar: document.querySelector('meta[name="theme-color"]')?.getAttribute("content"),
+    }))
+    expect(profileAnswered, "checked before the profile came back").toBe(false)
+    expect(early).toEqual({ theme: "dark", bar: "#15140f" })
+    await expect.poll(() => profileAnswered, { timeout: 10_000 }).toBe(true)
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
+    await page.waitForLoadState("networkidle")
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+
+    const log = await page.evaluate(() => (window as unknown as { __themeLog: string[] }).__themeLog)
+    expect(log[0], JSON.stringify(log)).toBe("ready:dark")
+    expect(
+      log.filter((entry) => !entry.endsWith(":dark")),
+      JSON.stringify(log),
+    ).toEqual([])
+  } finally {
+    await page.unroute("**/me/profile")
+    await setThemeMode(page, SEEDED.demo.email, "light")
+  }
+})
+
+/** Records, on every animation frame, the page path, the theme and whether the app is drawn. */
+async function recordFrames(page: Page) {
+  await page.addInitScript(() => {
+    const frames: Array<{ path: string; theme: string; app: boolean }> = []
+    ;(window as unknown as { __frames: typeof frames }).__frames = frames
+    const tick = () => {
+      frames.push({
+        path: location.pathname,
+        theme: document.documentElement.dataset.theme ?? "none",
+        app: Boolean(document.querySelector(".app-shell")),
+      })
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+const framesOf = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __frames: Array<{ path: string; theme: string; app: boolean }> }).__frames)
+
+test("a student on Dark sees the dashboard dark from the first frame after logging in, even while the profile is slow", async ({ page }) => {
+  try {
+    await setThemeMode(page, SEEDED.demo.email, "dark")
+    // A fresh device: no theme saved here yet (signing out removes it too).
+    await recordFrames(page)
+    await page.route("**/me/profile", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await route.continue()
+    })
+    await page.goto("/login")
+    expect(await themeCacheKeys(page)).toEqual([])
+    await page.getByLabel("Email").fill(SEEDED.demo.email)
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD)
+    await page.getByRole("button", { name: /^log in$/i }).click()
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+
+    const drawn = (await framesOf(page)).filter((frame) => frame.path.startsWith("/dashboard") && frame.app)
+    expect(drawn.length, "the dashboard was drawn").toBeGreaterThan(0)
+    expect(
+      drawn.filter((frame) => frame.theme !== "dark"),
+      "dashboard frames that were not dark",
+    ).toEqual([])
+  } finally {
+    await page.unroute("**/me/profile")
+    await setThemeMode(page, SEEDED.demo.email, "light")
+  }
+})
+
+test("a signed-in student on Dark who opens the home page never sees it light", async ({ page }) => {
+  try {
+    await setThemeMode(page, SEEDED.demo.email, "dark")
+    await loginAndWait(page, SEEDED.demo.email)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+    await expect.poll(() => themeCacheKeys(page)).toEqual(["luma.theme:u1"])
+
+    await page.addInitScript(() => {
+      const log: string[] = []
+      ;(window as unknown as { __themeLog: string[] }).__themeLog = log
+      const now = () => document.documentElement.dataset.theme ?? "none"
+      document.addEventListener("DOMContentLoaded", () => log.push(`ready:${now()}`))
+      new MutationObserver(() => log.push(`change:${now()}`)).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      })
+    })
+    await page.route("**/me/profile", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await route.continue()
+    })
+
+    await page.goto("/", { waitUntil: "domcontentloaded" })
+    await expect(page).toHaveURL(/\/dashboard/)
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
+    await page.waitForLoadState("networkidle")
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+
+    const log = await page.evaluate(() => (window as unknown as { __themeLog: string[] }).__themeLog)
+    expect(log[0], JSON.stringify(log)).toBe("ready:dark")
+    expect(
+      log.filter((entry) => !entry.endsWith(":dark")),
+      JSON.stringify(log),
+    ).toEqual([])
+  } finally {
+    await page.unroute("**/me/profile")
+    await setThemeMode(page, SEEDED.demo.email, "light")
+  }
+})
+
+test.describe("Automatic by the clock (Chicago time)", () => {
+  test.use({ timezoneId: "America/Chicago" })
+
+  test("at 6:59:30 pm it turns dark a minute later without a reload", async ({ page }) => {
+    try {
+      await setThemeMode(page, SEEDED.demo.email, "auto")
+      await page.clock.install({ time: new Date("2026-11-16T18:59:30-06:00") })
+      await loginAndWait(page, SEEDED.demo.email)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+      await page.clock.runFor(60_000)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+      await expect(page).toHaveURL(/\/dashboard/)
+      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#15140f")
+    } finally {
+      await setThemeMode(page, SEEDED.demo.email, "light")
+    }
+  })
+
+  test("while studying, the 7 pm switch waits for the next page", async ({ page }) => {
+    try {
+      await setThemeMode(page, SEEDED.demo.email, "auto")
+      await page.clock.install({ time: new Date("2026-11-16T18:59:30-06:00") })
+      await loginAndWait(page, SEEDED.demo.email)
+      await page.goto("/flashcards/d1/study")
+      await expect(page.locator(".study-stage")).toBeVisible()
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+
+      await page.clock.runFor(60_000)
+      // Still light: colors don't jump in the middle of a review.
+      await page.waitForTimeout(500)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+
+      // Leaving the study page catches up with the clock.
+      await page.getByRole("link", { name: "Luma" }).filter({ visible: true }).first().click()
+      await expect(page).not.toHaveURL(/\/study$/)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+    } finally {
+      await setThemeMode(page, SEEDED.demo.email, "light")
+    }
+  })
+})
+
+test("another tab of the same account follows a saved theme without a reload", async ({ context }) => {
+  const tabA = await context.newPage()
+  try {
+    await setThemeMode(tabA, SEEDED.demo.email, "light")
+    await loginAndWait(tabA, SEEDED.demo.email)
+    const tabB = await context.newPage()
+    await tabB.goto("/dashboard")
+    await expect(tabB.locator("html")).toHaveAttribute("data-theme", "light")
+
+    await tabA.goto("/settings")
+    await settle(tabA)
+    await tabA.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Dark", exact: true }).check()
+    await tabA.getByRole("button", { name: "Save theme" }).click()
+    await expect(tabA.getByText("Theme saved.")).toBeVisible()
+    await expect(tabA.locator("html")).toHaveAttribute("data-theme", "dark")
+    await expect(tabB.locator("html")).toHaveAttribute("data-theme", "dark")
+  } finally {
+    await setThemeMode(tabA, SEEDED.demo.email, "light")
+  }
+})
+
+test("signing out removes the saved theme from this device, and the public pages stay light", async ({ page }) => {
+  try {
+    await setThemeMode(page, SEEDED.demo.email, "dark")
+    await setThemeMode(page, SEEDED.sam.email, "dark")
+
+    // One account: "Sign out of <name>".
+    await loginAndWait(page, SEEDED.demo.email)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+    await expect.poll(() => themeCacheKeys(page)).toEqual(["luma.theme:u1"])
+    await page.getByRole("button", { name: /^Accounts/ }).filter({ visible: true }).first().click()
+    await page
+      .getByRole("dialog", { name: "Accounts" })
+      .getByRole("button", { name: `Sign out of ${SEEDED.demo.username}` })
+      .click()
+    await expect(page).toHaveURL(/\/$|\/login/)
+    expect(await themeCacheKeys(page)).toEqual([])
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/)
+
+    // Two accounts: "Sign out of all accounts".
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/login?add=1")
+    await page.getByLabel("Email").fill(SEEDED.sam.email)
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD)
+    await page.getByRole("button", { name: "Add account" }).click()
+    await expect(page).toHaveURL(/\/dashboard/)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+    await expect
+      .poll(() => themeCacheKeys(page).then((keys) => keys.sort()))
+      .toEqual(["luma.theme:u1", "luma.theme:u2"])
+
+    await page.getByRole("button", { name: /^Accounts/ }).filter({ visible: true }).first().click()
+    const menu = page.getByRole("dialog", { name: "Accounts" })
+    await menu.getByRole("button", { name: "Sign out of all accounts" }).click()
+    await menu.getByRole("button", { name: "Sign out all" }).click()
+    await expect(page).toHaveURL(/\/$|\/login/)
+    expect(await themeCacheKeys(page)).toEqual([])
+
+    // The log in page has no theme, even after a reload.
+    await page.goto("/login")
+    await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible()
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/)
+  } finally {
+    await setThemeMode(page, SEEDED.demo.email, "light")
+    await setThemeMode(page, SEEDED.sam.email, "light")
   }
 })

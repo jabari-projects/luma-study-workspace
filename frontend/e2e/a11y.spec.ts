@@ -1,5 +1,5 @@
 // Accessibility checks for Luma against the FAKE API (dev/mock-api.mjs).
-// axe scans on the main pages in light and dark theme, keyboard order and
+// axe scans on the main pages in light, dark and automatic theme, keyboard order and
 // focus rings on login, how login errors are announced, and reduced motion.
 // Made-up data only; nothing leaves localhost.
 import AxeBuilder from "@axe-core/playwright"
@@ -50,6 +50,8 @@ for (const scheme of ["light", "dark"] as const) {
       ] as const) {
         await page.goto(path)
         await settle(page)
+        // Public pages never get a theme (only the signed-in app does).
+        await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/)
         await expectNoSeriousA11yIssues(page, `${label}-${scheme}`, info)
       }
     })
@@ -105,6 +107,35 @@ for (const theme of ["light", "dark"] as const) {
     })
   })
 }
+
+// ------------------------------------------------- Automatic theme (by the clock)
+// Automatic is light from 7 am to 6:59 pm and dark from 7 pm to 6:59 am, on the device clock.
+test.describe("app pages, automatic theme (Chicago time)", () => {
+  test.use({ timezoneId: "America/Chicago" })
+
+  for (const { time, expected } of [
+    { time: "2026-11-16T20:00:00-06:00", expected: "dark" },
+    { time: "2026-11-16T10:00:00-06:00", expected: "light" },
+  ] as const) {
+    test(`at ${time.slice(11, 16)} the page is ${expected} with no serious axe issues`, async ({ page }, info) => {
+      try {
+        await setThemeMode(page, SEEDED.demo.email, "auto")
+        await page.clock.setFixedTime(new Date(time))
+        await loginAndWait(page, SEEDED.demo.email)
+        for (const path of ["/dashboard", "/settings"]) {
+          if (path !== "/dashboard") await page.goto(path)
+          await expect(page.locator("html")).toHaveAttribute("data-theme", expected)
+          await settle(page)
+          await expectNoSeriousA11yIssuesExceptKnown(page, `${path.slice(1)}-auto-${expected}`, info)
+        }
+        // Settings says which one Automatic shows right now.
+        await expect(page.getByText(`Right now: ${expected}.`)).toBeVisible()
+      } finally {
+        await setThemeMode(page, SEEDED.demo.email, "light")
+      }
+    })
+  }
+})
 
 // ------------------------------------------------------------------- keyboard
 test("Tab on login reaches every control in order, each with a visible focus ring", async ({ page }) => {

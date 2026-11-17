@@ -16,6 +16,7 @@ import {
 } from "./accounts"
 import type { AccountBook } from "./accounts"
 import type { BasicUser, Profile } from "./types"
+import { THEME_CACHE_PREFIX, themeCacheKey } from "./ui/theme"
 
 export type { BasicUser, Profile } from "./types"
 export { AUTH_STORAGE_KEY }
@@ -250,10 +251,11 @@ export function writeStoredSession(stored: StoredAuthSession): void {
   setTabAccountId(stored.user.id)
 }
 
-/** Removes one account and its study activity from this device. */
+/** Removes one account, its study activity and its saved theme from this device. */
 export function removeStoredAccount(id: string): void {
   writeBook(remove(readBook(), id))
   storageSet(local, activityKey(id), null)
+  storageSet(local, themeCacheKey(id), null)
 }
 
 /** Signs out only this tab's account. */
@@ -269,7 +271,7 @@ export function clearAllStoredSessions(): void {
     const keys: string[] = []
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index)
-      if (key && key.startsWith(`${LEGACY_ACTIVITY_KEY}:`)) {
+      if (key && (key.startsWith(`${LEGACY_ACTIVITY_KEY}:`) || key.startsWith(THEME_CACHE_PREFIX))) {
         keys.push(key)
       }
     }
