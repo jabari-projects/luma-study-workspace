@@ -16,7 +16,7 @@ import {
   UploadSimple,
 } from "@phosphor-icons/react"
 
-import { api, getErrorMessage } from "../api"
+import { api, getErrorMessage, getTabAccountId } from "../api"
 import { NoticeBanner, PageHeader, PublishActionButton } from "../ui/common"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
@@ -580,7 +580,7 @@ function StudySession({
           .sort((a, b) => a - b)[0]
         setNextDueAt(upcoming ?? null)
         setFinished(true)
-        recordStudy(reviewCount + 1)
+        recordStudy(getTabAccountId(), reviewCount + 1)
         const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
         celebrate(accent || undefined)
       }
@@ -703,16 +703,19 @@ function StudySession({
                 aria-pressed={flipped}
                 className={flipped ? "flip-card flipped" : "flip-card"}
                 onClick={() => setFlipped((value) => !value)}
-                aria-label={flipped ? `Answer: ${current.back}. Tap to see the question.` : `Question: ${current.front}. Tap to see the answer.`}
               >
-                <span className="flip-face front">
+                {/* Named by the face that shows (WCAG 2.5.3), so voice users can say what they see. */}
+                <span className="flip-face front" aria-hidden={flipped}>
                   <GlowChip card={cards.find((card) => card.id === current.id) ?? current} />
+                  <span className="sr-only">Question: </span>
                   <span className="face-text">{current.front}</span>
                   <span className="face-hint">Tap to flip</span>
                 </span>
-                <span className="flip-face back">
+                <span className="flip-face back" aria-hidden={!flipped}>
                   <span className="face-label">Answer</span>
+                  <span className="sr-only">: </span>
                   <span className="face-text">{current.back}</span>
+                  <span className="sr-only">. Tap to see the question.</span>
                 </span>
               </div>
             </motion.div>

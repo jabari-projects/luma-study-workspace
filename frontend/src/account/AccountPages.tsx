@@ -2,8 +2,10 @@ import { useCallback, useEffect, useId, useRef, useState } from "react"
 import type { ChangeEvent, FormEvent, ReactNode } from "react"
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 
+import { toast } from "sonner"
+
 import { useAuth } from "../auth"
-import { api, getErrorCode, getErrorMessage, getRetryAfter } from "../api"
+import { api, getErrorCode, getErrorMessage, getRetryAfter, getStoredAccessToken, readBook } from "../api"
 
 // Matches the backend rule (backend/app/passwords.py MIN/MAX_PASSWORD_LENGTH).
 export const MIN_PASSWORD_LENGTH = 8
@@ -44,7 +46,7 @@ function clearSignupTicket() {
   }
 }
 
-type Message = { kind: "error" | "success" | "info"; text: ReactNode }
+type Message = { kind: "error" | "success" | "info"; text: ReactNode; field?: "email" | "username" | "password" }
 
 /* ------------------------------------------------------------------ pieces */
 
@@ -246,10 +248,16 @@ function cleanCode(raw: string): string {
 /* ------------------------------------------------------------------- login */
 
 export function LoginPage() {
-  const { login } = useAuth()
+  const { login, isAuthenticated, user, activeAccount, accounts, switchAccount, logoutAccount } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const params = new URLSearchParams(location.search)
+  // Add mode: signed in and adding another account. Reauth mode: this tab's account needs its password again.
+  const adding = params.get("add") === "1" && isAuthenticated
+  // "Use a different account" leaves the expired account saved (and keeps its AI chat spot).
+  const [skippedReauthFor, setSkippedReauthFor] = useState<string | null>(null)
+  const reauth =
+    !adding && activeAccount?.status === "expired" && activeAccount.id !== skippedReauthFor ? activeAccount : null
   const [values, setValues] = useState({ email: "", password: "" })
   const [message, setMessage] = useState<Message | null>(
     params.get("reset")
@@ -258,6 +266,7 @@ export function LoginPage() {
   )
   const [submitting, setSubmitting] = useState(false)
   const messageId = useId()
+  const otherAccounts = accounts.filter((account) => !account.isActive)
 
   const update = (event: ChangeEvent<HTMLInputElement>) =>
     setValues((current) => ({ ...current, [event.target.name]: event.target.value }))
@@ -267,12 +276,20 @@ export function LoginPage() {
     setSubmitting(true)
     setMessage(null)
     try {
-      const user = await login({ email: values.email.trim(), password: values.password })
-      if (user.email_verified === false) {
-        navigate(`/verify-email?email=${encodeURIComponent(user.email)}`, { replace: true })
+      const email = reauth ? reauth.email : values.email.trim()
+      const { user: signedIn, alreadyListed } = await login({ email, password: values.password })
+      if (adding) {
+        toast.success(
+          alreadyListed
+            ? `You were already signed in as ${signedIn.username}. Switched to it.`
+            : `Added ${signedIn.username}. You're using it now.`,
+        )
+      }
+      if (signedIn.email_verified === false) {
+        navigate(`/verify-email?email=${encodeURIComponent(signedIn.email)}`, { replace: true })
         return
       }
-      navigate(params.get("redirect") || "/dashboard", { replace: true })
+      navigate(adding ? "/dashboard" : params.get("redirect") || "/dashboard", { replace: true })
     } catch (error: unknown) {
       setMessage({ kind: "error", text: getErrorMessage(error, "We couldn't log you in. Try again.") })
     } finally {
@@ -280,20 +297,82 @@ export function LoginPage() {
     }
   }
 
-  const intro = params.get("expired")
+  let title = "Log in"
+  let intro: ReactNode = params.get("expired")
     ? "Your password was changed, so please log in again."
     : "Welcome back. Log in to keep studying."
+  let footer: ReactNode = (
+    <p>
+      New to Luma? <Link to="/signup">Make an account</Link>
+    </p>
+  )
+  if (adding) {
+    title = "Add another account"
+    intro = `Sign in with a different email. You'll stay signed in as ${user?.username ?? "your account"}, and you can switch any time.`
+    footer = (
+      <p>
+        <Link to="/dashboard">Cancel</Link> · New to Luma? <Link to="/signup?add=1">Make another account</Link>
+      </p>
+    )
+  } else if (reauth) {
+    title = "Sign in again"
+    intro = `Your sign-in for ${reauth.username} ended. Enter your password to keep going.`
+    footer = (
+      <div className="reauth-footer">
+        <p>Or use another account</p>
+        <div className="account-choices">
+          {otherAccounts.map((account) =>
+            account.status === "signed_in" ? (
+              <button
+                key={account.id}
+                type="button"
+                className="secondary-button wide"
+                onClick={() => {
+                  switchAccount(account.id)
+                  navigate("/dashboard", { replace: true })
+                }}
+              >
+                Use {account.username}
+              </button>
+            ) : (
+              <button
+                key={account.id}
+                type="button"
+                className="secondary-button wide"
+                onClick={() => {
+                  // Shows this same page for that account. Nothing is removed.
+                  switchAccount(account.id)
+                  setValues({ email: "", password: "" })
+                  setMessage(null)
+                }}
+              >
+                Sign in again as {account.username}
+              </button>
+            ),
+          )}
+          <button
+            type="button"
+            className="secondary-button wide"
+            onClick={() => {
+              setSkippedReauthFor(reauth.id)
+              setValues({ email: "", password: "" })
+              setMessage(null)
+            }}
+          >
+            Use a different account
+          </button>
+        </div>
+        <p>
+          <button type="button" className="link-button" onClick={() => logoutAccount(reauth.id)}>
+            Remove {reauth.username} from this device
+          </button>
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <AuthShell
-      title="Log in"
-      intro={intro}
-      footer={
-        <p>
-          New to Luma? <Link to="/signup">Make an account</Link>
-        </p>
-      }
-    >
+    <AuthShell title={title} intro={intro} footer={footer}>
       <form className="form-panel auth-form" method="post" onSubmit={submit} noValidate={false}>
         <FormMessage message={message} id={messageId} />
         <TextField
@@ -301,11 +380,11 @@ export function LoginPage() {
           name="email"
           type="email"
           autoComplete="username"
-          value={values.email}
+          value={reauth ? reauth.email : values.email}
           onChange={update}
           extraDescribedBy={message?.kind === "error" ? messageId : undefined}
           invalid={message?.kind === "error"}
-          inputProps={{ inputMode: "email", autoCapitalize: "none", spellCheck: false }}
+          inputProps={{ inputMode: "email", autoCapitalize: "none", spellCheck: false, readOnly: Boolean(reauth) }}
         />
         <PasswordField
           label="Password"
@@ -322,7 +401,7 @@ export function LoginPage() {
           }
         />
         <button className="primary-button wide" type="submit" disabled={submitting}>
-          {submitting ? "Logging in..." : "Log in"}
+          {submitting ? "Logging in..." : adding ? "Add account" : reauth ? "Sign in" : "Log in"}
         </button>
       </form>
     </AuthShell>
@@ -332,8 +411,10 @@ export function LoginPage() {
 /* ------------------------------------------------------------------ signup */
 
 export function SignupPage() {
-  const { signup } = useAuth()
+  const { signup, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const adding = new URLSearchParams(location.search).get("add") === "1" && isAuthenticated
   const [values, setValues] = useState({ email: "", username: "", password: "" })
   const [message, setMessage] = useState<Message | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -345,7 +426,7 @@ export function SignupPage() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (values.password.length < MIN_PASSWORD_LENGTH || values.password.length > MAX_PASSWORD_LENGTH) {
-      setMessage({ kind: "error", text: PASSWORD_RULE })
+      setMessage({ kind: "error", text: PASSWORD_RULE, field: "password" })
       return
     }
     setSubmitting(true)
@@ -366,14 +447,29 @@ export function SignupPage() {
     }
   }
 
+  // After an error, mark the field it is about (or every field when we can't tell).
+  const isError = message?.kind === "error"
+  const errorText = isError && typeof message.text === "string" ? message.text.toLowerCase() : ""
+  const named = (["email", "username", "password"] as const).filter(
+    (field) => message?.field === field || (!message?.field && errorText.includes(field)),
+  )
+  const isInvalid = (field: "email" | "username" | "password") =>
+    isError && (named.length === 0 || named.includes(field))
+
   return (
     <AuthShell
-      title="Make your account"
+      title={adding ? "Make another account" : "Make your account"}
       intro="It's free to start. We'll email you a short code to check it's really you."
       footer={
-        <p>
-          Have an account? <Link to="/login">Log in</Link>
-        </p>
+        adding ? (
+          <p>
+            <Link to="/dashboard">Cancel</Link> · Have an account? <Link to="/login?add=1">Add it</Link>
+          </p>
+        ) : (
+          <p>
+            Have an account? <Link to="/login">Log in</Link>
+          </p>
+        )
       }
     >
       <form className="form-panel auth-form" method="post" onSubmit={submit}>
@@ -386,6 +482,7 @@ export function SignupPage() {
           value={values.email}
           onChange={update}
           extraDescribedBy={message?.kind === "error" ? messageId : undefined}
+          invalid={isInvalid("email")}
           inputProps={{ inputMode: "email", autoCapitalize: "none", spellCheck: false }}
         />
         <TextField
@@ -396,6 +493,7 @@ export function SignupPage() {
           onChange={update}
           hint="3 or more letters, numbers, or _ . Other people can see it."
           extraDescribedBy={message?.kind === "error" ? messageId : undefined}
+          invalid={isInvalid("username")}
           inputProps={{
             minLength: 3,
             pattern: "[a-zA-Z0-9_]+",
@@ -412,6 +510,7 @@ export function SignupPage() {
           hint={PASSWORD_RULE}
           rule
           extraDescribedBy={message?.kind === "error" ? messageId : undefined}
+          invalid={isInvalid("password")}
         />
         <button className="primary-button wide" type="submit" disabled={submitting}>
           {submitting ? "Making your account..." : "Make account"}
@@ -431,14 +530,24 @@ const CODE_ERRORS: Record<string, string> = {
 }
 
 export function VerifyEmailPage() {
-  const { user, isAuthenticated, verifyEmail, refreshProfile, logout } = useAuth()
+  const { user, isAuthenticated, verifyEmail, refreshProfile, logoutAccount, accounts, switchAccount } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const params = new URLSearchParams(location.search)
-  const knownEmail = params.get("email") || (isAuthenticated ? user?.email : "") || ""
+  const urlEmail = params.get("email") || ""
+  const knownEmail = urlEmail || (isAuthenticated ? user?.email : "") || ""
   const waitParam = params.get("wait")
   const [email, setEmail] = useState(knownEmail)
-  const ticket = isAuthenticated ? null : readSignupTicket(knownEmail || email)
+  // A signup started in this tab wins, even while signed in: it adds the new account.
+  const ticket = readSignupTicket(knownEmail || email)
+  const signedInPath = isAuthenticated && !ticket
+  // Never check a code against the wrong account.
+  const mismatch = Boolean(
+    signedInPath && user && urlEmail && urlEmail.trim().toLowerCase() !== user.email.trim().toLowerCase(),
+  )
+  const mismatchAccount = mismatch
+    ? accounts.find((account) => account.email.trim().toLowerCase() === urlEmail.trim().toLowerCase())
+    : undefined
   const autoSent = useRef(false)
   const [code, setCode] = useState("")
   const [message, setMessage] = useState<Message | null>(null)
@@ -464,15 +573,16 @@ export function VerifyEmailPage() {
     setSending(true)
     setMessage(null)
     try {
-      if (isAuthenticated) {
+      if (signedInPath) {
         const response = await api.post<{ resend_after_seconds?: number; message?: string }>("/auth/send-verification")
         setSecondsLeft(response.data.resend_after_seconds ?? 60)
         setMessage({ kind: "success", text: "We sent a new code. It can take a few minutes. Check spam too." })
       } else {
-        const response = await api.post<{ resend_after_seconds: number }>("/auth/resend-code", {
-          email: email.trim(),
-          ticket: ticket ?? undefined,
-        })
+        const response = await api.post<{ resend_after_seconds: number }>(
+          "/auth/resend-code",
+          { email: email.trim(), ticket: ticket ?? undefined },
+          { lumaAuth: "none" },
+        )
         setSecondsLeft(response.data.resend_after_seconds)
         setMessage({
           kind: "success",
@@ -488,19 +598,55 @@ export function VerifyEmailPage() {
     } finally {
       setSending(false)
     }
-  }, [email, isAuthenticated, setSecondsLeft, ticket])
+  }, [email, setSecondsLeft, signedInPath, ticket])
 
   // Logged in but not checked yet (older accounts, or after changing email):
   // nothing was sent on login, so send a code once when this page opens.
   useEffect(() => {
-    if (!isAuthenticated || autoSent.current || waitParam || user?.email_verified !== false) {
+    if (!signedInPath || mismatch || autoSent.current || waitParam || user?.email_verified !== false) {
       return
     }
     autoSent.current = true
     void sendNewCode()
-  }, [isAuthenticated, sendNewCode, user?.email_verified, waitParam])
+  }, [mismatch, sendNewCode, signedInPath, user?.email_verified, waitParam])
 
-  if (isAuthenticated && user && user.email_verified === true) {
+  if (mismatch) {
+    return (
+      <AuthShell
+        title="Switch accounts first"
+        intro={
+          <>
+            This code is for <strong className="auth-email">{urlEmail}</strong>. Switch to that account first.
+          </>
+        }
+      >
+        <div className="account-choices">
+          {mismatchAccount ? (
+            <button
+              type="button"
+              className="primary-button wide"
+              onClick={() => {
+                switchAccount(mismatchAccount.id)
+                if (mismatchAccount.status === "expired") {
+                  navigate("/login", { replace: true })
+                }
+              }}
+            >
+              Switch to it
+            </button>
+          ) : null}
+          <Link className={mismatchAccount ? "secondary-button wide" : "primary-button wide"} to="/login?add=1">
+            Add that account
+          </Link>
+          <Link className="ghost-button wide" to="/dashboard">
+            Go back to Luma
+          </Link>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  if (signedInPath && user && user.email_verified === true) {
     return <Navigate to="/dashboard" replace />
   }
 
@@ -511,7 +657,7 @@ export function VerifyEmailPage() {
       setMessage({ kind: "error", text: "Type all 6 numbers from the email." })
       return
     }
-    if (!isAuthenticated && !ticket) {
+    if (!signedInPath && !ticket) {
       setMessage({
         kind: "error",
         text: "Please finish signing up in the same browser tab where you started. Or start again.",
@@ -521,7 +667,7 @@ export function VerifyEmailPage() {
     setSubmitting(true)
     setMessage(null)
     try {
-      await verifyEmail(isAuthenticated ? { code: cleaned } : { email: email.trim(), ticket: ticket ?? "", code: cleaned })
+      await verifyEmail(ticket ? { email: email.trim(), ticket, code: cleaned } : { code: cleaned })
       clearSignupTicket()
       try {
         await refreshProfile()
@@ -557,23 +703,26 @@ export function VerifyEmailPage() {
       title="Check your email"
       intro={intro}
       footer={
-        isAuthenticated ? (
+        signedInPath ? (
           <p>
             Not now? <Link to="/dashboard">Go to Luma</Link>. AI tools unlock after you enter the code.{" "}
             <button
               type="button"
               className="link-button"
               onClick={() => {
-                logout()
+                if (user) {
+                  logoutAccount(user.id)
+                }
                 navigate("/login", { replace: true })
               }}
             >
-              Log out
+              Sign out of this account
             </button>
           </p>
         ) : (
           <p>
-            Wrong email? <Link to="/signup">Start again</Link> or <Link to="/login">log in</Link>
+            Wrong email? <Link to={isAuthenticated ? "/signup?add=1" : "/signup"}>Start again</Link> or{" "}
+            <Link to={isAuthenticated ? "/login?add=1" : "/login"}>log in</Link>
           </p>
         )
       }
@@ -620,7 +769,7 @@ export function VerifyEmailPage() {
             type="button"
             className="secondary-button wide"
             onClick={sendNewCode}
-            disabled={sending || secondsLeft > 0 || (!isAuthenticated && !email.trim())}
+            disabled={sending || secondsLeft > 0 || (!signedInPath && !email.trim())}
             aria-describedby="resend-wait"
           >
             {sending ? "Sending..." : "Send a new code"}
@@ -648,7 +797,7 @@ export function ForgotPasswordPage() {
     setSubmitting(true)
     setMessage(null)
     try {
-      await api.post("/auth/request-reset", { email: email.trim() })
+      await api.post("/auth/request-reset", { email: email.trim() }, { lumaAuth: "none" })
       setSent(true)
       setMessage({
         kind: "success",
@@ -696,7 +845,7 @@ export function ForgotPasswordPage() {
 export function ResetPasswordPage() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { accounts, refreshProfile } = useAuth()
   const token = new URLSearchParams(location.search).get("token") ?? ""
   const [password, setPassword] = useState("")
   const [message, setMessage] = useState<Message | null>(null)
@@ -724,9 +873,34 @@ export function ResetPasswordPage() {
     setSubmitting(true)
     setMessage(null)
     try {
-      await api.post("/auth/reset", { token, new_password: password })
-      logout()
-      navigate("/login?reset=1", { replace: true })
+      await api.post("/auth/reset", { token, new_password: password }, { lumaAuth: "none" })
+      // We don't know which saved account this was for. Check each one: only the
+      // account whose password changed stops working and shows "Sign in again".
+      const changed: string[] = []
+      for (const account of accounts) {
+        if (account.status !== "signed_in") {
+          continue
+        }
+        try {
+          await refreshProfile(account.id)
+        } catch {
+          // A 401 marked it expired. Other errors keep it signed in.
+        }
+        if (readBook().accounts[account.id]?.status === "expired") {
+          changed.push(account.username)
+        }
+      }
+      if (getStoredAccessToken()) {
+        // Name the account that needs the new password. This tab's account is still signed in.
+        toast.success(
+          changed.length
+            ? `Password changed. Sign in to ${changed.join(" and ")} again with the new password.`
+            : "Password changed.",
+        )
+        navigate("/dashboard", { replace: true })
+      } else {
+        navigate("/login?reset=1", { replace: true })
+      }
     } catch (error: unknown) {
       if (getErrorCode(error) === "reset_invalid") {
         setMessage({
@@ -794,20 +968,51 @@ export function VerifyEmailBanner() {
 
 export function AccountDeletedPage() {
   const location = useLocation()
-  const { logout } = useAuth()
+  const navigate = useNavigate()
+  const { accounts, logoutAccount, switchAccount } = useAuth()
+  const state = location.state as { kept?: string[]; deletedId?: string } | null
+  const deletedId = state?.deletedId
+  const removed = useRef(false)
   useEffect(() => {
-    // The account no longer exists, so its session is useless now.
-    logout()
-  }, [logout])
-  const kept = ((location.state as { kept?: string[] } | null)?.kept ?? []).filter(Boolean)
+    // The deleted account's sign-in is useless now. Only that account is removed.
+    // After a reload there is no state, so nothing is removed.
+    if (deletedId && !removed.current) {
+      removed.current = true
+      logoutAccount(deletedId)
+    }
+  }, [deletedId, logoutAccount])
+  const kept = (state?.kept ?? []).filter(Boolean)
+  const remaining = accounts.filter((account) => account.id !== deletedId)
+  const next =
+    remaining.find((account) => account.isActive) ??
+    remaining.find((account) => account.status === "signed_in") ??
+    remaining[0]
   return (
     <AuthShell
       title="Your account is deleted"
       intro="Your account, notes, cards, summaries, study plans and uploads are gone."
       footer={
-        <p>
-          <Link to="/">Go to the start page</Link>
-        </p>
+        next ? (
+          <div className="account-choices">
+            <button
+              type="button"
+              className="primary-button wide"
+              onClick={() => {
+                switchAccount(next.id)
+                navigate("/dashboard", { replace: true })
+              }}
+            >
+              Go back to Luma as {next.username}
+            </button>
+            <p>
+              <Link to="/">Go to the start page</Link>
+            </p>
+          </div>
+        ) : (
+          <p>
+            <Link to="/">Go to the start page</Link>
+          </p>
+        )
       }
     >
       {kept.length ? (

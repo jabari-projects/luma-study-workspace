@@ -1,6 +1,40 @@
 import axios, { AxiosError, AxiosHeaders } from "axios"
 import type { AxiosInstance } from "axios"
 
+import {
+  AUTH_STORAGE_KEY,
+  AccountBlockedError,
+  LEGACY_ACTIVITY_KEY,
+  TAB_ACCOUNT_KEY,
+  activityKey,
+  classifyUnauthorized,
+  markExpired,
+  parseBook,
+  remove,
+  resolveRequestAuth,
+  upsertSignedIn,
+} from "./accounts"
+import type { AccountBook } from "./accounts"
+import type { BasicUser, Profile } from "./types"
+
+export type { BasicUser, Profile } from "./types"
+export { AUTH_STORAGE_KEY }
+
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /** "none": send no token (login, reset and other sign-in steps). */
+    lumaAuth?: "none"
+    /** Send this saved account's token instead of the tab's account. */
+    lumaAccountId?: string
+    /** Internal: a check that a vague 401 really means the sign-in ended. */
+    lumaConfirm?: boolean
+  }
+  interface InternalAxiosRequestConfig {
+    /** Which account and token this request went out with. */
+    lumaStamp?: { id: string; token: string }
+  }
+}
+
 function normalizeBaseUrl(value: string | undefined): string {
   const trimmed = value?.trim()
   if (!trimmed) {
@@ -10,29 +44,6 @@ function normalizeBaseUrl(value: string | undefined): string {
 }
 
 export const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
-export const AUTH_STORAGE_KEY = "luma.auth"
-
-export type BasicUser = {
-  id: string
-  email: string
-  username: string
-  email_verified?: boolean
-}
-
-export type Profile = BasicUser & {
-  display_name?: string | null
-  avatar_url?: string | null
-  theme_color?: string | null
-  custom_theme_image_url?: string | null
-  timezone?: string | null
-  theme_mode?: string | null
-  phone_number?: string | null
-  birthday?: string | null
-  subscription_status: string
-  email_verified: boolean
-  is_admin?: boolean
-}
-
 export type AuthSession = {
   user: BasicUser
   access_token: string
@@ -122,70 +133,217 @@ export const api: AxiosInstance = axios.create({
   },
 })
 
-export function readStoredSession(): StoredAuthSession | null {
-  try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY)
-    if (!raw) {
-      return null
-    }
+/* ------------------------------------------------ saved accounts on this device */
 
-    const parsed = JSON.parse(raw) as Partial<StoredAuthSession>
-    if (
-      typeof parsed.accessToken === "string" &&
-      parsed.accessToken.trim() &&
-      parsed.user &&
-      typeof parsed.user.id === "string"
-    ) {
-      return {
-        accessToken: parsed.accessToken,
-        user: parsed.user,
+/** Fired on window when a saved account's sign-in stops working. detail: { id }. */
+export const ACCOUNT_EXPIRED_EVENT = "luma:account-expired"
+
+const SIGNUP_TICKET_KEY = "luma.signupTicket"
+
+function storageGet(storage: () => Storage, key: string): string | null {
+  try {
+    return storage().getItem(key)
+  } catch {
+    return null
+  }
+}
+
+/** False when the browser blocked the write (private mode, blocked site data, or full). */
+function storageSet(storage: () => Storage, key: string, value: string | null): boolean {
+  try {
+    if (value === null) {
+      storage().removeItem(key)
+    } else {
+      storage().setItem(key, value)
+    }
+    return true
+  } catch {
+    // Storage can be blocked (private mode). The app then acts signed out.
+    return false
+  }
+}
+
+export const STORAGE_BLOCKED_MESSAGE =
+  "This browser won't let Luma save your sign-in. Allow site data for Luma, or leave private mode, then try again."
+
+/** Thrown when the browser won't let us save a sign-in. */
+export class StorageBlockedError extends Error {
+  constructor(message = STORAGE_BLOCKED_MESSAGE) {
+    super(message)
+    this.name = "StorageBlockedError"
+  }
+}
+
+const local = () => window.localStorage
+const session = () => window.sessionStorage
+
+let legacyChecked = false
+
+/** Reads the saved accounts. Upgrades the old one-account format once. */
+export function readBook(): AccountBook {
+  const { book, migratedFromV1, corrupt } = parseBook(storageGet(local, AUTH_STORAGE_KEY))
+  if (corrupt) {
+    storageSet(local, AUTH_STORAGE_KEY, null)
+  }
+  if (migratedFromV1) {
+    writeBook(book)
+    // Study activity from before belongs to the account that was signed in.
+    const activity = storageGet(local, LEGACY_ACTIVITY_KEY)
+    if (activity !== null && storageGet(local, activityKey(migratedFromV1)) === null) {
+      storageSet(local, activityKey(migratedFromV1), activity)
+    }
+    storageSet(local, LEGACY_ACTIVITY_KEY, null)
+    legacyChecked = true
+  } else if (!legacyChecked) {
+    // Old activity with no signed-in owner: nobody can claim it, so drop it.
+    legacyChecked = true
+    storageSet(local, LEGACY_ACTIVITY_KEY, null)
+  }
+  return book
+}
+
+/** False when the browser would not save it. */
+export function writeBook(book: AccountBook): boolean {
+  return storageSet(local, AUTH_STORAGE_KEY, JSON.stringify(book))
+}
+
+// Each tab is bound to one account, so switching in one tab never changes another.
+let tabAccountId: string | null = typeof window === "undefined" ? null : storageGet(session, TAB_ACCOUNT_KEY)
+
+export function getTabAccountId(): string | null {
+  return tabAccountId
+}
+
+export function setTabAccountId(id: string | null): void {
+  tabAccountId = id
+  storageSet(session, TAB_ACCOUNT_KEY, id)
+  if (id) {
+    const book = readBook()
+    if (book.accounts[id] && book.lastActiveId !== id) {
+      writeBook({ ...book, lastActiveId: id })
+    }
+  }
+}
+
+/** This tab's account, only while it is signed in. */
+export function readStoredSession(): StoredAuthSession | null {
+  const id = tabAccountId
+  if (!id) {
+    return null
+  }
+  const account = readBook().accounts[id]
+  if (!account || account.status !== "signed_in" || !account.accessToken) {
+    return null
+  }
+  return { accessToken: account.accessToken, user: account.user }
+}
+
+/**
+ * Adds or refreshes an account and binds this tab to it. Throws AccountLimitError when full,
+ * and StorageBlockedError when the browser won't save it (so the page can say so).
+ */
+export function writeStoredSession(stored: StoredAuthSession): void {
+  const next = upsertSignedIn(readBook(), stored, Date.now())
+  if (!writeBook(next) || !readBook().accounts[stored.user.id]) {
+    throw new StorageBlockedError()
+  }
+  setTabAccountId(stored.user.id)
+}
+
+/** Removes one account and its study activity from this device. */
+export function removeStoredAccount(id: string): void {
+  writeBook(remove(readBook(), id))
+  storageSet(local, activityKey(id), null)
+}
+
+/** Signs out only this tab's account. */
+export function clearStoredSession(): void {
+  if (tabAccountId) {
+    removeStoredAccount(tabAccountId)
+  }
+}
+
+/** Signs out every account on this device. */
+export function clearAllStoredSessions(): void {
+  try {
+    const keys: string[] = []
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)
+      if (key && key.startsWith(`${LEGACY_ACTIVITY_KEY}:`)) {
+        keys.push(key)
       }
     }
+    keys.forEach((key) => window.localStorage.removeItem(key))
   } catch {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY)
+    // Nothing more to clear.
   }
-
-  return null
-}
-
-export function writeStoredSession(session: StoredAuthSession): void {
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
-}
-
-export function clearStoredSession(): void {
-  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  storageSet(local, AUTH_STORAGE_KEY, null)
+  storageSet(local, LEGACY_ACTIVITY_KEY, null)
+  storageSet(session, SIGNUP_TICKET_KEY, null)
+  tabAccountId = null
+  storageSet(session, TAB_ACCOUNT_KEY, null)
 }
 
 export function getStoredAccessToken(): string | null {
-  const session = readStoredSession()
-  return session?.accessToken ?? null
+  return readStoredSession()?.accessToken ?? null
 }
 
+// Every request uses the token of the account it belongs to: the pinned account
+// (lumaAccountId) or this tab's account. It never borrows another account's token.
 api.interceptors.request.use((config) => {
-  const token = getStoredAccessToken()
   const headers = AxiosHeaders.from(config.headers)
+  const decision = resolveRequestAuth(readBook(), getTabAccountId(), config)
 
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`)
-  } else {
+  if (decision.kind === "bearer") {
+    headers.set("Authorization", `Bearer ${decision.token}`)
+    config.lumaStamp = { id: decision.id, token: decision.token }
+  } else if (decision.kind === "none") {
     headers.delete("Authorization")
+  } else {
+    throw new AccountBlockedError()
   }
 
   config.headers = headers
   return config
 })
 
-// After a password reset, older logins stop working on purpose. When the server says a
-// session expired, forget it and send the student to log in again instead of showing errors.
+function expireAccount(stamp: { id: string; token: string }): void {
+  writeBook(markExpired(readBook(), stamp.id, stamp.token))
+  window.dispatchEvent(new CustomEvent(ACCOUNT_EXPIRED_EVENT, { detail: { id: stamp.id } }))
+}
+
+// One check per token at a time, even when several requests fail together.
+const pendingChecks = new Map<string, Promise<void>>()
+
+/** Asks the server once more, with this account's token, whether its sign-in still works. */
+function confirmExpired(stamp: { id: string; token: string }): void {
+  if (pendingChecks.has(stamp.token)) {
+    return
+  }
+  const check = api
+    .get("/me/profile", { lumaAccountId: stamp.id, lumaConfirm: true })
+    .then(
+      () => undefined,
+      () => undefined, // A 401 here is handled by this interceptor. Other errors keep the account.
+    )
+    .finally(() => pendingChecks.delete(stamp.token))
+  pendingChecks.set(stamp.token, check)
+}
+
+// A clear 401 means that account's sign-in stopped working (time ran out, or the password
+// changed). Mark only that account as expired, and only if it still has the same token.
+// A vague 401 (the AI routes say this during short server problems too) is checked first.
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     if (error instanceof AxiosError && error.response?.status === 401) {
-      const detail = (error.response.data as { detail?: unknown } | undefined)?.detail
-      const onLoginPage = window.location.pathname.startsWith("/login")
-      if (typeof detail === "string" && detail.startsWith("Session expired") && getStoredAccessToken() && !onLoginPage) {
-        clearStoredSession()
-        window.location.assign("/login?expired=1")
+      const stamp = error.config?.lumaStamp
+      if (stamp) {
+        if (error.config?.lumaConfirm || classifyUnauthorized(error.response.data) === "expired") {
+          expireAccount(stamp)
+        } else {
+          confirmExpired(stamp)
+        }
       }
     }
     return Promise.reject(error)

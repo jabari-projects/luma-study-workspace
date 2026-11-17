@@ -15,7 +15,7 @@ import {
 } from "@phosphor-icons/react"
 
 import { api } from "../api"
-import { useProfile } from "../auth"
+import { useAuth, useProfile } from "../auth"
 import { Scribble } from "../ui/Scribble"
 import { deckStats } from "./deck"
 import { weekActivity } from "./celebrate"
@@ -43,9 +43,10 @@ function greeting(): string {
 
 export function TodayPage() {
   const profile = useProfile()
+  const { activeAccountId } = useAuth()
   const { decks, loading } = useDecks()
   const [counts, setCounts] = useState<Record<string, number>>({})
-  const week = weekActivity()
+  const week = weekActivity(activeAccountId)
   const daysStudied = week.filter((day) => day.count > 0).length
 
   useEffect(() => {

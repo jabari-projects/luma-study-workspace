@@ -15,6 +15,7 @@
 
 - **Public search** — Search public notes, flashcards, and summaries by topic or browse users who have published material.
 - **Authentication and account management** — Sign up, log in, verify email, request and reset passwords, update profile information, and delete an account.
+- **Multiple accounts and the AI chat account** — A student can stay signed in to up to 3 accounts on one device and switch from the account menu (sidebar name, phone avatar, or Settings → Accounts on this device). Each browser tab keeps its own account, and each request carries only that account's token. AI notes and Voice to Notes work in every account. The future AI tutor chat will work for one account per device: the first one signed in, which keeps that role until it signs out (an expired sign-in or a password reset does not move it); then the next-oldest account gets it. Today this is worked out on the device only (`frontend/src/accounts.ts`), and the chat badge stays hidden until the chat ships (`AI_CHAT_UI_ENABLED` in `frontend/src/config.ts`). The server will need to enforce it when the chat ships.
 - **Profiles and themes** — Manage display details, color/theme preferences, avatar images, and custom theme images.
 - **Notifications and live connection** — Retrieve and mark notifications as read; an authenticated WebSocket endpoint is available for server-to-user messages.
 

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
-import type { ComponentType } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { CSSProperties, ComponentType } from "react"
 import { Link, NavLink, useLocation } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
 import type { IconProps } from "@phosphor-icons/react"
 import {
   CalendarCheck,
+  CaretUpDown,
   DownloadSimple,
   Cards,
   GearSix,
@@ -19,6 +20,9 @@ import {
   Article,
   X,
 } from "@phosphor-icons/react"
+
+import { AccountMenuPopover, AccountSheet } from "./AccountMenu"
+import { accountMenuPosition } from "./accountActions"
 
 type NavItem = { to: string; label: string; icon: ComponentType<IconProps>; match?: string[] }
 
@@ -90,6 +94,9 @@ export function SideNav({
   initials: string
   onLogout: () => void
 }) {
+  const identityRef = useRef<HTMLButtonElement>(null)
+  const [menuPosition, setMenuPosition] = useState<CSSProperties | null>(null)
+  const closeMenu = useCallback(() => setMenuPosition(null), [])
   return (
     <aside className="sidebar" aria-label="Main navigation">
       <Link className="brand" to="/dashboard" aria-label="Luma home">
@@ -115,47 +122,121 @@ export function SideNav({
         ))}
       </nav>
       <div className="sidebar-footer">
-        <div className="identity">
-          <span className="avatar">{initials}</span>
-          <span>
+        <button
+          ref={identityRef}
+          type="button"
+          className="identity"
+          aria-haspopup="dialog"
+          aria-expanded={menuPosition !== null}
+          title="Switch or add accounts"
+          onClick={(event) => {
+            const anchor = event.currentTarget
+            setMenuPosition((current) => (current ? null : accountMenuPosition(anchor)))
+          }}
+        >
+          {/* Named by its own text (WCAG 2.5.3), so voice users can say what they see. */}
+          <span className="sr-only">Accounts. Using </span>
+          <span className="avatar" aria-hidden="true">
+            {initials}
+            {/* Tablet rail: a small mark on the avatar shows it opens a menu. */}
+            <span className="identity-badge" aria-hidden="true">
+              <CaretUpDown weight="bold" />
+            </span>
+          </span>
+          <span className="identity-text">
             <strong>{username}</strong>
             <small>{plan} plan</small>
           </span>
-        </div>
-        <button type="button" className="icon-button" onClick={onLogout} aria-label="Log out" title="Log out">
+          <CaretUpDown className="identity-caret" weight="bold" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onLogout}
+          aria-label={`Sign out of ${username}`}
+          title={`Sign out of ${username}`}
+        >
           <SignOut weight="bold" aria-hidden="true" />
         </button>
       </div>
+      <AccountMenuPopover anchorRef={identityRef} position={menuPosition} onClose={closeMenu} />
     </aside>
   )
 }
 
 export function MobileTopBar({ initials }: { initials: string }) {
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const closeSheet = useCallback(() => setSheetOpen(false), [])
   return (
-    <header className="mobile-top">
-      <Link className="brand" to="/dashboard" aria-label="Luma home">
-        <img src="/luma-star.png" alt="" />
-        <span>Luma</span>
-      </Link>
-      <Link className="avatar" to="/settings" aria-label="Your settings">
-        {initials}
-      </Link>
-    </header>
+    <>
+      <header className="mobile-top">
+        <Link className="brand" to="/dashboard" aria-label="Luma home">
+          <img src="/luma-star.png" alt="" />
+          <span>Luma</span>
+        </Link>
+        <button
+          type="button"
+          className="avatar"
+          aria-label="Accounts"
+          aria-haspopup="dialog"
+          aria-expanded={sheetOpen}
+          onClick={() => setSheetOpen(true)}
+        >
+          {initials}
+        </button>
+      </header>
+      <AccountSheet open={sheetOpen} onClose={closeSheet} />
+    </>
   )
 }
 
-export function MobileTabBar({ onLogout }: { onLogout: () => void }) {
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+export function MobileTabBar() {
   const { pathname } = useLocation()
   const [sheetOpen, setSheetOpen] = useState(false)
+  const plusRef = useRef<HTMLButtonElement>(null)
+  const sheetRef = useRef<HTMLElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+
+  // Close the sheet and put keyboard focus back on the + button.
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false)
+    plusRef.current?.focus()
+  }, [])
 
   useEffect(() => {
     if (!sheetOpen) return
+    // Move focus into the sheet when it opens.
+    closeRef.current?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSheetOpen(false)
+      if (event.key === "Escape") {
+        closeSheet()
+        return
+      }
+      if (event.key !== "Tab") return
+      // Keep Tab inside the open sheet.
+      const sheet = sheetRef.current
+      if (!sheet) return
+      const items = Array.from(sheet.querySelectorAll<HTMLElement>(FOCUSABLE))
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (!sheet.contains(active)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [sheetOpen])
+  }, [closeSheet, sheetOpen])
 
   const renderTab = (item: NavItem) => (
     <Link key={item.to} to={item.to} className={isActive(pathname, item) ? "tab active" : "tab"} onClick={() => setSheetOpen(false)}>
@@ -169,9 +250,10 @@ export function MobileTabBar({ onLogout }: { onLogout: () => void }) {
       <nav className="tab-bar" aria-label="Main navigation">
         {tabItems.slice(0, 2).map(renderTab)}
         <button
+          ref={plusRef}
           type="button"
           className={sheetOpen ? "tab create open" : "tab create"}
-          onClick={() => setSheetOpen((open) => !open)}
+          onClick={() => (sheetOpen ? closeSheet() : setSheetOpen(true))}
           aria-expanded={sheetOpen}
           aria-label="Create something"
         >
@@ -190,9 +272,10 @@ export function MobileTabBar({ onLogout }: { onLogout: () => void }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSheetOpen(false)}
+              onClick={closeSheet}
             />
             <motion.section
+              ref={sheetRef}
               className="create-sheet"
               role="dialog"
               aria-modal="true"
@@ -205,7 +288,7 @@ export function MobileTabBar({ onLogout }: { onLogout: () => void }) {
               <div className="sheet-head">
                 <span className="sheet-grip" aria-hidden="true" />
                 <h2>What do you want to do?</h2>
-                <button type="button" className="icon-button" onClick={() => setSheetOpen(false)} aria-label="Close">
+                <button ref={closeRef} type="button" className="icon-button" onClick={closeSheet} aria-label="Close">
                   <X weight="bold" aria-hidden="true" />
                 </button>
               </div>
@@ -218,9 +301,6 @@ export function MobileTabBar({ onLogout }: { onLogout: () => void }) {
                   </Link>
                 ))}
               </div>
-              <button type="button" className="ghost-button wide" onClick={onLogout}>
-                <SignOut weight="bold" aria-hidden="true" /> Log out
-              </button>
             </motion.section>
           </>
         ) : null}

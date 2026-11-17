@@ -10,6 +10,7 @@ import { shuffle } from "./deck"
 import type { Deck, DeckCard } from "./deck"
 import { celebrate, recordStudy } from "./celebrate"
 import { useDecks } from "./useDecks"
+import { getTabAccountId } from "../api"
 
 type QuestionKind = "choice" | "truefalse" | "type"
 
@@ -242,6 +243,12 @@ function QuizRun({
   const [streak, setStreak] = useState(0)
   const stageRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Each typed question gets a new answer box once the old question has animated out
+  // (AnimatePresence mode="wait"), so focus it when it appears, not when the index changes.
+  const answerBoxRef = useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node
+    if (node && !node.disabled) node.focus()
+  }, [])
 
   const question = questions[index]
   const answered = answers.length > index ? answers[index] : null
@@ -250,7 +257,7 @@ function QuizRun({
   useEffect(() => {
     if (finished) {
       const score = answers.filter((answer) => answer.correct).length
-      recordStudy(answers.length)
+      recordStudy(getTabAccountId(), answers.length)
       if (score / Math.max(1, answers.length) >= 0.7) {
         const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
         celebrate(accent || undefined)
@@ -373,7 +380,14 @@ function QuizRun({
         <button type="button" className="icon-button" onClick={onExit} aria-label="Stop quiz">
           <ArrowLeft weight="bold" aria-hidden="true" />
         </button>
-        <div className="progress-track" role="progressbar" aria-valuenow={index} aria-valuemin={0} aria-valuemax={questions.length}>
+        <div
+          className="progress-track"
+          role="progressbar"
+          aria-label="Questions done"
+          aria-valuenow={index}
+          aria-valuemin={0}
+          aria-valuemax={questions.length}
+        >
           <span style={{ width: `${(index / questions.length) * 100}%` }} />
         </div>
         <span className="study-count">
@@ -455,7 +469,7 @@ function QuizRun({
             {question.kind === "type" ? (
               <form className="type-answer" onSubmit={typedSubmit}>
                 <input
-                  ref={inputRef}
+                  ref={answerBoxRef}
                   value={typed}
                   onChange={(event) => setTyped(event.target.value)}
                   placeholder="Type your answer"

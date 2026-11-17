@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 import { ArrowCounterClockwise, Cards, Check, FloppyDisk, MoonStars, Plus, Sparkle, X } from "@phosphor-icons/react"
 
-import { api, getErrorMessage } from "../api"
+import { api, getErrorMessage, getTabAccountId } from "../api"
 import { newCardId } from "../study/deck"
 import { newDraftCard } from "./capture-api"
 import type { DraftCard, NotesDraft } from "./capture-api"
@@ -107,12 +107,16 @@ export function NotesWorkbench({
   const updateCard = (id: string, patch: Partial<DraftCard>) =>
     update({ cards: draft.cards.map((card) => (card.id === id ? { ...card, ...patch } : card)) })
 
-  const postDeck = async (title: string, tags: string[]) =>
-    api.post<{ id: string }>("/flashcards", {
-      title,
-      tags,
-      cards: kept.map((card) => ({ id: newCardId(), front: card.front.trim(), back: card.back.trim(), review: null })),
-    })
+  const postDeck = async (title: string, tags: string[], accountId: string | undefined) =>
+    api.post<{ id: string }>(
+      "/flashcards",
+      {
+        title,
+        tags,
+        cards: kept.map((card) => ({ id: newCardId(), front: card.front.trim(), back: card.back.trim(), review: null })),
+      },
+      { lumaAccountId: accountId },
+    )
 
   const save = async (withDeck: boolean) => {
     const title = draft.title.trim() || "My notes"
@@ -121,15 +125,27 @@ export function NotesWorkbench({
       return
     }
     setSaving(withDeck ? "both" : "note")
+    // Save into the account that made these notes, even if this tab switches meanwhile.
+    const accountId = getTabAccountId() ?? undefined
     const tags = tagsFrom(draft)
     let noteId = savedNoteId
     try {
       if (!noteId) {
-        const note = await api.post<{ id: string }>("/notes", { title, content: noteContent(draft), tags })
+        const note = await api.post<{ id: string }>(
+          "/notes",
+          { title, content: noteContent(draft), tags },
+          { lumaAccountId: accountId },
+        )
         noteId = note.data.id
       }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "We couldn't save that. Your work is still here."))
+      setSaving(null)
+      return
+    }
+
+    if ((getTabAccountId() ?? undefined) !== accountId) {
+      // The tab moved to another account: keep the saved note, don't add a deck.
       setSaving(null)
       return
     }
@@ -142,7 +158,7 @@ export function NotesWorkbench({
     }
 
     try {
-      const deck = await postDeck(title, tags)
+      const deck = await postDeck(title, tags, accountId)
       toast.success("Saved your note and deck!", {
         action: { label: "Open note", onClick: () => navigate(`/notes/${noteId}`) },
       })
@@ -247,9 +263,11 @@ export function NotesWorkbench({
                     </button>
                   </div>
                 ) : (
-                  <button type="button" className="mini-card-face" onClick={() => setEditing(card.id)} aria-label={`Change card ${index + 1}`}>
+                  <button type="button" className="mini-card-face" onClick={() => setEditing(card.id)}>
+                    {/* Named by the card's own words (WCAG 2.5.3); the hidden text says what a tap does. */}
                     <span className="mini-q">{card.front || "Add a question"}</span>
                     <span className="mini-a">{card.back || "Add an answer"}</span>
+                    <span className="sr-only">. Change card {index + 1}</span>
                   </button>
                 )}
                 <div className="mini-card-actions">

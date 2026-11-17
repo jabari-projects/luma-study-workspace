@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react"
-import { Toaster } from "sonner"
+import { Toaster, toast } from "sonner"
 import {
   Link,
   Navigate,
@@ -16,6 +16,9 @@ import type { Profile } from "./api"
 import { NoticeBanner, PageHeader } from "./ui/common"
 import type { Notice, StudyType } from "./ui/common"
 import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
+import { AccountsPanel, SignedOutElsewhere } from "./ui/AccountMenu"
+import { useAccountActions } from "./ui/accountActions"
+import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
 import { QuizPage } from "./study/QuizPage"
 import { NotePage } from "./notes/NotePage"
@@ -203,6 +206,31 @@ const themeColors = [
 
 const DEFAULT_ACCENT = "#0f766e"
 
+/** WCAG relative luminance of a #rrggbb color (null when it can't be read). */
+function luminance(hex: string): number | null {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!match) return null
+  const channels = [0, 2, 4].map((at) => {
+    const value = parseInt(match[1].slice(at, at + 2), 16) / 255
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+const ON_ACCENT_LIGHT = "#ffffff"
+const ON_ACCENT_DARK = "#1b1626"
+
+/** Text color for buttons filled with the accent: white when it is easy to read, dark otherwise. */
+function textOnAccent(accent: string): string {
+  const background = luminance(accent)
+  if (background === null) return ON_ACCENT_LIGHT
+  const withWhite = 1.05 / (background + 0.05)
+  if (withWhite >= 4.5) return ON_ACCENT_LIGHT
+  const dark = luminance(ON_ACCENT_DARK) ?? 0
+  const withDark = (background + 0.05) / (dark + 0.05)
+  return withDark > withWhite ? ON_ACCENT_DARK : ON_ACCENT_LIGHT
+}
+
 type ThemeMode = "light" | "dark"
 
 const initialHealthState: HealthState = {
@@ -371,11 +399,15 @@ function BackendConnectionBanner({ health }: { health: HealthState }) {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { loading, isAuthenticated } = useAuth()
+  const { loading, isAuthenticated, signedOutElsewhere } = useAuth()
   const location = useLocation()
 
   if (loading) {
     return <LoadingScreen message="Checking your session..." />
+  }
+
+  if (signedOutElsewhere) {
+    return <SignedOutElsewhere />
   }
 
   if (!isAuthenticated) {
@@ -386,21 +418,41 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 function PublicOnlyRoute({ children }: { children: ReactNode }) {
-  const { loading, isAuthenticated } = useAuth()
+  const { loading, isAuthenticated, canAddAccount } = useAuth()
+  const location = useLocation()
+  const adding = new URLSearchParams(location.search).get("add") === "1"
+  // Room is checked when the page opens. A sign-in that just filled the last spot
+  // must not bounce back with a "device is full" error.
+  const [roomWhenOpened] = useState(canAddAccount)
 
   if (loading) {
     return <LoadingScreen message="Preparing Luma..." />
   }
 
   if (isAuthenticated) {
+    // "Add another account" opens the login and signup pages while signed in.
+    if (adding && roomWhenOpened) {
+      return <>{children}</>
+    }
+    if (adding) {
+      return <AccountLimitRedirect />
+    }
     return <Navigate to="/dashboard" replace />
   }
 
   return <>{children}</>
 }
 
+function AccountLimitRedirect() {
+  useEffect(() => {
+    toast.error(ACCOUNT_LIMIT_MESSAGE, { id: "account-limit" })
+  }, [])
+  return <Navigate to="/settings#accounts" replace />
+}
+
 function AppLayout() {
-  const { user, logout } = useAuth()
+  const { user, activeAccountId } = useAuth()
+  const { signOut } = useAccountActions()
   const navigate = useNavigate()
   const profile = useProfile()
   const initials = (user?.username ?? user?.email ?? "L").slice(0, 1).toUpperCase()
@@ -413,15 +465,21 @@ function AppLayout() {
     const root = document.documentElement
     root.dataset.theme = themeMode
     root.style.setProperty("--accent", accent)
+    // Keep text on accent-filled buttons readable for every theme color (4.5:1 or more).
+    root.style.setProperty("--on-accent", textOnAccent(accent))
     return () => {
       delete root.dataset.theme
       root.style.removeProperty("--accent")
+      root.style.removeProperty("--on-accent")
     }
   }, [themeMode, accent])
 
   const handleLogout = () => {
-    logout()
-    navigate("/", { replace: true })
+    if (activeAccountId) {
+      signOut(activeAccountId)
+    } else {
+      navigate("/", { replace: true })
+    }
   }
 
   return (
@@ -470,13 +528,13 @@ function AppLayout() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
-      <MobileTabBar onLogout={handleLogout} />
-      <Toaster position="top-center" richColors closeButton />
+      <MobileTabBar />
     </div>
   )
 }
 
 function RootRoutes() {
+  const { activeAccountId } = useAuth()
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
@@ -500,7 +558,8 @@ function RootRoutes() {
       <Route path="/account-deleted" element={<AccountDeletedPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
+      {/* Keyed by account: switching starts the app fresh, so no page shows one account's data under another. */}
+      <Route path="/*" element={<ProtectedRoute><AppLayout key={activeAccountId ?? "none"} /></ProtectedRoute>} />
     </Routes>
   )
 }
@@ -836,10 +895,12 @@ function SearchPage() {
         title="Search"
         description="Find study sets from other students."
       />
-      <div className="tabs" role="tablist" aria-label="Search choices">
+      {/* A simple switch of what to search, so plain toggle buttons (aria-pressed), not tabs. */}
+      <div className="tabs" role="group" aria-label="Search choices">
         <button
           type="button"
           className={activeTab === "topics" ? "tab-button active" : "tab-button"}
+          aria-pressed={activeTab === "topics"}
           onClick={() => setActiveTab("topics")}
         >
           Search Topics
@@ -847,6 +908,7 @@ function SearchPage() {
         <button
           type="button"
           className={activeTab === "users" ? "tab-button active" : "tab-button"}
+          aria-pressed={activeTab === "users"}
           onClick={() => setActiveTab("users")}
         >
           Search Users
@@ -973,6 +1035,7 @@ function SettingsPage() {
         <EmailSettingsForm key={`email-${settingsKey}`} profile={profile} setNotice={setNotice} />
         <ThemeSettingsForm key={`theme-${settingsKey}`} profile={profile} setNotice={setNotice} />
         <AccountHelpPanel profile={profile} setNotice={setNotice} />
+        <AccountsPanel id="accounts" />
         {profile?.is_admin ? (
           <section className="form-panel">
             <h2>Reports</h2>
@@ -1188,6 +1251,7 @@ function DeleteAccountPanel({
   setNotice: (notice: Notice | null) => void
 }) {
   const navigate = useNavigate()
+  const { activeAccountId } = useAuth()
   const [confirmText, setConfirmText] = useState("")
   const [deleting, setDeleting] = useState(false)
 
@@ -1200,13 +1264,20 @@ function DeleteAccountPanel({
       return
     }
 
+    // Pin the account now, so a switch in another tab can't change which one is deleted.
+    const deletedId = activeAccountId
+    if (!deletedId) {
+      return
+    }
     setDeleting(true)
     try {
-      const response = await api.delete<{ message?: string; retained?: string[] }>("/me/account")
+      const response = await api.delete<{ message?: string; retained?: string[] }>("/me/account", {
+        lumaAccountId: deletedId,
+      })
       // Show the result on a public page first, then forget the (now useless) session.
       // The result page logs out once it's showing (logging out here would
       // bounce this protected page to /login first).
-      navigate("/account-deleted", { replace: true, state: { kept: response.data.retained ?? [] } })
+      navigate("/account-deleted", { replace: true, state: { kept: response.data.retained ?? [], deletedId } })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not delete account.") })
     } finally {
@@ -1272,5 +1343,11 @@ function NotFoundPage() {
 }
 
 export default function App() {
-  return <RootRoutes />
+  return (
+    <>
+      <RootRoutes />
+      {/* Outside the app layout so messages survive switching accounts. */}
+      <Toaster position="top-center" richColors closeButton />
+    </>
+  )
 }
