@@ -11,7 +11,7 @@ import {
 } from "react-router-dom"
 
 import { useAuth, useProfile } from "./auth"
-import { API_BASE_URL, api, checkBackendHealth, getErrorMessage } from "./api"
+import { API_BASE_URL, api, checkBackendHealth, getErrorMessage, getTabAccountId } from "./api"
 import type { Profile } from "./api"
 import { NoticeBanner, PageHeader } from "./ui/common"
 import type { Notice, StudyType } from "./ui/common"
@@ -25,6 +25,10 @@ import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
 import { QuizPage } from "./study/QuizPage"
 import { NotePage } from "./notes/NotePage"
+import { NotesHub } from "./notes/NotesHub"
+import { NoteEditorPage } from "./notes/NoteEditorPage"
+import { NOTE_REDIRECTS, SUMMARIES_TAB, redirectTarget } from "./notes/paths"
+import { ImagePage } from "./capture/ImagePage"
 import { TodayPage } from "./study/TodayPage"
 import { AudioToNotesPage } from "./capture/AudioPage"
 import {
@@ -99,37 +103,8 @@ type HealthState = {
   detail: string | null
 }
 
+// Study plans still use the simple list-and-form page. Notes and summaries live in the Notes hub.
 const collectionConfigs: CollectionConfig[] = [
-  {
-    key: "notes",
-    title: "Notes",
-    description: "Write your notes here.",
-    dashboardDescription: "Write down what you're learning so you don't forget.",
-    helperText: "Tip: write a question, then ::, then the answer. Luma can turn those lines into flashcards.",
-    endpoint: "/notes",
-    publicable: true,
-    studyType: "note",
-    fields: [
-      {
-        name: "title",
-        label: "Title",
-        kind: "text",
-        placeholder: "Title",
-      },
-      {
-        name: "content",
-        label: "Content",
-        kind: "textarea",
-        placeholder: "Write your notes...",
-      },
-      {
-        name: "tags",
-        label: "Tags",
-        kind: "tags",
-        placeholder: "Add tags (optional)",
-      },
-    ],
-  },
   {
     key: "study-sessions",
     title: "Study Sessions",
@@ -160,35 +135,6 @@ const collectionConfigs: CollectionConfig[] = [
         label: "Time in seconds",
         kind: "number",
         placeholder: "How long?",
-      },
-    ],
-  },
-  {
-    key: "summaries",
-    title: "Summaries",
-    description: "Write a short version of your lesson.",
-    dashboardDescription: "Save short versions of your lessons.",
-    endpoint: "/summaries",
-    publicable: true,
-    studyType: "summary",
-    fields: [
-      {
-        name: "title",
-        label: "Title",
-        kind: "text",
-        placeholder: "Title",
-      },
-      {
-        name: "content",
-        label: "Summary",
-        kind: "textarea",
-        placeholder: "Write a short version...",
-      },
-      {
-        name: "tags",
-        label: "Tags",
-        kind: "tags",
-        placeholder: "Add tags (optional)",
       },
     ],
   },
@@ -411,6 +357,12 @@ function AccountLimitRedirect() {
   return <Navigate to="/settings#accounts" replace />
 }
 
+/** Sends an old address to its new place, keeping its ?query and #hash. */
+function KeepQueryRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation()
+  return <Navigate to={redirectTarget(to, search, hash)} replace />
+}
+
 function AppLayout() {
   const { user, activeAccountId, profileLoading } = useAuth()
   const profile = useProfile()
@@ -481,18 +433,25 @@ function AppLayout() {
           {collectionConfigs.map((config) => (
             <Route key={config.key} path={`/${config.key}`} element={<CollectionPage config={config} />} />
           ))}
+          <Route path="/notes" element={<NotesHub />} />
+          <Route path="/notes/new" element={<NoteEditorPage />} />
+          <Route path="/notes/import" element={<ImportPage />} />
+          <Route path="/notes/voice" element={<AudioToNotesPage />} />
+          <Route path="/notes/image" element={<ImagePage />} />
           <Route
             path="/notes/:itemId"
             element={<NotePage endpoint="/notes" studyType="note" backTo="/notes" kindLabel="Note" />}
           />
+          <Route path="/notes/:itemId/edit" element={<NoteEditorPage kind="note" />} />
           <Route
             path="/summaries/:itemId"
-            element={<NotePage endpoint="/summaries" studyType="summary" backTo="/summaries" kindLabel="Summary" />}
+            element={<NotePage endpoint="/summaries" studyType="summary" backTo={SUMMARIES_TAB} kindLabel="Summary" />}
           />
-          <Route path="/image-to-notes" element={<ImageToNotesPage />} />
-          <Route path="/voice-input" element={<AudioToNotesPage />} />
-          <Route path="/import" element={<ImportPage />} />
-          <Route path="/audio-to-notes" element={<Navigate to="/voice-input" replace />} />
+          <Route path="/summaries/:itemId/edit" element={<NoteEditorPage kind="summary" />} />
+          {/* Old addresses keep working, with their ?query (like /import?from=link). */}
+          {NOTE_REDIRECTS.map(([from, to]) => (
+            <Route key={from} path={from} element={<KeepQueryRedirect to={to} />} />
+          ))}
           <Route path="/ai-tutor" element={<Navigate to="/dashboard" replace />} />
           <Route path="/transcripts" element={<Navigate to="/dashboard" replace />} />
           <Route path="/study-session" element={<Navigate to="/study-sessions" replace />} />
@@ -615,8 +574,13 @@ function CollectionPage({ config }: { config: CollectionConfig }) {
     event.preventDefault()
     setNotice(null)
 
+    // Save into the account that showed this page, even if the tab switches meanwhile.
+    const accountId = getTabAccountId() ?? undefined
     try {
-      const response = await api.post<CollectionItem>(config.endpoint, buildPayload(config.fields, values))
+      const response = await api.post<CollectionItem>(config.endpoint, buildPayload(config.fields, values), {
+        lumaAccountId: accountId,
+      })
+      if ((getTabAccountId() ?? undefined) !== accountId) return
       setValues(makeEmptyValues(config.fields))
 
       if (config.publicable && response.data.id) {
@@ -731,76 +695,6 @@ function FieldInput({
         />
       )}
     </label>
-  )
-}
-
-function ImageToNotesPage() {
-  const [fileName, setFileName] = useState("")
-  const [imageData, setImageData] = useState<string | null>(null)
-  const [result, setResult] = useState("")
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const readImage = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    setResult("")
-    setNotice(null)
-    setFileName(file?.name ?? "")
-
-    if (!file) {
-      setImageData(null)
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = () => {
-      setImageData(typeof reader.result === "string" ? reader.result : null)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const generateNotes = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!imageData) {
-      setNotice({ type: "error", text: "Choose an image first." })
-      return
-    }
-
-    setSubmitting(true)
-    setNotice(null)
-
-    try {
-      const response = await api.post<{ notes: string }>("/api/generate-notes", { image: imageData })
-      setResult(response.data.notes)
-      setNotice({ type: "success", text: "Notes generated." })
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not generate notes.") })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="Tools"
-        title="Image to notes"
-        description="Upload a picture and turn it into notes."
-      />
-      <form className="form-panel" onSubmit={generateNotes}>
-        <NoticeBanner notice={notice} />
-        <label>
-          Image
-          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={readImage} />
-        </label>
-        {fileName ? <p className="muted">Selected: {fileName}</p> : null}
-        <p className="muted small-text">To make notes, Luma sends your picture to OpenAI. Luma does not save the picture.</p>
-        <button className="primary-button" type="submit" disabled={submitting}>
-          {submitting ? "Working..." : "Make notes"}
-        </button>
-      </form>
-      {result ? <OutputBlock title="Generated notes" value={result} /> : null}
-    </>
   )
 }
 
@@ -1340,15 +1234,6 @@ function DeleteAccountPanel({
         {deleting ? "Deleting..." : "Delete my account"}
       </button>
     </form>
-  )
-}
-
-function OutputBlock({ title, value }: { title: string; value: string }) {
-  return (
-    <section className="output-block">
-      <h2>{title}</h2>
-      <pre>{value}</pre>
-    </section>
   )
 }
 

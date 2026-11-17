@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react"
 import type { CSSProperties } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { ArrowLeft, Cards, Check, Lightbulb, MagicWand, X } from "@phosphor-icons/react"
+import { ArrowLeft, Cards, Check, Lightbulb, MagicWand, PencilSimple, Trash, X } from "@phosphor-icons/react"
 
-import { api, getErrorMessage } from "../api"
+import { api, getErrorMessage, getTabAccountId } from "../api"
 import { CaptureError, makeNotes } from "../capture/capture-api"
 import { newCardId } from "../study/deck"
+import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner, PageHeader, PublishActionButton } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
 import { NoteMarkdown } from "./markdown"
@@ -31,7 +32,10 @@ function friendlyDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
 }
 
-/** A saved note (or summary) shown as a clean page, with one-tap flashcards made from it. */
+/**
+ * A saved note (or summary) shown as a clean page, with one-tap flashcards made from it.
+ * `backTo` is the Notes hub (its Summaries tab for a summary).
+ */
 export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint: string; studyType: StudyType; backTo: string; kindLabel: string }) {
   const { itemId } = useParams()
   const navigate = useNavigate()
@@ -41,6 +45,8 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
   const [askingAi, setAskingAi] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!itemId) return
@@ -88,18 +94,40 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
   const makeDeck = async () => {
     if (kept.length === 0) return
     setSaving(true)
+    // Make the deck in the account that showed this note, even if the tab switches meanwhile.
+    const accountId = getTabAccountId() ?? undefined
     try {
-      const response = await api.post<{ id: string }>("/flashcards", {
-        title: `${title} cards`.slice(0, 200),
-        tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
-        cards: kept.map((card) => ({ id: newCardId(), front: card.front, back: card.back, review: null })),
-      })
+      const response = await api.post<{ id: string }>(
+        "/flashcards",
+        {
+          title: `${title} cards`.slice(0, 200),
+          tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
+          cards: kept.map((card) => ({ id: newCardId(), front: card.front, back: card.back, review: null })),
+        },
+        { lumaAccountId: accountId },
+      )
+      if ((getTabAccountId() ?? undefined) !== accountId) return
       toast.success("Your deck is ready!")
       navigate(`/flashcards/${response.data.id}`)
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "We couldn't make the deck. Your note is safe.") })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const deleteItem = async () => {
+    if (!itemId) return
+    setDeleting(true)
+    try {
+      await api.delete(`${endpoint}/${itemId}`, { lumaAccountId: getTabAccountId() ?? undefined })
+      toast.success(`Deleted “${title}”.`)
+      navigate(backTo, { replace: true })
+    } catch (error: unknown) {
+      setConfirmingDelete(false)
+      setNotice({ type: "error", text: getErrorMessage(error, `We couldn't delete this ${kindLabel.toLowerCase()}. It is still here.`) })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -118,7 +146,7 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
         <PageHeader title={`${kindLabel} not found`} />
         <NoticeBanner notice={{ type: "error", text: state.error ?? "We could not find this note." }} />
         <Link className="secondary-button" to={backTo}>
-          Back
+          <ArrowLeft weight="bold" aria-hidden="true" /> Back to notes
         </Link>
       </>
     )
@@ -126,18 +154,29 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
 
   return (
     <>
-      <PageHeader
-        eyebrow={`${kindLabel} · ${item.is_public ? "Public" : "Private"}`}
-        title={title}
-        description={[friendlyDate(item.updated_at ?? item.created_at), item.is_public && item.published_by ? `Shared by ${item.published_by}` : ""]
-          .filter(Boolean)
-          .join(" · ")}
-        actions={
-          <Link className="ghost-button" to={backTo}>
-            <ArrowLeft weight="bold" aria-hidden="true" /> All {kindLabel.toLowerCase()}s
+      {/* Back link on top, then the title, then this note's own actions in one short row. */}
+      <header className="page-head note-head">
+        <div>
+          <Link className="back-link" to={backTo}>
+            <ArrowLeft weight="bold" aria-hidden="true" /> Back to notes
           </Link>
-        }
-      />
+          <p className="kicker">{`${kindLabel} · ${item.is_public ? "Public" : "Private"}`}</p>
+          <h1>{title}</h1>
+          <p className="lede">
+            {[friendlyDate(item.updated_at ?? item.created_at), item.is_public && item.published_by ? `Shared by ${item.published_by}` : ""]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+        <div className="page-head-actions">
+          <Link className="secondary-button" to={`${endpoint}/${itemId}/edit`}>
+            <PencilSimple weight="bold" aria-hidden="true" /> Edit
+          </Link>
+          <button type="button" className="ghost-button danger-text" onClick={() => setConfirmingDelete(true)}>
+            <Trash weight="bold" aria-hidden="true" /> Delete
+          </button>
+        </div>
+      </header>
       <NoticeBanner notice={notice} />
 
       <div className="note-layout">
@@ -211,6 +250,19 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
           ) : null}
         </aside>
       </div>
+
+      {confirmingDelete ? (
+        <ConfirmDialog
+          title={`Delete “${title}”?`}
+          body="You can't get it back."
+          confirmLabel="Delete"
+          busyLabel="Deleting..."
+          cancelLabel="Keep it"
+          busy={deleting}
+          onConfirm={() => void deleteItem()}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      ) : null}
 
       <PublishActionButton
         endpoint={endpoint}

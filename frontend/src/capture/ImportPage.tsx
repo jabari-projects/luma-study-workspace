@@ -333,7 +333,7 @@ export function ImportPage() {
                   Use these words
                 </button>
                 <p className="muted small-text">
-                  No words under the video? Save its sound and use <Link to="/voice-input">Voice to notes</Link>.
+                  No words under the video? Save its sound and use <Link to="/notes/voice">Voice to notes</Link>.
                 </p>
               </div>
             ) : null}

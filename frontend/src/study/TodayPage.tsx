@@ -16,6 +16,7 @@ import {
 import { api } from "../api"
 import { useAuth, useProfile } from "../auth"
 import { Scribble } from "../ui/Scribble"
+import { IMAGE_NOTES, IMPORT_NOTES, NEW_NOTE, VOICE_NOTES } from "../notes/paths"
 import { deckStats } from "./deck"
 import { weekActivity } from "./celebrate"
 import { useDecks } from "./useDecks"
@@ -24,15 +25,12 @@ const WEEK_GOAL = 4
 /** How many items the Recent list shows. Home stays short; the hubs show the rest. */
 const RECENT_LIMIT = 4
 
-/**
- * Small links to start something. Shown from 720px; on phones the + button does this.
- * They point at today's pages; the Notes hub (PR-A5) moves them to /notes/new and friends.
- */
+/** Small links to start something. Shown from 720px; on phones the + button does this. */
 const quickStart = [
-  { to: "/notes", label: "Write a note", icon: PencilSimpleLine },
-  { to: "/import", label: "Import a file", icon: DownloadSimple },
-  { to: "/voice-input", label: "Voice to notes", icon: Microphone },
-  { to: "/image-to-notes", label: "Image to notes", icon: Image },
+  { to: NEW_NOTE, label: "Write a note", icon: PencilSimpleLine },
+  { to: IMPORT_NOTES, label: "Import a file", icon: DownloadSimple },
+  { to: VOICE_NOTES, label: "Voice to notes", icon: Microphone },
+  { to: IMAGE_NOTES, label: "Image to notes", icon: Image },
   { to: "/flashcards", label: "Review cards", icon: Cards },
 ]
 

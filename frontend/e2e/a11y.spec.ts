@@ -61,8 +61,10 @@ for (const scheme of ["light", "dark"] as const) {
 // --------------------------------------------------------------- signed-in pages
 const appPages = [
   { path: "/dashboard", label: "dashboard" },
-  { path: "/import", label: "import" },
-  { path: "/voice-input", label: "voice-to-notes" },
+  { path: "/notes", label: "notes-hub" },
+  { path: "/notes/new", label: "new-note" },
+  { path: "/notes/import", label: "import" },
+  { path: "/notes/voice", label: "voice-to-notes" },
   { path: "/flashcards", label: "decks" },
   { path: "/settings", label: "settings" },
 ]

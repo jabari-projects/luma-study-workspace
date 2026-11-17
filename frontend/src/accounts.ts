@@ -16,6 +16,9 @@ export const TAB_ACCOUNT_KEY = "luma.tabAccount"
 export const LEGACY_ACTIVITY_KEY = "luma.activity"
 export const MAX_ACCOUNTS = 3
 export const activityKey = (id: string) => `${LEGACY_ACTIVITY_KEY}:${id}`
+/** A new note that is not saved yet, kept on this device per account (cleared on sign-out). */
+export const NOTE_DRAFT_PREFIX = "luma.noteDraft:"
+export const noteDraftKey = (id: string) => `${NOTE_DRAFT_PREFIX}${id}`
 
 export type AccountUser = BasicUser | Profile
 export type AccountStatus = "signed_in" | "expired"

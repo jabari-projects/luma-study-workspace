@@ -326,7 +326,7 @@ export function AudioToNotesPage() {
                 <li>You get notes and flashcards. Keep the ones you like.</li>
               </ol>
               <p className="muted small-text">
-                Have a video or a document instead? <Link to="/import">Import it</Link>.
+                Have a video or a document instead? <Link to="/notes/import">Import it</Link>.
               </p>
             </aside>
           ) : null}

@@ -16,10 +16,10 @@ const PLACES = [
 ] as const
 
 const MAKE = [
-  ["Write a note", "/notes"],
-  ["Import a file or link", "/import"],
-  ["Voice to notes", "/voice-input"],
-  ["Image to notes", "/image-to-notes"],
+  ["Write a note", "/notes/new"],
+  ["Import a file or link", "/notes/import"],
+  ["Voice to notes", "/notes/voice"],
+  ["Image to notes", "/notes/image"],
   ["New flashcard deck", "/flashcards/new"],
 ] as const
 
@@ -28,8 +28,12 @@ const LIGHTS_UP = [
   ["/quizzes", "Study"],
   ["/study-sessions", "Study"],
   ["/flashcards/new", "Study"],
+  ["/notes/new", "Notes"],
+  ["/notes/import", "Notes"],
+  ["/notes/voice", "Notes"],
+  ["/notes/image", "Notes"],
+  // Old addresses redirect into Notes, and Notes lights up there too.
   ["/import", "Notes"],
-  ["/voice-input", "Notes"],
   ["/summaries", "Notes"],
   ["/search", "Search"],
 ] as const
@@ -125,7 +129,7 @@ test.describe("sidebar and icon rail (desktop and tablet)", () => {
     await page.keyboard.press("i")
     await expect(menu.getByRole("menuitem", { name: "Image to notes" })).toBeFocused()
     await page.keyboard.press("Enter")
-    await expect(page).toHaveURL(/\/image-to-notes$/)
+    await expect(page).toHaveURL(/\/notes\/image$/)
     await expect(menu).toHaveCount(0)
     await expect(sidebar(page).getByRole("link", { name: "Notes", exact: true })).toHaveAttribute("aria-current", "page")
 
@@ -143,7 +147,7 @@ test.describe("sidebar and icon rail (desktop and tablet)", () => {
     const viewport = page.viewportSize()!
     await page.mouse.click(viewport.width - 8, viewport.height - 8)
     await expect(menu).toHaveCount(0)
-    await expect(page).toHaveURL(/\/image-to-notes$/)
+    await expect(page).toHaveURL(/\/notes\/image$/)
 
     // Clicking an item goes there.
     await button.click()

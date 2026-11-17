@@ -102,7 +102,15 @@ const decks = [
   },
 ]
 const notes = []
-const lists = { summaries: [{ id: "x" }], "study-sessions": [] }
+// Summaries have the same shape as notes. The demo account starts with one.
+const summaries = [
+  {
+    id: "5a1e0000-0000-4000-8000-000000000001", user_id: "u1", title: "The water cycle in short", tags: ["science"],
+    content: "Water goes up as vapor, makes clouds, and falls as rain or snow. Then it starts again.",
+    is_public: false, published_at: null, published_by: null, study_type: "summary", created_at: past(48), updated_at: past(30),
+  },
+]
+const lists = { "study-sessions": [] }
 
 let currentOrigin = "http://localhost:5173"
 function send(res, code, body) {
@@ -296,6 +304,11 @@ http
         truncated: false,
       })
     }
+    if (url.pathname === "/api/generate-notes") {
+      await new Promise((r) => setTimeout(r, 600))
+      if (!/^data:image\/(png|jpeg|webp);base64,/.test(body.image || "")) return send(res, 400, { error: "Invalid request" })
+      return send(res, 200, { notes: "Photosynthesis\n- Plants use sunlight to make food.\n- Leaves take in carbon dioxide.\n- Plants give off oxygen.\nWhere does it happen? :: In the chloroplasts" })
+    }
     if (url.pathname === "/api/import/link") {
       await new Promise((r) => setTimeout(r, 700))
       const target = body.url || ""
@@ -303,19 +316,32 @@ http
       if (/localhost|127\.0\.0\.1/.test(target)) return send(res, 400, { error: "We couldn't open that link.", code: "blocked" })
       return send(res, 200, { title: "The Water Cycle", site_name: "Example Science", url: target, truncated: false, text: "Water moves around the Earth in a cycle. The sun heats water in oceans and lakes, and it evaporates into the air as water vapor. The vapor cools and condenses into clouds. When the drops get heavy, they fall as rain or snow. This is called precipitation. The water collects in rivers, lakes, and oceans, and the cycle starts again." })
     }
-    if (parts[0] === "notes") {
+    // Notes and summaries: create, list, open, change (PUT) and delete, each account only its own.
+    if (parts[0] === "notes" || parts[0] === "summaries") {
       const me = accountFor(req)
       if (!me) return send(res, 401, { detail: "Invalid or expired token" })
-      if (url.pathname === "/notes" && req.method === "POST") {
-        const note = { id: randomUUID(), created_at: new Date().toISOString(), is_public: false, ...body, user_id: me.id }
-        notes.unshift(note)
-        return send(res, 201, note)
+      const store = parts[0] === "notes" ? notes : summaries
+      const kind = parts[0] === "notes" ? "note" : "summary"
+      const missing = parts[0] === "notes" ? "Note not found" : "Summary not found"
+      if (parts.length === 1 && req.method === "POST") {
+        // Like the backend: a note needs a title, a summary may leave it empty.
+        if ((kind === "note" && !String(body.title || "").trim()) || !String(body.content || "").trim()) return send(res, 422, { detail: "Title and content are required." })
+        const item = { id: randomUUID(), created_at: new Date().toISOString(), updated_at: null, is_public: false, tags: [], study_type: kind, ...body, user_id: me.id }
+        store.unshift(item)
+        return send(res, 201, item)
       }
-      if (parts[1]) {
-        const note = notes.find((n) => n.id === parts[1] && n.user_id === me.id)
-        return note ? send(res, 200, note) : send(res, 404, { detail: "Note not found" })
+      if (parts.length === 1) return send(res, 200, store.filter((n) => n.user_id === me.id))
+      const item = store.find((n) => n.id === parts[1] && n.user_id === me.id)
+      if (!item) return send(res, 404, { detail: missing })
+      if (req.method === "PUT") {
+        if (kind === "note" && "title" in body && !String(body.title || "").trim()) return send(res, 422, { detail: "Title can't be empty." })
+        Object.assign(item, body, { user_id: me.id, updated_at: new Date().toISOString() })
       }
-      return send(res, 200, notes.filter((n) => n.user_id === me.id))
+      if (req.method === "DELETE") {
+        store.splice(store.indexOf(item), 1)
+        return send(res, 200, { message: `${kind === "note" ? "Note" : "Summary"} deleted successfully` })
+      }
+      return send(res, 200, item)
     }
 
     // --- public search (fake data, shaped like backend/app/public_search.py) ---

@@ -26,10 +26,10 @@ async function waitForHome(page: Page) {
 }
 
 const QUICK_START = [
-  ["Write a note", "/notes"],
-  ["Import a file", "/import"],
-  ["Voice to notes", "/voice-input"],
-  ["Image to notes", "/image-to-notes"],
+  ["Write a note", "/notes/new"],
+  ["Import a file", "/notes/import"],
+  ["Voice to notes", "/notes/voice"],
+  ["Image to notes", "/notes/image"],
   ["Review cards", "/flashcards"],
 ] as const
 
@@ -86,7 +86,7 @@ test.describe("Home layout (seeded account, read only)", () => {
       await expect(quick.getByRole("link", { name, exact: true })).toHaveAttribute("href", href)
     }
     await quick.getByRole("link", { name: "Write a note", exact: true }).click()
-    await expect(page).toHaveURL(/\/notes$/)
+    await expect(page).toHaveURL(/\/notes\/new$/)
   })
 })
 

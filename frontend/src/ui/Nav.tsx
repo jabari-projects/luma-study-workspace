@@ -20,6 +20,7 @@ import {
 
 import { AccountMenuPopover, AccountSheet } from "./AccountMenu"
 import { accountMenuPosition } from "./accountActions"
+import { IMAGE_NOTES, IMPORT_NOTES, NEW_NOTE, VOICE_NOTES } from "../notes/paths"
 
 type NavItem = { to: string; label: string; icon: ComponentType<IconProps>; match?: string[] }
 
@@ -36,7 +37,7 @@ const NOTES: NavItem = {
   to: "/notes",
   label: "Notes",
   icon: Notebook,
-  match: ["/notes", "/summaries", "/import", "/voice-input", "/audio-to-notes", "/image-to-notes"],
+  match: ["/notes", "/summaries"],
 }
 const SEARCH: NavItem = { to: "/search", label: "Search", icon: MagnifyingGlass, match: ["/search", "/discover", "/saved"] }
 const SETTINGS: NavItem = { to: "/settings", label: "Settings", icon: GearSix, match: ["/settings", "/admin"] }
@@ -49,10 +50,10 @@ const placeItems: NavItem[] = [HOME, STUDY, NOTES, SEARCH]
 
 /** One list of things to make, for the + New menu (desktop, tablet) and the + sheet (phone). */
 const createItems: (NavItem & { hint: string })[] = [
-  { to: "/notes", label: "Write a note", hint: "Start with a blank page.", icon: PencilSimpleLine },
-  { to: "/import", label: "Import a file or link", hint: "PDF, Word, a web page or a video.", icon: DownloadSimple },
-  { to: "/voice-input", label: "Voice to notes", hint: "Record or upload. Get notes.", icon: Microphone },
-  { to: "/image-to-notes", label: "Image to notes", hint: "Take a photo of a page.", icon: Image },
+  { to: NEW_NOTE, label: "Write a note", hint: "Start with a blank page.", icon: PencilSimpleLine },
+  { to: IMPORT_NOTES, label: "Import a file or link", hint: "PDF, Word, a web page or a video.", icon: DownloadSimple },
+  { to: VOICE_NOTES, label: "Voice to notes", hint: "Record or upload. Get notes.", icon: Microphone },
+  { to: IMAGE_NOTES, label: "Image to notes", hint: "Take a photo of a page.", icon: Image },
   { to: "/flashcards/new", label: "New flashcard deck", hint: "Questions and answers to study.", icon: Cards },
 ]
 

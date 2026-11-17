@@ -242,3 +242,463 @@
     box-shadow: 4px 4px 0 var(--ink);
   }
 }
+
+/* =======================================================================
+   Notes hub (/notes): ways to start, then one ruled list of notes and
+   summaries. No boxes: type, thin rules and space ("Margins" layout).
+   ======================================================================= */
+
+.notes-hub {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.notes-hub .page-head {
+  margin-bottom: 14px;
+}
+
+/* Four ways to start, as quiet icon-and-text links. */
+.start-row ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 1100px) {
+  .start-row ul {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.start-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 56px;
+  border-radius: 14px;
+  padding: 12px 10px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.start-link:hover {
+  background: var(--paper-2);
+}
+
+.start-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  font-size: 1.35rem;
+}
+
+.start-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.start-text strong {
+  font-weight: 750;
+}
+
+.start-link:hover .start-text strong {
+  text-decoration: underline 2px var(--scribble);
+  text-underline-offset: 5px;
+}
+
+.start-text small {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+/* Phones: a tidy 2 by 2 of names. The hints stay for screen readers only. */
+@media (max-width: 599px) {
+  .start-row ul {
+    gap: 4px 10px;
+  }
+
+  .start-link {
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px;
+  }
+
+  .start-text small {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+.hub-list {
+  margin-top: 18px;
+  min-width: 0;
+}
+
+/* Tabs on the left, "Find in my notes" on the right, one rule under both. */
+.hub-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.hub-tools .tabs {
+  margin: 0;
+  border-bottom: 0;
+}
+
+.tab-count {
+  min-width: 1.6em;
+  border-radius: 999px;
+  padding: 1px 7px;
+  color: var(--muted);
+  background: var(--paper-2);
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.tabs .tab[aria-selected="true"] .tab-count {
+  color: var(--ink);
+  background: var(--highlight);
+}
+
+.find-field {
+  position: relative;
+  display: block;
+  width: min(280px, 100%);
+  margin-bottom: 8px;
+}
+
+.find-field svg {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  color: var(--muted);
+  font-size: 1.1rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.find-field input {
+  min-height: 44px;
+  padding-left: 38px;
+}
+
+.hub-panel:focus {
+  outline: none;
+}
+
+.hub-panel:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+.hub-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 28px 8px;
+  color: var(--muted);
+}
+
+.small-spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+}
+
+/* A note row: icon, title and a one-line preview, then Shared and the date, then ⋮. */
+.row-list > .row.note-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.row-main .row-kind {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.row-preview {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-row > .row-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+}
+
+.shared-pill {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 1px 9px;
+  color: var(--star-ink);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+/* The ⋮ menu sits above the row's stretched link. */
+.row-menu.open {
+  z-index: 5;
+}
+
+.row-menu-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.row-menu-button:hover,
+.row-menu-button[aria-expanded="true"] {
+  border-color: var(--field-border);
+  color: var(--ink);
+  background: var(--card);
+}
+
+.row-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px;
+  background: var(--card-2);
+  box-shadow: var(--shadow-sheet), var(--lift);
+}
+
+.row-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.row-menu-item.danger-text {
+  color: var(--danger);
+}
+
+.row-menu-item:hover,
+.row-menu-item:focus-visible {
+  background: var(--paper-2);
+}
+
+.row-menu-item svg {
+  flex: none;
+  font-size: 1.1rem;
+}
+
+/* Phones: Shared and the date move under the title, the ⋮ stays on the right. */
+@media (max-width: 599px) {
+  .row-list > .row.note-row,
+  .row-list > .row.note-row:has(> .row-meta) {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+
+  .row-list > .row.note-row > .row-icon {
+    grid-row: span 2;
+    align-self: start;
+  }
+
+  .row-list > .row.note-row > .row-meta {
+    grid-column: 2;
+    grid-row: 2;
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+
+  .row-list > .row.note-row > .row-menu {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  .find-field {
+    width: 100%;
+    margin-top: 4px;
+  }
+}
+
+/* ------------------------------------------------- note editor and sheets */
+
+.note-editor,
+.image-result,
+.image-pick {
+  display: grid;
+  gap: 18px;
+  max-width: calc(var(--measure) + 120px);
+}
+
+.image-pick {
+  max-width: 640px;
+}
+
+.image-result h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.image-result > p {
+  margin: -10px 0 0;
+}
+
+.editor-title input {
+  min-height: 52px;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 650;
+}
+
+.editor-body,
+.editor-tags {
+  display: grid;
+  gap: 6px;
+}
+
+.editor-tags small {
+  font-size: 0.86rem;
+}
+
+/* The writing sheet: plain card paper with the red margin line, no ruled lines. */
+.sheet-note.editor-sheet {
+  max-width: none;
+  padding: 20px 24px 20px 64px;
+  background: var(--card);
+}
+
+.editor-sheet textarea {
+  display: block;
+  min-height: 320px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.editor-sheet:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-sheet), 0 0 0 6px var(--highlight);
+}
+
+.editor-sheet textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.editor-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: -6px 0 0;
+  color: var(--muted);
+}
+
+.editor-tip svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--star-ink);
+  font-size: 1.25rem;
+}
+
+.editor-tip code {
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--ink);
+  background: var(--paper-2);
+}
+
+.draft-line {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* The box takes focus only while a delete runs. No ring on the whole box. */
+.confirm-panel:focus {
+  outline: none;
+}
+
+.confirm-panel h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.confirm-actions {
+  justify-content: flex-start;
+}
+
+@media (max-width: 719px) {
+  .sheet-note.editor-sheet {
+    padding: 16px 14px 16px 40px;
+  }
+
+  .editor-sheet textarea {
+    min-height: 260px;
+  }
+}
+
+/* ----------------------------------------------------------- note page head */
+
+.note-head .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: -10px 0 4px -4px;
+  padding: 0 4px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline 2px var(--scribble);
+  text-underline-offset: 5px;
+}
+
+.note-head .back-link:hover {
+  background: var(--paper-2);
+}
+
+.note-head h1 {
+  overflow-wrap: anywhere;
+}

@@ -93,4 +93,15 @@ describe("navigation words", () => {
       "New flashcard deck",
     ])
   })
+
+  it("the note tools open their pages inside Notes (/notes/new, /notes/import, /notes/voice, /notes/image)", () => {
+    const start = nav.indexOf("const createItems")
+    const body = nav.slice(start, nav.indexOf("]\n", start))
+    assert.deepEqual(
+      [...body.matchAll(/to: ([A-Z_]+|"[^"]+")/g)].map((match) => match[1]),
+      ["NEW_NOTE", "IMPORT_NOTES", "VOICE_NOTES", "IMAGE_NOTES", '"/flashcards/new"'],
+    )
+    assert.match(nav, /import \{ IMAGE_NOTES, IMPORT_NOTES, NEW_NOTE, VOICE_NOTES \} from "\.\.\/notes\/paths"/)
+    assert.doesNotMatch(nav, /"\/(import|voice-input|image-to-notes)"/)
+  })
 })

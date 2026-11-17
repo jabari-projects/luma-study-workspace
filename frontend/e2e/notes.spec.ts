@@ -1,13 +1,16 @@
-// Notes: making notes from pasted text, Voice to Notes (with a fake sound file,
-// no microphone), Image to Notes, saved notes at /notes/:id, summaries, and the
-// phone "Create something" (+) sheet. Everything runs against the FAKE API.
+// Notes: the Notes hub (/notes) with its start links, tabs, "Find in my notes" and row
+// menus; writing and changing a note; deleting with "are you sure?"; making notes from
+// pasted text, Voice to notes (a fake sound file, no microphone) and Image to notes;
+// saved notes at /notes/:id; summaries; old addresses that redirect; the draft kept on
+// this device; and the phone "Create something" (+) sheet. Everything runs against the
+// FAKE API. The seeded demo account is read; new notes always get a unique made-up title.
 import { expect, test } from "@playwright/test"
 import type { Page } from "@playwright/test"
 
 import AxeBuilder from "@axe-core/playwright"
 import type { TestInfo } from "@playwright/test"
 
-import { SEEDED, loginAndWait } from "./helpers"
+import { API, PASSWORD, SEEDED, loginAndWait } from "./helpers"
 
 /**
  * Same rules as helpers.expectNoSeriousA11yIssues, but can leave out parts that
@@ -36,6 +39,26 @@ const LESSON =
 /** The page's own heading (h1), so the sidebar and sheets don't get in the way. */
 const pageTitle = (page: Page) => page.getByRole("heading", { level: 1 })
 
+/** A unique made-up title, so tests on the shared fake account never clash. */
+const uniqueTitle = (label: string, info: TestInfo) =>
+  `${label} ${info.project.name} ${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
+
+/** Saves a note or summary straight through the fake API for the demo account and returns its id. */
+async function makeItem(page: Page, kind: "notes" | "summaries", title: string, content = "Leaves make food from light.") {
+  const login = await page.request.post(`${API}/login`, { data: { email: SEEDED.demo.email, password: PASSWORD } })
+  const { access_token } = (await login.json()) as { access_token: string }
+  const res = await page.request.post(`${API}/${kind}`, {
+    data: { title, content, tags: [] },
+    headers: { authorization: `Bearer ${access_token}` },
+  })
+  expect(res.status()).toBe(201)
+  return ((await res.json()) as { id: string }).id
+}
+
+/** The Notes hub row whose title link has this exact name. */
+const hubRow = (page: Page, title: string) =>
+  page.locator("li.note-row", { has: page.getByRole("link", { name: title, exact: true }) })
+
 /** A few made-up bytes that look like a sound file. The fake API never reads them. */
 const fakeAudio = { name: "class-recording.mp3", mimeType: "audio/mpeg", buffer: Buffer.from("ID3 fake audio bytes for a test") }
 
@@ -45,7 +68,7 @@ test.describe("making notes", () => {
   })
 
   test("import: paste text, check the words, make notes, save, and open the note", async ({ page }, info) => {
-    await page.goto("/import")
+    await page.goto("/notes/import")
     await expect(pageTitle(page)).toContainText("Make it notes")
     await expect(page.getByRole("tab", { name: "Paste text" })).toHaveAttribute("aria-selected", "true")
     await expectNoSeriousA11yIssues(page, "import", info)
@@ -72,7 +95,7 @@ test.describe("making notes", () => {
     await expectNoSeriousA11yIssues(page, "import-draft", info, [".identity", ".mini-card-face"])
 
     // Students can change the draft before saving.
-    const myTitle = `Plants test ${info.project.name} ${Date.now().toString(36)}`
+    const myTitle = uniqueTitle("Plants test", info)
     await title.fill(myTitle)
     await page.getByRole("button", { name: "Toss" }).first().click()
     await expect(page.getByText("Keeping 4 of 5")).toBeVisible()
@@ -84,24 +107,26 @@ test.describe("making notes", () => {
     const sheet = page.getByRole("article", { name: myTitle })
     await expect(sheet.getByRole("heading", { name: "What is photosynthesis?" })).toBeVisible()
     await expect(sheet.getByText(/Source: Pasted text/)).toBeVisible()
-    await expect(page.getByRole("link", { name: "All notes" })).toHaveAttribute("href", "/notes")
+    await expect(page.getByRole("link", { name: "Back to notes" })).toHaveAttribute("href", "/notes")
     await expectNoSeriousA11yIssues(page, "note-page", info)
 
     // It survives a reload (it really was saved, not just kept in memory).
     await page.reload()
     await expect(pageTitle(page)).toHaveText(myTitle)
 
-    // And it shows up in the notes list with a View link back to it.
+    // And it shows up in the Notes hub as a row that opens it.
     const url = page.url()
     await page.goto("/notes")
-    const card = page.locator("article.item-card", { hasText: myTitle })
-    await expect(card).toBeVisible()
-    await card.getByRole("link", { name: "View" }).click()
+    const row = hubRow(page, myTitle)
+    await expect(row).toBeVisible()
+    await expect(row.locator(".row-kind")).toHaveText("Note")
+    await expect(row).toContainText(/Changed [A-Z][a-z]{2} \d{1,2}/)
+    await row.getByRole("link", { name: myTitle, exact: true }).click()
     await expect(page).toHaveURL(url)
   })
 
   test("import: too few words is refused with a clear message", async ({ page }) => {
-    await page.goto("/import")
+    await page.goto("/notes/import")
     await page.getByRole("textbox", { name: "Your words" }).fill("too short")
     await page.getByRole("button", { name: "Use these words" }).click()
     await expect(page.getByText("Paste a few more words first.")).toBeVisible()
@@ -109,7 +134,7 @@ test.describe("making notes", () => {
   })
 
   test("import: source tabs work with arrow keys and ?from= picks a tab", async ({ page }) => {
-    await page.goto("/import")
+    await page.goto("/notes/import")
     await page.getByRole("tab", { name: "Paste text" }).focus()
     await page.keyboard.press("ArrowRight")
     const fileTab = page.getByRole("tab", { name: "Upload a file" })
@@ -121,13 +146,13 @@ test.describe("making notes", () => {
     await expect(page.getByRole("tab", { name: "YouTube" })).toBeFocused()
     await expect(page.getByRole("textbox", { name: "Video words" })).toBeVisible()
 
-    await page.goto("/import?from=link")
+    await page.goto("/notes/import?from=link")
     await expect(page.getByRole("tab", { name: "Web link" })).toHaveAttribute("aria-selected", "true")
     await expect(page.getByLabel("Paste a web page link")).toBeVisible()
   })
 
   test("import: draft 'Start over' asks first, then clears", async ({ page }) => {
-    await page.goto("/import")
+    await page.goto("/notes/import")
     await page.getByRole("textbox", { name: "Your words" }).fill(LESSON)
     await page.getByRole("button", { name: "Use these words" }).click()
     await page.getByRole("button", { name: "Make my notes" }).click()
@@ -143,7 +168,7 @@ test.describe("making notes", () => {
   })
 
   test("voice to notes: hint field, 'Check the words', fix them, then notes", async ({ page }, info) => {
-    await page.goto("/voice-input")
+    await page.goto("/notes/voice")
     await expect(pageTitle(page)).toContainText("keep it")
     await expect(page.getByRole("button", { name: "Start recording" })).toBeVisible()
     await expectNoSeriousA11yIssues(page, "voice", info)
@@ -201,7 +226,7 @@ test.describe("making notes", () => {
   })
 
   test("voice to notes: empty words are not sent", async ({ page }) => {
-    await page.goto("/voice-input")
+    await page.goto("/notes/voice")
     await page.getByLabel(/Or pick a sound file/).setInputFiles(fakeAudio)
     await page.getByRole("button", { name: "Turn it into words" }).click()
     const heard = page.getByRole("textbox", { name: "What we heard" })
@@ -216,10 +241,11 @@ test.describe("making notes", () => {
     expect(sent).toBe(false)
   })
 
-  test("image to notes page loads and asks for a picture first", async ({ page }, info) => {
-    await page.goto("/image-to-notes")
+  test("image to notes: asks for an image, makes notes, and saves them as a note", async ({ page }, info) => {
+    await page.goto("/notes/image")
     await expect(pageTitle(page)).toHaveText("Image to notes")
-    const picker = page.getByLabel("Image")
+    await expect(page.getByRole("link", { name: "Back to notes" })).toHaveAttribute("href", "/notes")
+    const picker = page.getByLabel("Choose an image")
     await expect(picker).toHaveAttribute("type", "file")
     await expect(picker).toHaveAttribute("accept", /image\/png/)
     await expect(page.getByText(/sends your picture to OpenAI/)).toBeVisible()
@@ -228,45 +254,366 @@ test.describe("making notes", () => {
     await page.getByRole("button", { name: "Make notes" }).click()
     await expect(page.getByText("Choose an image first.")).toBeVisible()
 
-    // Picking a picture shows its name (no AI call is made here).
+    // A made-up picture goes to the fake /api/generate-notes (no real AI call).
     await picker.setInputFiles({ name: "worksheet.png", mimeType: "image/png", buffer: Buffer.from("89504e470d0a1a0a", "hex") })
     await expect(page.getByText("Selected: worksheet.png")).toBeVisible()
+    const request = page.waitForRequest((r) => r.url().endsWith("/api/generate-notes"))
+    await page.getByRole("button", { name: "Make notes" }).click()
+    expect((await request).postDataJSON().image).toMatch(/^data:image\/png;base64,/)
+
+    const text = page.getByRole("textbox", { name: "Your notes (you can change them)" })
+    await expect(text).toHaveValue(/Photosynthesis/, { timeout: 15_000 })
+    const name = page.getByRole("textbox", { name: "Name your notes" })
+    await expect(name).toHaveValue(/^Notes for [A-Z][a-z]{2} \d{1,2}$/)
+    await expectNoSeriousA11yIssues(page, "image-to-notes-result", info)
+
+    const myTitle = uniqueTitle("Photo notes", info)
+    await name.fill(myTitle)
+    await text.fill(`${await text.inputValue()}\nChecked by me.`)
+    const saved = page.waitForRequest((r) => r.url() === `${API}/notes` && r.method() === "POST")
+    await page.getByRole("button", { name: "Save as note" }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ title: myTitle, content: expect.stringContaining("Checked by me.") })
+    await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+    await expect(pageTitle(page)).toHaveText(myTitle)
+    const sheet = page.getByRole("article", { name: myTitle })
+    await expect(sheet).toContainText("Plants use sunlight to make food.")
+    await expect(sheet).toContainText("Checked by me.")
   })
 
-  test("written note with 'question :: answer' lines opens at /notes/:id with cards", async ({ page }, info) => {
+  test("Notes hub: four ways to start, then write a note with 'question :: answer' lines", async ({ page }, info) => {
     await page.goto("/notes")
-    await expect(pageTitle(page)).toHaveText("Notes")
-    const myTitle = `Capitals ${info.project.name} ${Date.now().toString(36)}`
-    await page.getByRole("textbox", { name: "Title" }).fill(myTitle)
-    await page.getByRole("textbox", { name: "Content" }).fill("Capital of France :: Paris\nCapital of Japan :: Tokyo")
-    await page.getByRole("button", { name: "Save" }).click()
+    await expect(pageTitle(page)).toHaveText("Your notes")
+    const start = page.getByRole("navigation", { name: "Start a note" })
+    const links = start.getByRole("link")
+    await expect(links).toHaveCount(4)
+    const expected = [
+      ["Write a note", "/notes/new"],
+      ["Import a file or link", "/notes/import"],
+      ["Voice to notes", "/notes/voice"],
+      ["Image to notes", "/notes/image"],
+    ] as const
+    for (const [index, [name, href]] of expected.entries()) {
+      await expect(links.nth(index)).toHaveAccessibleName(new RegExp(`^${name} `))
+      await expect(links.nth(index)).toHaveAttribute("href", href)
+    }
+    if (info.project.name === "phone") {
+      // Phones: each name sits centered next to its icon, and the hint is for screen readers only.
+      const first = links.first()
+      await expect(first).toHaveCSS("align-items", "center")
+      const icon = await first.locator(".start-icon").boundingBox()
+      const name = await first.locator("strong").boundingBox()
+      expect(icon && name).toBeTruthy()
+      expect(Math.abs(icon!.y + icon!.height / 2 - (name!.y + name!.height / 2))).toBeLessThan(3)
+      await expect(first.locator("small")).toHaveCSS("position", "absolute")
+    }
+    await expect(page.getByRole("tab", { name: /^All/ })).toHaveAttribute("aria-selected", "true")
+    await expectNoSeriousA11yIssues(page, "notes-hub", info)
+
+    await start.getByRole("link", { name: /^Write a note / }).click()
+    await expect(page).toHaveURL(/\/notes\/new$/)
+    await expect(pageTitle(page)).toHaveText("Write a note")
+    const title = page.getByRole("textbox", { name: "Title" })
+    await expect(title).toHaveValue(/^Notes for [A-Z][a-z]{2} \d{1,2}$/)
+    const body = page.getByRole("textbox", { name: "Your notes" })
+    await expect(body).toHaveAttribute("placeholder", "Write your notes here.")
+    await expect(page.getByText("on a line to make a flashcard.")).toBeVisible()
+    await expectNoSeriousA11yIssues(page, "note-editor", info)
+
+    // An empty note is not sent.
+    await page.getByRole("button", { name: "Save note" }).click()
+    await expect(page.getByText("Write something first.")).toBeVisible()
+    await expect(page).toHaveURL(/\/notes\/new$/)
+
+    const myTitle = uniqueTitle("Capitals", info)
+    await title.fill(myTitle)
+    await body.fill("Capital of France :: Paris\nCapital of Japan :: Tokyo")
+    await expect(page.getByText("Draft saved on this device.")).toBeVisible()
+    await page.getByRole("button", { name: "Save note" }).click()
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
     await expect(pageTitle(page)).toHaveText(myTitle)
     await expect(page.getByText(/We found 2 cards in your note/)).toBeVisible()
     await expect(page.getByRole("button", { name: "Make a deck (2)" })).toBeEnabled()
     await page.getByRole("button", { name: /Keeping: Capital of France/ }).click()
     await expect(page.getByRole("button", { name: "Make a deck (1)" })).toBeEnabled()
+
+    // Saved, so the draft is gone: a new note starts fresh.
+    await page.goto("/notes/new")
+    await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("")
+    await expect(page.getByText("Draft saved on this device.")).toHaveCount(0)
+  })
+
+  test("edit a note: change the title and words, save, and the new title shows", async ({ page }, info) => {
+    const oldTitle = uniqueTitle("Old title", info)
+    const id = await makeItem(page, "notes", oldTitle, "Cells are tiny.")
+    await page.goto(`/notes/${id}`)
+    await expect(pageTitle(page)).toHaveText(oldTitle)
+    await page.getByRole("link", { name: "Edit", exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}/edit$`))
+    await expect(pageTitle(page)).toHaveText("Change your note")
+    const title = page.getByRole("textbox", { name: "Title" })
+    await expect(title).toHaveValue(oldTitle)
+    await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("Cells are tiny.")
+    await expectNoSeriousA11yIssues(page, "note-edit", info)
+
+    // Cancel goes back without saving.
+    await page.getByRole("link", { name: "Cancel" }).click()
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
+    await page.getByRole("link", { name: "Edit", exact: true }).click()
+
+    const newTitle = uniqueTitle("New title", info)
+    await title.fill(newTitle)
+    await page.getByRole("textbox", { name: "Your notes" }).fill("Cells are tiny.\nThey have a nucleus.")
+    const sent = page.waitForRequest((r) => r.url().endsWith(`/notes/${id}`) && r.method() === "PUT")
+    await page.getByRole("button", { name: "Save changes" }).click()
+    expect((await sent).postDataJSON()).toMatchObject({ title: newTitle, content: "Cells are tiny.\nThey have a nucleus." })
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
+    await expect(pageTitle(page)).toHaveText(newTitle)
+    await expect(page.getByRole("article", { name: newTitle })).toContainText("They have a nucleus.")
+
+    // The hub shows the new title, and the row's Edit opens the editor too.
+    await page.goto("/notes")
+    const row = hubRow(page, newTitle)
+    await expect(row).toBeVisible()
+    await expect(hubRow(page, oldTitle)).toHaveCount(0)
+    await row.getByRole("button", { name: `More for ${newTitle}` }).click()
+    await page.getByRole("menuitem", { name: "Edit" }).click()
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}/edit$`))
+  })
+
+  test("delete from the hub asks first: 'Keep it' keeps the row, 'Delete' removes it", async ({ page }, info) => {
+    const myTitle = uniqueTitle("Throwaway", info)
+    await makeItem(page, "notes", myTitle)
+    await page.goto("/notes")
+    const row = hubRow(page, myTitle)
+    await expect(row).toBeVisible()
+
+    // The row menu: Open, Edit, Delete. Escape closes it and puts focus back.
+    const more = row.getByRole("button", { name: `More for ${myTitle}` })
+    await expect(more).toHaveAttribute("aria-haspopup", "menu")
+    await more.click()
+    const menu = page.getByRole("menu", { name: `More for ${myTitle}` })
+    await expect(menu.getByRole("menuitem")).toHaveText(["Open", "Edit", "Delete"])
+    await expect(menu.getByRole("menuitem", { name: "Open" })).toBeFocused()
+    await expectNoSeriousA11yIssues(page, "notes-row-menu", info)
+    await page.keyboard.press("Escape")
+    await expect(menu).toHaveCount(0)
+    await expect(more).toBeFocused()
+
+    await more.click()
+    await menu.getByRole("menuitem", { name: "Delete" }).click()
+    const dialog = page.getByRole("alertdialog", { name: `Delete “${myTitle}”?` })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toHaveAccessibleDescription("You can't get it back.")
+    // Focus starts on the safe choice.
+    await expect(dialog.getByRole("button", { name: "Keep it" })).toBeFocused()
+    await expectNoSeriousA11yIssues(page, "notes-delete-dialog", info)
+    await dialog.getByRole("button", { name: "Keep it" }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(row).toBeVisible()
+    await expect(more).toBeFocused()
+
+    // Escape also means "keep it".
+    await more.click()
+    await menu.getByRole("menuitem", { name: "Delete" }).click()
+    await expect(dialog).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(dialog).toHaveCount(0)
+    await expect(row).toBeVisible()
+
+    // Hold the delete for a moment: while it runs, both buttons are off and Tab stays in the box.
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    await page.route(/\/notes\/[0-9a-f-]{36}$/, async (route) => {
+      if (route.request().method() === "DELETE") await held
+      await route.continue()
+    })
+    const sent = page.waitForRequest((r) => r.method() === "DELETE" && /\/notes\/[0-9a-f-]{36}$/.test(r.url()))
+    await more.click()
+    await menu.getByRole("menuitem", { name: "Delete" }).click()
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click()
+    await sent
+    await expect(dialog.getByRole("button", { name: "Deleting..." })).toBeDisabled()
+    await expect(dialog).toBeFocused()
+    await page.keyboard.press("Tab")
+    expect(await dialog.evaluate((box) => box.contains(document.activeElement))).toBe(true)
+    release()
+    await expect(dialog).toHaveCount(0)
+    await expect(row).toHaveCount(0)
+    await expect(page.getByText(`Deleted “${myTitle}”.`)).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole("tab", { name: /^All/ })).toBeVisible()
+    await expect(page.getByRole("tabpanel")).not.toContainText(myTitle)
+  })
+
+  test("delete from the note page asks first, then goes back to the hub", async ({ page }, info) => {
+    const myTitle = uniqueTitle("Page delete", info)
+    const id = await makeItem(page, "notes", myTitle)
+    await page.goto(`/notes/${id}`)
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    const dialog = page.getByRole("alertdialog", { name: `Delete “${myTitle}”?` })
+    await expect(dialog).toContainText("You can't get it back.")
+    await dialog.getByRole("button", { name: "Keep it" }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(pageTitle(page)).toHaveText(myTitle)
+
+    await page.getByRole("button", { name: "Delete", exact: true }).click()
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click()
+    await expect(page).toHaveURL(/\/notes$/)
+    await expect(page.getByText(`Deleted “${myTitle}”.`)).toBeVisible()
+    await expect(hubRow(page, myTitle)).toHaveCount(0)
+    await page.goto(`/notes/${id}`)
+    await expect(pageTitle(page)).toHaveText("Note not found")
+  })
+
+  test("hub tabs and 'Find in my notes' narrow the list", async ({ page }, info) => {
+    const word = `zebra${Date.now().toString(36)}`
+    const noteTitle = uniqueTitle(`Find ${word}`, info)
+    await makeItem(page, "notes", noteTitle)
+    await page.goto("/notes")
+    await expect(hubRow(page, noteTitle)).toBeVisible()
+    await expect(hubRow(page, "The water cycle in short")).toBeVisible()
+
+    // Tabs: arrow keys move between them and the address remembers the choice.
+    const all = page.getByRole("tab", { name: /^All/ })
+    await all.focus()
+    await page.keyboard.press("ArrowRight")
+    const notesTab = page.getByRole("tab", { name: /^Notes/ })
+    await expect(notesTab).toBeFocused()
+    await expect(notesTab).toHaveAttribute("aria-selected", "true")
+    await expect(page).toHaveURL(/\/notes\?show=notes$/)
+    await expect(hubRow(page, "The water cycle in short")).toHaveCount(0)
+    await expect(hubRow(page, noteTitle)).toBeVisible()
+    await page.keyboard.press("ArrowRight")
+    await expect(page.getByRole("tab", { name: /^Summaries/ })).toHaveAttribute("aria-selected", "true")
+    await expect(hubRow(page, "The water cycle in short")).toBeVisible()
+    await expect(hubRow(page, noteTitle)).toHaveCount(0)
+    await page.keyboard.press("Home")
+    await expect(all).toHaveAttribute("aria-selected", "true")
+    await expect(page).toHaveURL(/\/notes$/)
+
+    const find = page.getByRole("searchbox", { name: "Find in my notes" })
+    await find.fill(word.toUpperCase())
+    await expect(page.locator("li.note-row")).toHaveCount(1)
+    await expect(hubRow(page, noteTitle)).toBeVisible()
+    await find.fill(`${word} nothing-like-this`)
+    await expect(page.locator("li.note-row")).toHaveCount(0)
+    await expect(page.getByRole("tabpanel")).toContainText(`Nothing matches “${word} nothing-like-this”.`)
+  })
+
+  test("if summaries don't load, the hub says so instead of 'No summaries yet'", async ({ page }) => {
+    await page.route(`${API}/summaries`, (route) => route.fulfill({ status: 500, json: {} }))
+    await page.goto("/notes?show=summaries")
+    await expect(page.getByRole("alert")).toHaveText("We couldn't load your summaries. Try again in a moment.")
+    const panel = page.getByRole("tabpanel")
+    await expect(panel).toContainText("We couldn't load this list. Try again in a moment.")
+    await expect(panel).not.toContainText("No summaries yet.")
+    // Notes still show.
+    await page.getByRole("tab", { name: /^Notes/ }).click()
+    await expect(page.locator("li.note-row").first()).toBeVisible()
+  })
+
+  test("a summary with no title can still be changed and saved", async ({ page }, info) => {
+    const id = await makeItem(page, "summaries", "", "Short words with no title.")
+    await page.goto(`/summaries/${id}/edit`)
+    await expect(pageTitle(page)).toHaveText("Change your summary")
+    const words = page.getByRole("textbox", { name: "Your notes" })
+    await expect(words).toHaveValue("Short words with no title.")
+    const extra = uniqueTitle("Fixed", info)
+    await words.fill(`Short words with no title. ${extra}`)
+    const saved = page.waitForRequest((r) => r.url() === `${API}/summaries/${id}` && r.method() === "PUT")
+    await page.getByRole("button", { name: "Save changes" }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ title: "", content: expect.stringContaining(extra) })
+    await expect(page).toHaveURL(new RegExp(`/summaries/${id}$`))
+    await expect(page.getByText(extra)).toBeVisible()
   })
 
   test("a note that does not exist shows a friendly 'not found'", async ({ page }) => {
     await page.goto("/notes/00000000-0000-0000-0000-000000000000")
     await expect(pageTitle(page)).toHaveText("Note not found")
     await expect(page.getByText("Note not found", { exact: true }).last()).toBeVisible()
-    await page.getByRole("link", { name: "Back" }).click()
+    await page.getByRole("link", { name: "Back to notes" }).click()
     await expect(page).toHaveURL(/\/notes$/)
   })
 
-  test("summaries page is reachable and a summary opens", async ({ page }, info) => {
+  test("/summaries opens the hub's Summaries tab, and a summary opens and can be changed", async ({ page }, info) => {
     await page.goto("/summaries")
-    await expect(pageTitle(page)).toHaveText("Summaries")
-    await expect(page.getByRole("textbox", { name: "Title" })).toBeVisible()
-    await expect(page.getByRole("textbox", { name: "Summary" })).toBeVisible()
-    await expectNoSeriousA11yIssues(page, "summaries", info)
-    // The fake API has one summary; its View link opens /summaries/:id.
-    await page.getByRole("link", { name: "View" }).first().click()
+    await expect(page).toHaveURL(/\/notes\?show=summaries$/)
+    await expect(pageTitle(page)).toHaveText("Your notes")
+    await expect(page.getByRole("tab", { name: /^Summaries/ })).toHaveAttribute("aria-selected", "true")
+    const row = hubRow(page, "The water cycle in short")
+    await expect(row.locator(".row-kind")).toHaveText("Summary")
+    await expect(row).toContainText("Water goes up as vapor")
+    await expectNoSeriousA11yIssues(page, "summaries-tab", info)
+
+    await row.getByRole("link", { name: "The water cycle in short" }).click()
     await expect(page).toHaveURL(/\/summaries\/[^/]+$/)
     await expect(page.getByText(/^Summary · /)).toBeVisible()
-    await expect(page.getByRole("link", { name: "All summarys" })).toHaveAttribute("href", "/summaries")
+    await expect(page.getByRole("link", { name: "Back to notes" })).toHaveAttribute("href", "/notes?show=summaries")
+    expect(await page.locator("body").innerText()).not.toMatch(/summarys/i)
+
+    // A summary can be changed too (a made-up one, so the seeded one stays the same).
+    const oldTitle = uniqueTitle("Short version", info)
+    const id = await makeItem(page, "summaries", oldTitle, "Short words.")
+    await page.goto(`/summaries/${id}`)
+    await page.getByRole("link", { name: "Edit", exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/summaries/${id}/edit$`))
+    await expect(pageTitle(page)).toHaveText("Change your summary")
+    const newTitle = uniqueTitle("Shorter version", info)
+    await page.getByRole("textbox", { name: "Title" }).fill(newTitle)
+    await page.getByRole("button", { name: "Save changes" }).click()
+    await expect(page).toHaveURL(new RegExp(`/summaries/${id}$`))
+    await expect(pageTitle(page)).toHaveText(newTitle)
+    await page.getByRole("link", { name: "Back to notes" }).click()
+    await expect(page).toHaveURL(/\/notes\?show=summaries$/)
+    await expect(hubRow(page, newTitle)).toBeVisible()
+    expect(await page.locator("body").innerText()).not.toMatch(/summarys/i)
+  })
+
+  test("old addresses go to their new places inside Notes, keeping the ?query", async ({ page }) => {
+    await page.goto("/import?from=link")
+    await expect(page).toHaveURL(/\/notes\/import\?from=link$/)
+    await expect(page.getByRole("tab", { name: "Web link" })).toHaveAttribute("aria-selected", "true")
+
+    for (const [from, to] of [
+      ["/voice-input", /\/notes\/voice$/],
+      ["/audio-to-notes", /\/notes\/voice$/],
+      ["/image-to-notes", /\/notes\/image$/],
+      ["/notes/picture", /\/notes\/image$/],
+      ["/summaries", /\/notes\?show=summaries$/],
+    ] as const) {
+      await page.goto(from)
+      await expect(page).toHaveURL(to)
+      await expect(pageTitle(page)).toBeVisible()
+    }
+    await expect(page.getByRole("tab", { name: /^Summaries/ })).toHaveAttribute("aria-selected", "true")
+  })
+
+  test("a new note's draft stays on this device, and signing out clears it", async ({ page }) => {
+    await page.goto("/notes/new")
+    const body = page.getByRole("textbox", { name: "Your notes" })
+    await body.fill("Half a thought about volcanoes")
+    await expect(page.getByText("Draft saved on this device.")).toBeVisible()
+    const draftKeys = () =>
+      page.evaluate(() => Object.keys(window.localStorage).filter((key) => key.startsWith("luma.noteDraft:")))
+    expect(await draftKeys()).toEqual(["luma.noteDraft:u1"])
+
+    // It comes back after a reload.
+    await page.reload()
+    await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("Half a thought about volcanoes")
+    await expect(page.getByText("Draft saved on this device.")).toBeVisible()
+
+    // Signing out asks first (the note is not saved yet), then forgets the draft.
+    page.once("dialog", (dialog) => {
+      expect(dialog.message()).toContain("Your work on this page is not saved yet.")
+      void dialog.accept()
+    })
+    await page.getByRole("button", { name: /^Accounts/ }).click()
+    await page
+      .getByRole("dialog", { name: "Accounts" })
+      .getByRole("button", { name: `Sign out of ${SEEDED.demo.username}` })
+      .click()
+    await expect(page).not.toHaveURL(/\/notes\/new/)
+    await expect.poll(draftKeys).toEqual([])
   })
 
   // The sidebar and its + New menu (desktop and tablet) are tested in nav.spec.ts.
@@ -291,10 +638,10 @@ test.describe("phone + (Create something) sheet", () => {
     const links = sheet(page).getByRole("link")
     await expect(links).toHaveCount(5)
     const expected = [
-      ["Write a note", "/notes"],
-      ["Import a file or link", "/import"],
-      ["Voice to notes", "/voice-input"],
-      ["Image to notes", "/image-to-notes"],
+      ["Write a note", "/notes/new"],
+      ["Import a file or link", "/notes/import"],
+      ["Voice to notes", "/notes/voice"],
+      ["Image to notes", "/notes/image"],
       ["New flashcard deck", "/flashcards/new"],
     ] as const
     for (const [index, [name, href]] of expected.entries()) {
@@ -317,7 +664,7 @@ test.describe("phone + (Create something) sheet", () => {
 
     await plus(page).click()
     await sheet(page).getByRole("link", { name: /^Import a file or link / }).click()
-    await expect(page).toHaveURL(/\/import$/)
+    await expect(page).toHaveURL(/\/notes\/import$/)
     await expect(sheet(page)).toHaveCount(0)
     await expect(pageTitle(page)).toContainText("Make it notes")
 
@@ -362,7 +709,7 @@ test.describe("accessible names", () => {
   })
 
   test("draft card buttons: accessible name includes the visible question", async ({ page }) => {
-    await page.goto("/import")
+    await page.goto("/notes/import")
     await page.getByRole("textbox", { name: "Your words" }).fill(LESSON)
     await page.getByRole("button", { name: "Use these words" }).click()
     await page.getByRole("button", { name: "Make my notes" }).click()
