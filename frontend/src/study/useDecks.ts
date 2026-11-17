@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { api, getErrorMessage } from "../api"
+import { api, getErrorMessage, getTabAccountId } from "../api"
 import { normalizeDeck } from "./deck"
 import type { Deck, DeckCard } from "./deck"
 
@@ -67,6 +67,9 @@ export function useDeck(deckId: string | null | undefined) {
 export function useProgressSaver(deckId: string | undefined, onError: (message: string) => void) {
   const chain = useRef<Promise<unknown>>(Promise.resolve())
   const latest = useRef<DeckCard[] | null>(null)
+  // The account this study session belongs to. A save still waiting after a switch
+  // must go out with this account's token, never the new one.
+  const [accountId] = useState(() => getTabAccountId())
 
   const save = useCallback(
     (cards: DeckCard[]) => {
@@ -77,14 +80,14 @@ export function useProgressSaver(deckId: string | undefined, onError: (message: 
         if (!snapshot) return
         latest.current = null
         try {
-          await api.put(`/flashcards/${deckId}`, { cards: snapshot })
+          await api.put(`/flashcards/${deckId}`, { cards: snapshot }, accountId ? { lumaAccountId: accountId } : undefined)
         } catch (err: unknown) {
           onError(getErrorMessage(err, "Your progress could not be saved. Check your connection."))
         }
       })
       return chain.current
     },
-    [deckId, onError],
+    [accountId, deckId, onError],
   )
 
   return save

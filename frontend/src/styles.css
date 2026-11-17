@@ -23,7 +23,8 @@
   --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
   --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--card));
   --accent-border: color-mix(in srgb, var(--accent) 38%, var(--card));
-  --accent-ink: color-mix(in srgb, var(--accent) 70%, var(--ink));
+  /* 60% keeps accent-colored text at 4.5:1 or more on paper and tints for every theme color. */
+  --accent-ink: color-mix(in srgb, var(--accent) 60%, var(--ink));
 
   --danger: #c2410c;
   --danger-soft: #fff1e8;
@@ -269,6 +270,11 @@ kbd {
   border-color: var(--danger);
   color: #ffffff;
   background: var(--danger);
+}
+
+/* Dark theme's --danger is light orange, so white text would be hard to read. */
+:root[data-theme="dark"] .danger-button {
+  color: #1a1209;
 }
 
 .primary-button:hover,
@@ -607,8 +613,9 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
-.identity > span:last-child {
+.identity > .identity-text {
   display: grid;
+  flex: 1;
   min-width: 0;
 }
 
@@ -1554,7 +1561,8 @@ input[type="checkbox"] {
 }
 
 .grade-button small {
-  color: var(--muted);
+  /* Darker than --muted so it stays readable on the tinted grade buttons. */
+  color: color-mix(in srgb, var(--muted) 50%, var(--ink));
   font-weight: 700;
 }
 
@@ -2383,8 +2391,18 @@ input[type="checkbox"] {
   .brand span,
   .nav-title,
   .nav-link span,
-  .identity > span:last-child {
+  .identity > .identity-caret {
     display: none;
+  }
+
+  /* Hidden on the rail but still read out, so the account button keeps its name. */
+  .identity > .identity-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .brand {
@@ -3072,4 +3090,268 @@ input[aria-invalid="true"] {
   align-items: center;
   cursor: pointer;
   font-weight: 700;
+}
+
+/* ===================================================== accounts on this device */
+
+button.identity {
+  flex: 1;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px 4px 4px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.identity:hover,
+button.identity[aria-expanded="true"] {
+  border-color: var(--line);
+  background: var(--paper-2);
+}
+
+/* Always visible, so it is clear the name opens the account menu (also on touch screens). */
+.identity-caret {
+  flex: none;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+button.identity .avatar {
+  position: relative;
+}
+
+.identity-badge {
+  display: none;
+}
+
+@media (max-width: 1099px) {
+  .identity-badge {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    color: var(--ink);
+    background: var(--card);
+    font-size: 0.65rem;
+  }
+}
+
+button.avatar {
+  padding: 0;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.account-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.account-menu:focus {
+  outline: none;
+}
+
+.account-menu-title {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.account-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.account-rows {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  min-width: 0;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+  text-align: left;
+}
+
+button.account-row {
+  cursor: pointer;
+}
+
+button.account-row:hover {
+  border-color: var(--ink);
+}
+
+.account-row[aria-current="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.account-row .avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 0.95rem;
+}
+
+.account-row-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.account-row-text strong,
+.account-row-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-row-text small {
+  color: var(--muted);
+}
+
+/* The account in use sits on an accent tint, so its email needs a darker grey. */
+.account-row[aria-current="true"] .account-row-text small {
+  color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+}
+
+.account-row-state {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.account-using {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-ink);
+}
+
+.account-expired {
+  color: var(--danger);
+}
+
+.badge-ai {
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--on-accent);
+  background: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.account-actions {
+  display: grid;
+  gap: 4px;
+}
+
+.account-action {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.account-limit-hint {
+  margin: 0 12px 4px;
+}
+
+.account-confirm {
+  display: grid;
+  gap: 8px;
+  border: 2px dashed var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.account-confirm p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.account-choices {
+  display: grid;
+  gap: 10px;
+}
+
+.reauth-footer {
+  display: grid;
+  gap: 10px;
+}
+
+.reauth-footer p {
+  margin: 0;
+}
+
+/* Settings panel: rows carry their own buttons, so let them wrap on small screens. */
+.account-list.panel .account-row {
+  flex-wrap: wrap;
+}
+
+/* Buttons go on their own line so the name and email have room. */
+.account-list.panel .account-row-state {
+  flex: 1 1 100%;
+  padding-left: 44px;
+  justify-content: flex-start;
+}
+
+.account-list.panel .account-actions {
+  justify-items: start;
+}
+
+.account-list.panel .account-action {
+  width: auto;
+}
+
+@media (max-width: 1099px) {
+  button.identity {
+    flex: none;
+    padding: 2px;
+  }
+}
+
+@media (max-width: 719px) {
+  .account-sheet .account-list {
+    padding-bottom: 4px;
+  }
 }

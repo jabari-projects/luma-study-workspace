@@ -1,5 +1,7 @@
 import confetti from "canvas-confetti"
 
+import { activityKey } from "../accounts"
+
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
@@ -26,15 +28,14 @@ export function celebrate(accent = "#f5b82e") {
   void confetti({ ...base, particleCount: 40, origin: { x: 0.8, y: 0.7 }, angle: 120 })
 }
 
-const ACTIVITY_KEY = "luma.activity"
-
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 }
 
-function readActivity(): Record<string, number> {
+// Study activity is kept per account, so two students on one device don't share a week.
+function readActivity(userId: string): Record<string, number> {
   try {
-    const raw = window.localStorage.getItem(ACTIVITY_KEY)
+    const raw = window.localStorage.getItem(activityKey(userId))
     return raw ? (JSON.parse(raw) as Record<string, number>) : {}
   } catch {
     return {}
@@ -42,20 +43,23 @@ function readActivity(): Record<string, number> {
 }
 
 /** Remember that the student studied today (kept on this device). */
-export function recordStudy(cardsReviewed: number) {
+export function recordStudy(userId: string | null | undefined, cardsReviewed: number) {
+  if (!userId) {
+    return
+  }
   try {
-    const activity = readActivity()
+    const activity = readActivity(userId)
     const key = dayKey(new Date())
     activity[key] = (activity[key] ?? 0) + cardsReviewed
-    window.localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activity))
+    window.localStorage.setItem(activityKey(userId), JSON.stringify(activity))
   } catch {
     // Storage can be blocked; studying still works.
   }
 }
 
 /** Monday-first list of this week's days and how many cards were reviewed on each. */
-export function weekActivity(now = new Date()) {
-  const activity = readActivity()
+export function weekActivity(userId: string | null | undefined, now = new Date()) {
+  const activity = userId ? readActivity(userId) : {}
   const monday = new Date(now)
   monday.setHours(0, 0, 0, 0)
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))

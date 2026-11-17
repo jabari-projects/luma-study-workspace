@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react"
 
+import type { AccountStatus } from "./accounts"
 import type { BasicUser, Profile, SignupPending } from "./api"
 
 export type SignupInput = {
@@ -20,20 +21,50 @@ export type VerifyEmailInput = {
   ticket?: string
 }
 
+export type AccountSummary = {
+  id: string
+  username: string
+  email: string
+  status: AccountStatus
+  /** The account this tab is using. */
+  isActive: boolean
+  /** First signed in on this device: the only one that can use the AI chat. */
+  isChatbot: boolean
+}
+
 export type AuthContextValue = {
+  /** This tab's account while it is signed in. */
   user: Profile | BasicUser | null
   accessToken: string | null
   loading: boolean
+  /** This tab's account exists and is signed in. */
   isAuthenticated: boolean
-  /** Logs in and returns the user (check email_verified). */
-  login: (input: LoginInput) => Promise<BasicUser>
+  /** Every account saved on this device, oldest sign-in first. */
+  accounts: AccountSummary[]
+  activeAccountId: string | null
+  /** This tab's account, which may be "expired". */
+  activeAccount: AccountSummary | null
+  chatbotAccountId: string | null
+  isChatbotAccount: boolean
+  canAddAccount: boolean
+  /** Set when this tab's account was signed out in another tab. */
+  signedOutElsewhere: { username: string } | null
+  /** Logs in (adds or refreshes an account) and binds this tab to it. Check user.email_verified. */
+  login: (input: LoginInput) => Promise<{ user: BasicUser; alreadyListed: boolean }>
   /** Starts an account. No session yet: the emailed code logs the user in. */
   signup: (input: SignupInput) => Promise<SignupPending>
   /** Checks an emailed code; on success the user is logged in and verified. */
   verifyEmail: (input: VerifyEmailInput) => Promise<void>
+  switchAccount: (id: string) => void
+  /** Signs out of this tab's account. */
   logout: () => void
-  refreshProfile: () => Promise<void>
+  /** Signs out of one account. Returns the account this tab uses next, if any. */
+  logoutAccount: (id: string) => { nextId: string | null }
+  logoutAll: () => void
+  /** Reloads the profile of one account (this tab's account by default). */
+  refreshProfile: (id?: string) => Promise<void>
   setProfile: (profile: Profile) => void
+  dismissSignedOutElsewhere: () => void
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined)

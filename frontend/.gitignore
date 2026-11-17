@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Playwright output (fake accounts only, still not committed)
+test-results
+playwright-report
