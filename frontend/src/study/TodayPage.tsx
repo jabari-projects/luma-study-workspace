@@ -18,6 +18,7 @@ import { useAuth, useProfile } from "../auth"
 import { Scribble } from "../ui/Scribble"
 import { IMAGE_NOTES, IMPORT_NOTES, NEW_NOTE, VOICE_NOTES } from "../notes/paths"
 import { deckStats } from "./deck"
+import { quizHref, readyLine } from "./hub"
 import { weekActivity } from "./celebrate"
 import { useDecks } from "./useDecks"
 
@@ -42,21 +43,6 @@ function greeting(): string {
   if (hour < 12) return "Good morning"
   if (hour < 18) return "Good afternoon"
   return "Good evening"
-}
-
-/** About 12 seconds a card, rounded up to whole minutes. */
-function minutesFor(cards: number): number {
-  return Math.max(1, Math.ceil((cards * 12) / 60))
-}
-
-/**
- * "8 cards are ready across your decks. About 2 minutes." The time is for the same count
- * as the sentence. A no-break space keeps "2 minutes" together on one line.
- */
-function readyLine(total: number, manyDecks: boolean): string {
-  const minutes = minutesFor(total)
-  const cards = `${total}\u00a0card${total === 1 ? " is" : "s are"} ready${manyDecks ? " across your decks" : ""}.`
-  return `${cards} About ${minutes}\u00a0minute${minutes === 1 ? "" : "s"}.`
 }
 
 function shortDate(value: string | null): string | null {
@@ -157,8 +143,8 @@ export function TodayPage() {
                 <>
                   <h2 id="next-step-title">You're all caught up!</h2>
                   <p>Want a challenge? Take a quick quiz on “{best.deck.title}”.</p>
-                  <Link className="primary-button" to={`/quizzes?deck=${best.deck.id}`}>
-                    <ListChecks weight="bold" aria-hidden="true" /> Quiz me
+                  <Link className="primary-button" to={quizHref([best.deck.id])}>
+                    <ListChecks weight="bold" aria-hidden="true" /> Quiz yourself
                   </Link>
                 </>
               ) : (

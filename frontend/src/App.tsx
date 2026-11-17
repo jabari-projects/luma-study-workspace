@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
-import type { CSSProperties, ChangeEvent, FormEvent, ReactNode } from "react"
+import type { CSSProperties, FormEvent, ReactNode } from "react"
 import { Toaster, toast } from "sonner"
 import {
   Link,
@@ -11,7 +11,7 @@ import {
 } from "react-router-dom"
 
 import { useAuth, useProfile } from "./auth"
-import { API_BASE_URL, api, checkBackendHealth, getErrorMessage, getTabAccountId } from "./api"
+import { API_BASE_URL, api, checkBackendHealth, getErrorMessage } from "./api"
 import type { Profile } from "./api"
 import { NoticeBanner, PageHeader } from "./ui/common"
 import type { Notice, StudyType } from "./ui/common"
@@ -24,6 +24,8 @@ import type { ThemeMode } from "./ui/theme"
 import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
 import { QuizPage } from "./study/QuizPage"
+import { StudyPlansPage } from "./study/StudyPlansPage"
+import { STUDY_PLANS, STUDY_REDIRECTS } from "./study/hub"
 import { NotePage } from "./notes/NotePage"
 import { NotesHub } from "./notes/NotesHub"
 import { NoteEditorPage } from "./notes/NoteEditorPage"
@@ -42,38 +44,6 @@ import {
 } from "./account/AccountPages"
 import { AdminReportsPage, ReportButton } from "./account/Reporting"
 import { ImportPage } from "./capture/ImportPage"
-
-type FieldKind = "text" | "textarea" | "tags" | "number"
-
-type FieldConfig = {
-  name: string
-  label: string
-  kind: FieldKind
-  placeholder: string
-}
-
-type CollectionConfig = {
-  key: string
-  title: string
-  description: string
-  dashboardDescription: string
-  endpoint: string
-  fields: FieldConfig[]
-  publicable?: boolean
-  studyType?: StudyType
-  helperText?: string
-}
-
-type CollectionItem = {
-  id: string
-  created_at?: string
-  updated_at?: string | null
-  is_public?: boolean
-  published_at?: string | null
-  published_by?: string | null
-  study_type?: StudyType | null
-  [key: string]: unknown
-}
 
 type PublicStudyItem = {
   id: string
@@ -102,43 +72,6 @@ type HealthState = {
   status: "checking" | "online" | "offline"
   detail: string | null
 }
-
-// Study plans still use the simple list-and-form page. Notes and summaries live in the Notes hub.
-const collectionConfigs: CollectionConfig[] = [
-  {
-    key: "study-sessions",
-    title: "Study Sessions",
-    description: "Plan your study time.",
-    dashboardDescription: "Plan your study time.",
-    endpoint: "/study-sessions",
-    fields: [
-      {
-        name: "name",
-        label: "Name",
-        kind: "text",
-        placeholder: "Study name",
-      },
-      {
-        name: "subject",
-        label: "Subject",
-        kind: "text",
-        placeholder: "Subject",
-      },
-      {
-        name: "notes",
-        label: "Notes",
-        kind: "textarea",
-        placeholder: "What do you want to study?",
-      },
-      {
-        name: "duration_seconds",
-        label: "Time in seconds",
-        kind: "number",
-        placeholder: "How long?",
-      },
-    ],
-  },
-]
 
 const initialHealthState: HealthState = {
   status: "checking",
@@ -185,58 +118,6 @@ function useBackendHealth() {
   }, [])
 
   return { health, refreshBackendHealth }
-}
-
-function makeEmptyValues(fields: FieldConfig[]): Record<string, string> {
-  return fields.reduce<Record<string, string>>((accumulator, field) => {
-    accumulator[field.name] = field.kind === "number" ? "0" : ""
-    return accumulator
-  }, {})
-}
-
-function normalizeTags(value: string): string[] {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-}
-
-function buildPayload(
-  fields: FieldConfig[],
-  values: Record<string, string>,
-): Record<string, string | number | string[] | boolean> {
-  return fields.reduce<Record<string, string | number | string[] | boolean>>((payload, field) => {
-    const rawValue = values[field.name] ?? ""
-
-    if (field.kind === "tags") {
-      payload[field.name] = normalizeTags(rawValue)
-      return payload
-    }
-
-    if (field.kind === "number") {
-      payload[field.name] = Number.parseInt(rawValue, 10) || 0
-      return payload
-    }
-
-    payload[field.name] = rawValue.trim()
-    return payload
-  }, {})
-}
-
-function displayValue(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value.join(", ")
-  }
-
-  if (typeof value === "number") {
-    return String(value)
-  }
-
-  if (typeof value === "string") {
-    return value
-  }
-
-  return ""
 }
 
 function labelForStudyType(studyType: StudyType): string {
@@ -430,9 +311,7 @@ function AppLayout() {
           <Route path="/flashcards/:itemId/edit" element={<DeckEditorPage />} />
           <Route path="/flashcards/:itemId/study" element={<StudyPage />} />
           <Route path="/quizzes" element={<QuizPage />} />
-          {collectionConfigs.map((config) => (
-            <Route key={config.key} path={`/${config.key}`} element={<CollectionPage config={config} />} />
-          ))}
+          <Route path={STUDY_PLANS} element={<StudyPlansPage />} />
           <Route path="/notes" element={<NotesHub />} />
           <Route path="/notes/new" element={<NoteEditorPage />} />
           <Route path="/notes/import" element={<ImportPage />} />
@@ -449,12 +328,11 @@ function AppLayout() {
           />
           <Route path="/summaries/:itemId/edit" element={<NoteEditorPage kind="summary" />} />
           {/* Old addresses keep working, with their ?query (like /import?from=link). */}
-          {NOTE_REDIRECTS.map(([from, to]) => (
+          {[...NOTE_REDIRECTS, ...STUDY_REDIRECTS].map(([from, to]) => (
             <Route key={from} path={from} element={<KeepQueryRedirect to={to} />} />
           ))}
           <Route path="/ai-tutor" element={<Navigate to="/dashboard" replace />} />
           <Route path="/transcripts" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/study-session" element={<Navigate to="/study-sessions" replace />} />
           <Route path="/quiz" element={<Navigate to="/quizzes" replace />} />
           <Route path="/subscribe" element={<Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
@@ -534,167 +412,6 @@ function LandingPage() {
         <BackendConnectionBanner health={health} />
       </section>
     </main>
-  )
-}
-
-function CollectionPage({ config }: { config: CollectionConfig }) {
-  const navigate = useNavigate()
-  const [items, setItems] = useState<CollectionItem[]>([])
-  const [values, setValues] = useState(() => makeEmptyValues(config.fields))
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const loadItems = useCallback(async () => {
-    setLoading(true)
-    setNotice(null)
-
-    try {
-      const response = await api.get<CollectionItem[]>(config.endpoint)
-      setItems(response.data)
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, `Could not load ${config.title}.`) })
-    } finally {
-      setLoading(false)
-    }
-  }, [config.endpoint, config.title])
-
-  useEffect(() => {
-    setValues(makeEmptyValues(config.fields))
-    void loadItems()
-  }, [config.fields, loadItems])
-
-  const updateValue = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setValues((current) => ({
-      ...current,
-      [event.target.name]: event.target.value,
-    }))
-  }
-
-  const createItem = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setNotice(null)
-
-    // Save into the account that showed this page, even if the tab switches meanwhile.
-    const accountId = getTabAccountId() ?? undefined
-    try {
-      const response = await api.post<CollectionItem>(config.endpoint, buildPayload(config.fields, values), {
-        lumaAccountId: accountId,
-      })
-      if ((getTabAccountId() ?? undefined) !== accountId) return
-      setValues(makeEmptyValues(config.fields))
-
-      if (config.publicable && response.data.id) {
-        navigate(`/${config.key}/${response.data.id}`)
-        return
-      }
-
-      setNotice({ type: "success", text: `${config.title.slice(0, -1) || config.title} saved.` })
-      await loadItems()
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, `Could not save ${config.title}.`) })
-    }
-  }
-
-  const deleteItem = async (itemId: string) => {
-    setNotice(null)
-
-    try {
-      await api.delete(`${config.endpoint}/${itemId}`)
-      setNotice({ type: "success", text: "Item deleted." })
-      await loadItems()
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "Could not delete item.") })
-    }
-  }
-
-  return (
-    <>
-      <PageHeader eyebrow="Study data" title={config.title} description={config.description} />
-      <NoticeBanner notice={notice} />
-      <section className="split-layout">
-        <form className="form-panel" onSubmit={createItem}>
-          <h2>Create</h2>
-          {config.helperText ? <p className="muted">{config.helperText}</p> : null}
-          {config.fields.map((field) => (
-            <FieldInput
-              key={field.name}
-              field={field}
-              value={values[field.name] ?? ""}
-              onChange={updateValue}
-            />
-          ))}
-          <button type="submit" className="primary-button">
-            Save
-          </button>
-        </form>
-        <section className="list-panel" aria-live="polite">
-          {loading ? <p className="muted">Loading...</p> : null}
-          {!loading && items.length === 0 ? <p className="muted">No items yet.</p> : null}
-          {items.map((item) => (
-            <article className="item-card" key={item.id}>
-              <div className="item-fields">
-                {config.fields.slice(0, 2).map((field) => (
-                  <div key={field.name}>
-                    <small>{field.label}</small>
-                    <p>{displayValue(item[field.name]) || "-"}</p>
-                  </div>
-                ))}
-                {config.publicable ? (
-                  <span className={`visibility-pill ${item.is_public ? "public" : "private"}`}>
-                    {item.is_public ? "Public" : "Private"}
-                  </span>
-                ) : null}
-              </div>
-              <div className="button-row">
-                {config.publicable ? (
-                  <Link className="secondary-button" to={`/${config.key}/${item.id}`}>
-                    View
-                  </Link>
-                ) : null}
-                <button type="button" className="danger-button" onClick={() => void deleteItem(item.id)}>
-                  Delete
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
-      </section>
-    </>
-  )
-}
-
-function FieldInput({
-  field,
-  value,
-  onChange,
-}: {
-  field: FieldConfig
-  value: string
-  onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
-}) {
-  return (
-    <label>
-      {field.label}
-      {field.kind === "textarea" ? (
-        <textarea
-          name={field.name}
-          value={value}
-          onChange={onChange}
-          placeholder={field.placeholder}
-          required
-        />
-      ) : (
-        <input
-          name={field.name}
-          type={field.kind === "number" ? "number" : "text"}
-          value={value}
-          onChange={onChange}
-          placeholder={field.placeholder}
-          required={field.name !== "tags" && field.name !== "subject" && field.name !== "notes"}
-          min={field.kind === "number" ? 0 : undefined}
-        />
-      )}
-    </label>
   )
 }
 

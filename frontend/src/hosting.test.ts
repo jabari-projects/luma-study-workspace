@@ -48,6 +48,7 @@ const APP_PATHS = [
   "/notes/abc/edit",
   "/flashcards",
   "/flashcards/deck-1/study",
+  "/study",
   "/quizzes",
   "/summaries",
   "/saved",

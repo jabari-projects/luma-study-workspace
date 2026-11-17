@@ -65,7 +65,9 @@ const appPages = [
   { path: "/notes/new", label: "new-note" },
   { path: "/notes/import", label: "import" },
   { path: "/notes/voice", label: "voice-to-notes" },
-  { path: "/flashcards", label: "decks" },
+  { path: "/flashcards", label: "study-hub" },
+  { path: "/quizzes", label: "quiz-setup" },
+  { path: "/study-sessions", label: "study-plans" },
   { path: "/settings", label: "settings" },
 ]
 

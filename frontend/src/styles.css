@@ -481,11 +481,9 @@ input[type="radio"] {
 
 .paper-panel,
 .form-panel,
-.list-panel,
 .detail-panel,
 .status-panel,
 .output-block,
-.item-card,
 .public-card {
   border: 2px solid var(--line);
   border-radius: var(--radius);
@@ -1368,104 +1366,6 @@ input[type="radio"] {
 
 /* ------------------------------------------------------------ flashcards */
 
-.due-ribbon {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 18px;
-  border: 2px dashed var(--accent-border);
-  border-radius: 999px;
-  padding: 8px 16px;
-  color: var(--ink);
-  background: var(--accent-soft);
-  font-weight: 600;
-}
-
-.due-ribbon svg {
-  color: var(--scribble);
-  font-size: 1.3rem;
-}
-
-.deck-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 22px 18px;
-}
-
-.deck-card {
-  position: relative;
-  display: grid;
-  border: 2px solid var(--ink);
-  border-radius: 6px 6px var(--radius) var(--radius);
-  background: var(--card);
-  box-shadow: var(--print);
-  transform: rotate(var(--tilt, 0deg));
-  transition: transform 0.2s cubic-bezier(0.3, 1.4, 0.5, 1);
-}
-
-/* Two cards peeking out behind each deck */
-.deck-card::before,
-.deck-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border: 2px solid var(--ink);
-  border-radius: inherit;
-  background: var(--card);
-}
-
-.deck-card::before {
-  transform: rotate(2deg) translate(4px, 4px);
-}
-
-.deck-card::after {
-  transform: rotate(-1.5deg) translate(-3px, 5px);
-  background: var(--paper-2);
-}
-
-.deck-card:hover {
-  transform: rotate(0deg) translateY(-4px);
-}
-
-.deck-card-main {
-  display: grid;
-  gap: 10px;
-  padding: 18px 18px 12px;
-  border-top: 10px solid var(--accent);
-  border-radius: 4px 4px 0 0;
-  color: inherit;
-  text-decoration: none;
-  background:
-    repeating-linear-gradient(to bottom, transparent 0 27px, color-mix(in srgb, var(--accent) 14%, transparent) 27px 28px)
-      0 44px / 100% calc(100% - 44px) no-repeat,
-    var(--card);
-}
-
-.deck-card-main h2 {
-  margin: 0;
-  font-size: 1.3rem;
-}
-
-.deck-count,
-.deck-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-.deck-actions {
-  display: flex;
-  gap: 8px;
-  border-top: 2px dashed var(--line);
-  border-radius: 0 0 var(--radius) var(--radius);
-  padding: 12px 14px 14px;
-  background: var(--card);
-}
-
 .tag-row {
   display: flex;
   flex-wrap: wrap;
@@ -1632,17 +1532,16 @@ input[type="radio"] {
 .deck-hero-stack > span {
   position: absolute;
   inset: 0;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--card);
 }
 
 .deck-hero-stack > span:nth-child(1) {
-  transform: rotate(-6deg);
+  transform: rotate(-4deg) translate(-4px, 6px);
 }
 .deck-hero-stack > span:nth-child(2) {
-  transform: rotate(4deg);
-  background: var(--paper-2);
+  transform: rotate(3deg) translate(4px, 8px);
 }
 
 .deck-hero-card {
@@ -1650,14 +1549,17 @@ input[type="radio"] {
   inset: 0;
   display: grid;
   place-items: center;
-  border: 2px solid var(--ink);
-  border-top: 12px solid var(--accent);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 20px;
   background:
-    repeating-linear-gradient(to bottom, transparent 0 29px, color-mix(in srgb, var(--accent) 16%, transparent) 29px 30px) 0 18px,
+    repeating-linear-gradient(to bottom, transparent 0 29px, color-mix(in srgb, var(--accent) 14%, transparent) 29px 30px) 0 18px,
     var(--card);
-  box-shadow: var(--print);
+  box-shadow: var(--shadow-sheet);
+}
+
+[data-theme="dark"] .deck-hero-card {
+  background: var(--card);
 }
 
 .deck-hero-card p {
@@ -1707,13 +1609,8 @@ input[type="radio"] {
   font-size: 2.6rem;
 }
 
-.card-list-section h2 {
-  margin-bottom: 12px;
-}
-
 .card-list {
   display: grid;
-  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1724,11 +1621,8 @@ input[type="radio"] {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  border: 2px solid var(--line);
-  border-left: 6px solid var(--accent-border);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 8px;
 }
 
 .card-list li > div {
@@ -1756,10 +1650,6 @@ input[type="radio"] {
   color: var(--danger);
 }
 
-.card-list.compact li {
-  border-left-color: var(--glow-learning);
-}
-
 .deck-tag {
   flex: none;
   color: var(--muted);
@@ -1769,7 +1659,7 @@ input[type="radio"] {
 
 .quiet-zone {
   margin-top: 32px;
-  border-top: 2px dashed var(--line);
+  border-top: 1px solid var(--line);
   padding-top: 16px;
 }
 
@@ -2079,7 +1969,7 @@ input[type="radio"] {
   text-align: center;
 }
 
-.session-recap .paper-panel {
+.session-recap .recap-list {
   width: 100%;
   text-align: left;
 }
@@ -2374,34 +2264,8 @@ input[type="radio"] {
   font-weight: 700;
 }
 
-/* ------------------------------------------- existing collection screens */
+/* ------------------------------------------------------- detail screens */
 
-.split-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
-  align-items: start;
-  gap: 20px;
-}
-
-.list-panel {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-}
-
-.item-card {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-  box-shadow: none;
-}
-
-.item-fields {
-  display: grid;
-  gap: 10px;
-}
-
-.item-fields small,
 .detail-meta small,
 .detail-content small {
   color: var(--muted);
@@ -2411,7 +2275,6 @@ input[type="radio"] {
   text-transform: uppercase;
 }
 
-.item-fields p,
 .detail-content p {
   margin: 2px 0 0;
   color: var(--ink);
@@ -2955,10 +2818,6 @@ input[type="radio"] {
     justify-items: center;
   }
 
-  .split-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .deck-hero {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3193,15 +3052,6 @@ input[type="radio"] {
     min-height: 44px;
     margin-left: -12px;
     padding: 0 12px;
-  }
-
-  .deck-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-
-  .deck-actions > * {
-    flex: 1;
   }
 
   .editor-head {

@@ -110,7 +110,8 @@ const summaries = [
     is_public: false, published_at: null, published_by: null, study_type: "summary", created_at: past(48), updated_at: past(30),
   },
 ]
-const lists = { "study-sessions": [] }
+// Study plans (/study-sessions). Like the backend, time is kept in seconds.
+const studyPlans = []
 
 let currentOrigin = "http://localhost:5173"
 function send(res, code, body) {
@@ -369,6 +370,32 @@ http
       if (req.method === "PUT") profiles.set(a.id, { ...profiles.get(a.id), ...body })
       return send(res, 200, { ...profiles.get(a.id), ...publicUser(a), subscription_status: "free", is_admin: a.id === "u1" })
     }
+    // Study plans: create, list, open, change and delete, each account only its own.
+    if (parts[0] === "study-sessions") {
+      const me = accountFor(req)
+      if (!me) return send(res, 401, { detail: "Invalid or expired token" })
+      if (parts.length === 1 && req.method === "GET") return send(res, 200, studyPlans.filter((p) => p.user_id === me.id))
+      if (parts.length === 1 && req.method === "POST") {
+        const name = String(body.name || "").trim()
+        const seconds = body.duration_seconds ?? 0
+        if (!name || name.length > 200) return send(res, 422, { detail: "Name is required." })
+        if (!Number.isInteger(seconds) || seconds < 0) return send(res, 422, { detail: "duration_seconds must be a whole number of 0 or more." })
+        const plan = {
+          id: randomUUID(), user_id: me.id, name, subject: body.subject ?? null, notes: body.notes ?? null,
+          duration_seconds: seconds, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }
+        studyPlans.unshift(plan)
+        return send(res, 201, plan)
+      }
+      const plan = studyPlans.find((p) => p.id === parts[1] && p.user_id === me.id)
+      if (!plan) return send(res, 404, { detail: "Study session not found" })
+      if (req.method === "PUT") Object.assign(plan, body, { updated_at: new Date().toISOString() })
+      if (req.method === "DELETE") {
+        studyPlans.splice(studyPlans.indexOf(plan), 1)
+        return send(res, 200, { message: "Study session deleted successfully" })
+      }
+      return send(res, 200, plan)
+    }
     if (parts[0] === "flashcards") {
       const me = accountFor(req)
       if (!me) return send(res, 401, { detail: "Invalid or expired token" })
@@ -387,7 +414,6 @@ http
       }
       return send(res, 200, shape(d))
     }
-    if (lists[parts[0]]) return send(res, 200, lists[parts[0]])
     send(res, 404, { detail: `Fake server has no route for ${req.method} ${url.pathname}` })
   })
   .listen(PORT, "127.0.0.1", () => console.log(`FAKE Luma API (not real) on http://127.0.0.1:${PORT}`))

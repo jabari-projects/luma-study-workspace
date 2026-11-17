@@ -116,6 +116,8 @@ test("the study and quiz stages show focus without a big yellow frame", async ({
 
   // Study: Tab onto the card area. The card's own accent shadow shows focus.
   await page.goto("/flashcards/d1/study")
+  // The review intro comes first.
+  await page.getByRole("button", { name: "Start", exact: true }).click()
   const stage = page.locator(".study-stage")
   await expect(stage).toBeVisible()
   await stage.evaluate((el) => (el as HTMLElement).blur())
@@ -433,6 +435,7 @@ test.describe("Automatic by the clock (Chicago time)", () => {
       await page.clock.install({ time: new Date("2026-11-16T18:59:30-06:00") })
       await loginAndWait(page, SEEDED.demo.email)
       await page.goto("/flashcards/d1/study")
+      await page.getByRole("button", { name: "Start", exact: true }).click()
       await expect(page.locator(".study-stage")).toBeVisible()
       await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
 

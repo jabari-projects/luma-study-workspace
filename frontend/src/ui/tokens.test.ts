@@ -13,6 +13,7 @@ const cssFiles: Record<string, string> = {
   "styles.css": styles,
   "capture/capture.css": read("../capture/capture.css"),
   "notes/notes.css": read("../notes/notes.css"),
+  "study/study.css": read("../study/study.css"),
 }
 
 type Tokens = Record<string, string>

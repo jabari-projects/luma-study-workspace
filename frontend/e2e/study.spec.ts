@@ -1,11 +1,12 @@
-// Study area: deck shelf, deck editor, deck page, flashcard study session,
-// quiz from a deck (/quizzes?deck=) and the Home page next step + week strip.
+// Study area: the Study hub (/flashcards) with its ready strip, decks and quiz picker,
+// deck editor, deck page, the review intro and flashcard session, quizzes from one or
+// more decks (/quizzes?deck=a,b), Study plans in minutes, and the Home next step + week strip.
 // Runs against the FAKE API only. Seeded decks are only read, never changed;
 // anything that changes data uses a brand-new made-up account.
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test"
 
-import { PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait } from "./helpers"
+import { PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait, setThemeMode } from "./helpers"
 
 type Card = { front: string; back: string }
 
@@ -73,6 +74,19 @@ async function expectApart(a: Locator, b: Locator) {
   expect(overlap, JSON.stringify({ boxA, boxB })).toBe(false)
 }
 
+/** A deck on the Study hub shelf. */
+const deckTile = (page: Page, title: string) => page.locator("li.deck-tile").filter({ hasText: title })
+
+/** The ready strip at the top of the Study hub. */
+const readyStrip = (page: Page) => page.getByRole("region", { name: "Cards to review" })
+
+/** The intro before the first card: check what it says, then Start. */
+async function startReview(page: Page) {
+  await expect(page.getByRole("heading", { level: 1, name: /^Ready to (review|practice)$/ })).toBeVisible()
+  await page.getByRole("button", { name: "Start", exact: true }).click()
+  await expect(page.locator(".study-stage")).toBeVisible()
+}
+
 /** A number in the deck page's stat row, e.g. deckStat(page, "ready now"). */
 function deckStat(page: Page, label: string) {
   return page.locator(".deck-hero-info .stat-row > div").filter({ has: page.getByText(label, { exact: true }) }).locator("strong")
@@ -111,54 +125,157 @@ async function seriousAxe(page: Page, opts: { exclude?: string[]; include?: stri
     .flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(" ")}`))
 }
 
-test.describe("deck shelf (seeded accounts, read only)", () => {
-  test("lists the account's decks with due counts, study and quiz links", async ({ page }) => {
+test.describe("Study hub (seeded accounts, read only)", () => {
+  test("lists the account's decks with ready counts, review and quiz links", async ({ page }) => {
     await loginAndWait(page, SEEDED.demo.email)
     await page.goto("/flashcards")
-    await expect(page.getByRole("heading", { level: 1, name: "Flashcards" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Study" })).toBeVisible()
+    // The hand-written note stays on the Study page.
+    await expect(page.locator(".hand-note")).toHaveText("Challenge your mind to remember.")
 
-    const solar = page.locator("article.deck-card").filter({ hasText: "Solar System" })
-    const spanish = page.locator("article.deck-card").filter({ hasText: "Spanish Basics" })
+    const solar = deckTile(page, "Solar System")
+    const spanish = deckTile(page, "Spanish Basics")
     await expect(solar).toBeVisible()
     await expect(spanish).toBeVisible()
-    await expect(solar.getByText("5 cards")).toBeVisible()
-    await expect(spanish.getByText("4 cards")).toBeVisible()
+    // Solar: 3 new + 1 overdue = 4 ready (Saturn is due in 9 days). Spanish: 4 new.
+    await expect(solar.getByText("5 cards · 4 ready")).toBeVisible()
+    await expect(spanish.getByText("4 cards · 4 ready")).toBeVisible()
     await expect(solar.getByText("#science")).toBeVisible()
-    await expect(spanish.getByText(/Public/)).toBeVisible()
-    await expect(solar.getByText(/Private/)).toBeVisible()
+    // "% known" replaces "% Lumen". Saturn is the one card known well: 1 of 5.
+    await expect(solar.getByText("20% known")).toBeVisible()
+    await expect(solar).not.toContainText("Lumen")
+    // A shared deck says "Shared"; a private one says nothing.
+    await expect(spanish.getByText("Shared", { exact: true })).toBeVisible()
+    await expect(solar.getByText("Shared", { exact: true })).toHaveCount(0)
 
-    // Solar: 3 new + 1 overdue = 4 due (Saturn is due in 9 days). Spanish: 4 new.
-    await expect(solar.getByRole("link", { name: "Study 4" })).toHaveAttribute("href", "/flashcards/d1/study")
-    await expect(spanish.getByRole("link", { name: "Study 4" })).toHaveAttribute("href", "/flashcards/d2/study")
-    await expect(spanish.getByRole("link", { name: "Quiz" })).toHaveAttribute("href", "/quizzes?deck=d2")
-    await expect(page.getByText(/8\s+cards are ready for review/)).toBeVisible()
+    await expect(solar.getByRole("link", { name: "Review 4" })).toHaveAttribute("href", "/flashcards/d1/study")
+    await expect(spanish.getByRole("link", { name: "Review 4" })).toHaveAttribute("href", "/flashcards/d2/study")
+    await expect(spanish.getByRole("link", { name: "Quiz yourself" })).toHaveAttribute("href", "/quizzes?deck=d2")
+
+    // The ready strip counts every deck (4 + 4) and opens the deck with the most ready.
+    const strip = readyStrip(page)
+    const line = strip.getByText("8 cards are ready across your decks. About 2 minutes.")
+    await expect(line).toBeVisible()
+    expect(await line.textContent()).toContain("2\u00a0minutes")
+    await expect(strip).toContainText("Flip each card. Tell Luma how well you knew it. Luma picks when you see it again.")
+    // It says which deck it starts with, since only that deck opens.
+    await expect(strip.getByText("Starts with Solar System (4).")).toBeVisible()
+    const reviewLink = strip.getByRole("link", { name: "Review cards" })
+    await expect(reviewLink).toHaveAttribute("href", "/flashcards/d1/study")
+    await expect(reviewLink).toHaveAccessibleDescription("Starts with Solar System (4).")
 
     // Other students' decks never show up here.
-    await expect(page.locator("article.deck-card")).toHaveCount(2)
+    await expect(page.locator("li.deck-tile")).toHaveCount(2)
 
     // Open a deck from the shelf.
-    await solar.getByRole("link", { name: /Solar System/ }).click()
+    await solar.getByRole("link", { name: "Solar System" }).click()
     await expect(page).toHaveURL(/\/flashcards\/d1$/)
     await expect(page.getByRole("heading", { level: 1, name: "Solar System" })).toBeVisible()
     await expect(deckStat(page, "cards")).toHaveText("5")
     await expect(deckStat(page, "ready now")).toHaveText("4")
+    await expect(deckStat(page, "known")).toHaveText("20%")
     await expect(page.locator(".card-list .card-q", { hasText: "Which planet is closest to the Sun?" })).toBeVisible()
-    await expect(page.getByRole("link", { name: "Quiz me" })).toHaveAttribute("href", "/quizzes?deck=d1")
+    await expect(page.getByRole("link", { name: "Review 4 cards" })).toHaveAttribute("href", "/flashcards/d1/study")
+    const quiz = page.getByRole("link", { name: "Quiz yourself" })
+    await expect(quiz).toHaveAttribute("href", "/quizzes?deck=d1")
+    // The page says where quiz questions come from.
+    await expect(quiz).toHaveAccessibleDescription("Questions come from the 5 cards in this deck.")
+    await expect(page.getByText("Questions come from the 5 cards in this deck.")).toBeVisible()
+    await expect(page.getByRole("link", { name: "Edit" })).toBeVisible()
   })
 
   test("a different seeded account sees only its own decks", async ({ page }) => {
     await loginAndWait(page, SEEDED.sam.email)
     await page.goto("/flashcards")
-    await expect(page.getByRole("heading", { level: 1, name: "Flashcards" })).toBeVisible()
-    await expect(page.getByRole("heading", { name: "No decks yet" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Study" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Make a deck first" })).toBeVisible()
+    await expect(page.getByText("Your quizzes use your cards.", { exact: false })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Make a deck" })).toHaveAttribute("href", "/flashcards/new")
     await expect(page.getByText("Solar System")).toHaveCount(0)
+    // No ready strip and no quiz picker without decks.
+    await expect(readyStrip(page)).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Start quiz" })).toHaveCount(0)
   })
 
   test("a deck id from another account shows a not-found message", async ({ page }) => {
     await loginAndWait(page, SEEDED.sam.email)
     await page.goto("/flashcards/d1")
     await expect(page.getByRole("heading", { level: 1, name: "Deck not found" })).toBeVisible()
-    await expect(page.getByRole("link", { name: "Back to decks" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Back to Study" })).toHaveAttribute("href", "/flashcards")
+  })
+
+  test("/study opens the Study hub", async ({ page }) => {
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/study")
+    await expect(page).toHaveURL(/\/flashcards$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Study" })).toBeVisible()
+  })
+
+  test("one stamped button, no sideways scroll", async ({ page }) => {
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/flashcards")
+    await expect(readyStrip(page).getByRole("link", { name: "Review cards" })).toBeVisible()
+    // Only the main action wears the hard 3px stamp shadow.
+    const stamped = await page.evaluate(
+      () => [...document.querySelectorAll("main *")].filter((el) => getComputedStyle(el).boxShadow.includes("3px 3px 0px")).length,
+    )
+    expect(stamped).toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+})
+
+test.describe("quiz yourself from one or more decks (seeded, read only)", () => {
+  test("hub chips open the quiz with both decks picked", async ({ page }) => {
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/flashcards")
+    const picker = page.getByRole("region", { name: "Quiz yourself" })
+    await expect(picker).toContainText("Luma makes quiz questions from your flashcards. Pick one deck or more.")
+    await expect(picker).toContainText("A quiz doesn't change when your cards come back.")
+    const chips = picker.getByRole("group", { name: "Decks for your quiz" })
+    const solar = chips.getByRole("button", { name: /Solar System/ })
+    const spanish = chips.getByRole("button", { name: /Spanish Basics/ })
+    // The first deck starts picked.
+    await expect(solar).toHaveAttribute("aria-pressed", "true")
+    await expect(spanish).toHaveAttribute("aria-pressed", "false")
+    await spanish.click()
+    await expect(spanish).toHaveAttribute("aria-pressed", "true")
+    await expect(picker).toContainText("9 cards from 2 decks.")
+
+    await picker.getByRole("button", { name: "Start quiz" }).click()
+    await expect(page).toHaveURL(/\/quizzes\?deck=d1,d2$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Quiz yourself" })).toBeVisible()
+    await expect(page.getByText("Answer questions made from your flashcards.")).toBeVisible()
+    await expect(page.getByRole("button", { name: /Solar System/ })).toHaveAttribute("aria-pressed", "true")
+    await expect(page.getByRole("button", { name: /Spanish Basics/ })).toHaveAttribute("aria-pressed", "true")
+    await expect(page.getByText("9 cards picked — the quiz will have 9 questions.")).toBeVisible()
+  })
+
+  test("unpicking every deck says so and turns Start quiz off", async ({ page }) => {
+    await loginAndWait(page, SEEDED.demo.email)
+    // On the hub.
+    await page.goto("/flashcards")
+    const picker = page.getByRole("region", { name: "Quiz yourself" })
+    await picker.getByRole("button", { name: /Solar System/ }).click()
+    await expect(picker.getByRole("button", { name: /Solar System/ })).toHaveAttribute("aria-pressed", "false")
+    await expect(picker.getByText("Pick at least one deck.")).toBeVisible()
+    await expect(picker.getByRole("button", { name: "Start quiz" })).toBeDisabled()
+
+    // On the quiz page.
+    await page.goto("/quizzes?deck=d1,d2")
+    for (const name of [/Solar System/, /Spanish Basics/]) await page.getByRole("button", { name }).click()
+    await expect(page.getByText("Pick at least one deck.")).toBeVisible()
+    await expect(page.getByText("Ready when you are")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Start quiz" })).toBeDisabled()
+    await page.getByRole("button", { name: /Spanish Basics/ }).click()
+    await expect(page.getByText("Ready when you are")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Start quiz" })).toBeEnabled()
+  })
+
+  test("a link to one deck and a link with an unknown deck still work", async ({ page }) => {
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/quizzes?deck=d2,nope")
+    await expect(page.getByRole("button", { name: /Spanish Basics/ })).toHaveAttribute("aria-pressed", "true")
+    await expect(page.getByRole("button", { name: /Solar System/ })).toHaveAttribute("aria-pressed", "false")
   })
 })
 
@@ -166,10 +283,10 @@ test.describe("make a deck (fresh account)", () => {
   test("empty shelf, editor checks, save, open, edit and delete", async ({ page }, info) => {
     await signUpFresh(page, info)
 
-    // Empty states on Home, Flashcards and Quizzes.
+    // Empty states on Home, Study and Quiz yourself.
     await expect(page.getByRole("heading", { name: "Make your first flashcard deck" })).toBeVisible()
     await page.goto("/flashcards")
-    await expect(page.getByRole("heading", { name: "No decks yet" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Make a deck first" })).toBeVisible()
     await page.goto("/quizzes")
     await expect(page.getByRole("heading", { name: "Make a deck first" })).toBeVisible()
 
@@ -211,23 +328,25 @@ test.describe("make a deck (fresh account)", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Made Up Facts" })).toBeVisible()
     await expect(deckStat(page, "cards")).toHaveText("4")
     await expect(deckStat(page, "ready now")).toHaveText("4")
-    await expect(deckStat(page, "Lumen")).toHaveText("0%")
+    await expect(deckStat(page, "known")).toHaveText("0%")
     for (const text of ["Whole answer", "Four", "Madrid", "Nine"]) {
       await expect(page.locator(".card-list .card-a", { hasText: text })).toBeVisible()
     }
-    await expect(page.getByRole("link", { name: "Study now" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Review 4 cards" })).toBeVisible()
 
-    // Shelf shows the new deck with tags and a study button.
-    await page.getByRole("link", { name: "Decks", exact: true }).click()
+    // Shelf shows the new deck with tags and a review button.
+    await page.getByRole("link", { name: "Back to Study", exact: true }).click()
     await expect(page).toHaveURL(/\/flashcards$/)
-    const deckCard = page.locator("article.deck-card").filter({ hasText: "Made Up Facts" })
-    await expect(deckCard.getByText("4 cards")).toBeVisible()
+    const deckCard = deckTile(page, "Made Up Facts")
+    await expect(deckCard.getByText("4 cards · 4 ready")).toBeVisible()
     await expect(deckCard.getByText("#trivia")).toBeVisible()
     await expect(deckCard.getByText("#math")).toBeVisible()
-    await expect(deckCard.getByRole("link", { name: "Study 4" })).toBeVisible()
+    await expect(deckCard.getByRole("link", { name: "Review 4" })).toBeVisible()
+    await expect(readyStrip(page).getByText("4 cards are ready. About 1 minute.")).toBeVisible()
+    await expect(readyStrip(page).getByText(/^Starts with/)).toHaveCount(0)
 
     // Edit: rename and keep the cards.
-    await deckCard.getByRole("link", { name: /Made Up Facts/ }).click()
+    await deckCard.getByRole("link", { name: "Made Up Facts" }).click()
     await page.getByRole("link", { name: "Edit" }).click()
     await expect(page.getByRole("heading", { level: 1, name: "Edit your deck" })).toBeVisible()
     await expect(field(page, "Title")).toHaveValue("Made Up Facts")
@@ -254,7 +373,7 @@ test.describe("make a deck (fresh account)", () => {
     await expectApart(page.locator(".quiet-zone .button-row"), page.getByRole("button", { name: "Publish", exact: true }))
     await page.getByRole("button", { name: "Yes, delete" }).click()
     await expect(page).toHaveURL(/\/flashcards$/)
-    await expect(page.getByRole("heading", { name: "No decks yet" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Make a deck first" })).toBeVisible()
   })
 })
 
@@ -281,9 +400,19 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await expect(weekPanel(page).locator("li.today")).toContainText("no study yet")
     await expect(page.getByRole("link", { name: "Start now" })).toHaveAttribute("href", `/flashcards/${deckId}/study`)
 
-    // Study session. New cards come in the order they were made.
+    // The intro comes first: what this review has, about how long, and how it works.
     await page.getByRole("link", { name: "Start now" }).click()
     await expect(page).toHaveURL(new RegExp(`/flashcards/${deckId}/study$`))
+    const intro = page.getByRole("region", { name: "Ready to review" })
+    await expect(intro.getByRole("heading", { level: 1, name: "Ready to review" })).toBeVisible()
+    await expect(intro).toContainText("3 cards are new. About 1 minute.")
+    await expect(intro).toContainText("Look at the front. Think of the answer. Flip it. Then tap how well you knew it.")
+    await expect(page.locator(".study-stage")).toHaveCount(0)
+    // Focus starts on the heading, so the count, the time and the steps are read in order.
+    await expect(intro.getByRole("heading", { level: 1, name: "Ready to review" })).toBeFocused()
+    await intro.getByRole("button", { name: "Start", exact: true }).click()
+
+    // Study session. New cards come in the order they were made.
     await expect(page.getByText("3 left")).toBeVisible()
 
     // Card 1: flip with "Show answer", then "Forgot" so it comes back later.
@@ -318,8 +447,9 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await page.getByRole("button", { name: /^Got it/ }).click()
 
     // Recap.
-    await expect(page.getByText("Session done")).toBeVisible()
-    await expect(page.getByRole("heading", { level: 1, name: "Nice work!" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Review done" })).toBeVisible()
+    await expect(page.getByText("Nice work!")).toBeVisible()
+    await expect(page.getByText("Session done")).toHaveCount(0)
     const recapStat = (label: string) =>
       page.locator(".session-recap .stat-row > div").filter({ has: page.getByText(label, { exact: true }) }).locator("strong")
     await expect(recapStat("cards studied")).toHaveText("3")
@@ -327,18 +457,26 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await expect(page.getByRole("heading", { name: "Cards to keep practicing" })).toBeVisible()
     await expect(page.locator(".session-recap .card-q")).toHaveText([CARDS[0].front])
     await expect(page.getByText(/^Next review:/)).toBeVisible()
+    await expect(page.getByRole("link", { name: "Quiz yourself" })).toHaveAttribute("href", `/quizzes?deck=${deckId}`)
 
     // Progress is saved: the deck page after a reload has nothing due now.
     await page.getByRole("link", { name: "Back to deck" }).click()
     await expect(page).toHaveURL(new RegExp(`/flashcards/${deckId}$`))
     await page.reload()
     await expect(deckStat(page, "ready now")).toHaveText("0")
-    await expect(page.getByRole("link", { name: "Practice anyway" })).toBeVisible()
+    const practice = page.getByRole("link", { name: "Practice anyway" })
+    await expect(practice).toBeVisible()
+    // Practising early is not free: it says the answers still count.
+    const practiceNote = "These cards aren't due yet. Your answers still change when they come back."
+    await expect(page.getByText(practiceNote)).toBeVisible()
+    await expect(practice).toHaveAccessibleDescription(practiceNote)
 
     await page.goto("/flashcards")
-    const shelfCard = page.locator("article.deck-card").filter({ hasText: "Practice Deck" })
+    const shelfCard = deckTile(page, "Practice Deck")
     await expect(shelfCard.getByRole("link", { name: "Practice", exact: true })).toBeVisible()
-    await expect(page.getByText("All caught up. Your cards are glowing!")).toBeVisible()
+    await expect(readyStrip(page)).toContainText("Nothing to review right now.")
+    await expect(readyStrip(page).getByRole("link", { name: "Quiz yourself" })).toHaveAttribute("href", `/quizzes?deck=${deckId}`)
+    await expect(readyStrip(page).getByRole("link", { name: "Review cards" })).toHaveCount(0)
 
     // Home after studying: caught up, today's star is lit with 4 reviews.
     await page.goto("/dashboard")
@@ -347,12 +485,12 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await expect(weekPanel(page).locator("li.lit")).toHaveCount(1)
     await expect(weekPanel(page).locator("li.today")).toHaveClass(/lit/)
     await expect(weekPanel(page).locator("li.today")).toContainText("studied 4 cards")
-    await expect(page.getByRole("link", { name: "Quiz me" })).toHaveAttribute("href", `/quizzes?deck=${deckId}`)
+    await expect(page.getByRole("link", { name: "Quiz yourself" })).toHaveAttribute("href", `/quizzes?deck=${deckId}`)
 
     // Quiz from the deck: "Pick the answer" only, 3 questions (deck has 3 cards).
-    await page.getByRole("link", { name: "Quiz me" }).click()
+    await page.getByRole("link", { name: "Quiz yourself" }).click()
     await expect(page).toHaveURL(new RegExp(`/quizzes\\?deck=${deckId}$`))
-    await expect(page.getByRole("heading", { level: 1, name: "Quizzes" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Quiz yourself" })).toBeVisible()
     await expect(page.getByRole("button", { name: /Practice Deck/ })).toHaveAttribute("aria-pressed", "true")
     await page.getByRole("button", { name: "True or false" }).click()
     await page.getByRole("button", { name: "Type the answer" }).click()
@@ -398,6 +536,70 @@ test.describe("study, quiz and Today (fresh account)", () => {
     await page.goto("/dashboard")
     await expect(weekPanel(page).locator("li.today")).toContainText("studied 8 cards")
     await expect(weekPanel(page)).toContainText("1 of 4 days this week")
+  })
+
+  test("the review intro can be turned off for this account", async ({ page }, info) => {
+    await signUpFresh(page, info)
+    const deckId = await createDeck(page, "Intro Deck", CARDS)
+    await page.goto(`/flashcards/${deckId}/study`)
+    await expect(page.getByRole("heading", { level: 1, name: "Ready to review" })).toBeVisible()
+    // "Back to deck" leaves without starting.
+    await page.getByRole("link", { name: "Back to deck" }).click()
+    await expect(page).toHaveURL(new RegExp(`/flashcards/${deckId}$`))
+
+    await page.goto(`/flashcards/${deckId}/study`)
+    await page.getByRole("checkbox", { name: "Don't show this again" }).check()
+    await page.getByRole("button", { name: "Start", exact: true }).click()
+    await expect(questionCard(page, CARDS[0])).toBeVisible()
+
+    // After a reload the first card shows right away.
+    await page.reload()
+    await expect(questionCard(page, CARDS[0])).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Ready to review" })).toHaveCount(0)
+  })
+
+  test("Study plans are in minutes: 25 minutes saves as 1500 seconds", async ({ page }, info) => {
+    await signUpFresh(page, info)
+    await page.goto("/flashcards")
+    await page.getByRole("main").getByRole("link", { name: "Study plans", exact: true }).click()
+    await expect(page).toHaveURL(/\/study-sessions$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Study plans" })).toBeVisible()
+    await expect(page.getByText("No study plans yet.")).toBeVisible()
+    await expect(page.getByLabel("Minutes")).toBeVisible()
+    await expect(page.getByText(/seconds/i)).toHaveCount(0)
+    await expect(page.getByText(/study session/i)).toHaveCount(0)
+
+    // A name is needed.
+    await page.getByRole("button", { name: "Save plan" }).click()
+    await expect(page.getByText("Give your plan a name.")).toBeVisible()
+
+    await page.getByLabel("Name").fill("Chapter 3 review")
+    await page.getByLabel("Subject (optional)").fill("Biology")
+    await page.getByLabel("Minutes").fill("25")
+    const sent = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/study-sessions")
+    await page.getByRole("button", { name: "Save plan" }).click()
+    const body = (await sent).postDataJSON() as Record<string, unknown>
+    expect(body.duration_seconds).toBe(1500)
+    expect(body.name).toBe("Chapter 3 review")
+    expect(body.subject).toBe("Biology")
+
+    const row = page.locator("li.plan-row").filter({ hasText: "Chapter 3 review" })
+    await expect(row).toContainText("Biology · 25 min")
+    // Saved on the server: still there after a reload.
+    await page.reload()
+    await expect(row).toContainText("Biology · 25 min")
+
+    // Delete asks first.
+    await row.getByRole("button", { name: "Delete Chapter 3 review" }).click()
+    const dialog = page.getByRole("alertdialog", { name: "Delete “Chapter 3 review”?" })
+    await expect(dialog).toContainText("You can't get it back.")
+    await dialog.getByRole("button", { name: "Keep it" }).click()
+    await expect(row).toBeVisible()
+    await row.getByRole("button", { name: "Delete Chapter 3 review" }).click()
+    await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click()
+    await expect(row).toHaveCount(0)
+    await expect(page.getByText("No study plans yet.")).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 
   test("Up next counts every deck, and the time matches that count", async ({ page }, info) => {
@@ -480,12 +682,15 @@ test.describe("accessibility of study pages", () => {
     }
     await scan("deck-page")
     await page.goto("/flashcards")
-    await expect(page.locator("article.deck-card")).toHaveCount(1)
+    await expect(page.locator("li.deck-tile")).toHaveCount(1)
     await scan("decks")
     await page.goto("/flashcards/new")
     await expect(field(page, "Question 1")).toBeVisible()
     await scan("editor")
     await page.goto(`/flashcards/${deckId}/study`)
+    await expect(page.getByRole("heading", { level: 1, name: "Ready to review" })).toBeVisible()
+    await scan("study-intro")
+    await startReview(page)
     await expect(page.getByRole("button", { name: "Show answer" })).toBeVisible()
     await scan("study-front")
     await page.getByRole("button", { name: "Show answer" }).click()
@@ -507,6 +712,7 @@ test.describe("accessibility of study pages", () => {
     await signUpFresh(page, info)
     const deckId = await createDeck(page, "Name Deck", CARDS)
     await page.goto(`/flashcards/${deckId}/study`)
+    await startReview(page)
     await expect(questionCard(page, CARDS[0])).toBeVisible()
     expect(await seriousAxe(page, { include: ".study-stage", rules: ["label-content-name-mismatch"] })).toEqual([])
   })
@@ -515,6 +721,7 @@ test.describe("accessibility of study pages", () => {
     await signUpFresh(page, info)
     const deckId = await createDeck(page, "Contrast Deck", CARDS)
     await page.goto(`/flashcards/${deckId}/study`)
+    await startReview(page)
     await page.getByRole("button", { name: "Show answer" }).click()
     await expect(page.getByRole("button", { name: /^Got it/ })).toBeVisible()
     expect(await seriousAxe(page, { include: ".grade-dock", rules: ["color-contrast"] })).toEqual([])
@@ -531,7 +738,43 @@ test.describe("accessibility of study pages", () => {
   test("desktop sidebar account button's spoken name includes its visible text", async ({ page }) => {
     await loginAndWait(page, SEEDED.demo.email)
     await page.goto("/flashcards")
-    await expect(page.getByRole("heading", { level: 1, name: "Flashcards" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Study" })).toBeVisible()
     expect(await seriousAxe(page, { rules: ["label-content-name-mismatch"] })).toEqual([])
   })
+
+  // The hub, a deck, the review intro, a running quiz and Study plans, in light and dark.
+  for (const theme of ["light", "dark"] as const) {
+    test(`Study pages have no serious axe problems (${theme})`, async ({ page }) => {
+      try {
+        await setThemeMode(page, SEEDED.demo.email, theme)
+        await loginAndWait(page, SEEDED.demo.email)
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+        const found: string[] = []
+        const scan = async (label: string) => {
+          await page.waitForTimeout(600) // entrance animations
+          for (const v of await seriousAxe(page, { exclude: KNOWN })) found.push(`${label}: ${v}`)
+        }
+        await page.goto("/flashcards")
+        await expect(readyStrip(page)).toBeVisible()
+        await scan("hub")
+        await page.goto("/flashcards/d1")
+        await expect(page.getByRole("heading", { level: 1, name: "Solar System" })).toBeVisible()
+        await scan("deck")
+        await page.goto("/flashcards/d1/study")
+        await expect(page.getByRole("heading", { level: 1, name: "Ready to review" })).toBeVisible()
+        await scan("intro")
+        await page.goto("/quizzes?deck=d1,d2")
+        await page.getByRole("button", { name: "Start quiz" }).click()
+        await expect(page.locator(".quiz-prompt")).toBeVisible()
+        await scan("quiz-running")
+        await page.goto("/study-sessions")
+        await expect(page.getByRole("heading", { level: 1, name: "Study plans" })).toBeVisible()
+        await expect(page.locator(".spinner")).toHaveCount(0)
+        await scan("study-plans")
+        expect(found).toEqual([])
+      } finally {
+        await setThemeMode(page, SEEDED.demo.email, "light")
+      }
+    })
+  }
 })

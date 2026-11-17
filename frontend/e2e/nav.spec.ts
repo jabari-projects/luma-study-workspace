@@ -186,7 +186,9 @@ test.describe("study plans", () => {
     await expect(link).toHaveAttribute("href", "/study-sessions")
     await link.click()
     await expect(page).toHaveURL(/\/study-sessions$/)
-    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Study plans" })).toBeVisible()
+    // Study is still the place that lights up.
+    await expect(page.getByRole("link", { name: "Back to Study" })).toHaveAttribute("href", "/flashcards")
   })
 })
 

@@ -76,7 +76,7 @@ async function expectDecksOf(page: Page, who: "demo" | "empty") {
   if (who === "demo") {
     await expect(page.getByText("Solar System").first()).toBeVisible()
   } else {
-    await expect(page.getByRole("heading", { name: "No decks yet" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Make a deck first" })).toBeVisible()
     await expect(page.getByText("Solar System")).toHaveCount(0)
   }
 }

@@ -19,6 +19,9 @@ export const activityKey = (id: string) => `${LEGACY_ACTIVITY_KEY}:${id}`
 /** A new note that is not saved yet, kept on this device per account (cleared on sign-out). */
 export const NOTE_DRAFT_PREFIX = "luma.noteDraft:"
 export const noteDraftKey = (id: string) => `${NOTE_DRAFT_PREFIX}${id}`
+/** "Don't show this again" on the review intro, kept on this device per account (cleared on sign-out). */
+export const STUDY_INTRO_PREFIX = "luma.studyIntroSeen:"
+export const studyIntroKey = (id: string) => `${STUDY_INTRO_PREFIX}${id}`
 
 export type AccountUser = BasicUser | Profile
 export type AccountStatus = "signed_in" | "expired"
