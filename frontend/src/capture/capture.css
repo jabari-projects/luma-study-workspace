@@ -395,7 +395,7 @@
   border-radius: 999px;
   padding: 2px 10px;
   background: var(--scribble);
-  color: #221d35;
+  color: var(--on-scribble);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -470,21 +470,19 @@
   }
 }
 
+/* A yellow sticky note in the page's own theme colors. */
 .limit-nudge {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px 16px;
   margin-bottom: 18px;
-  border: 2px solid var(--ink);
-  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--scribble) 45%, var(--line));
+  border-left: 4px solid var(--scribble);
+  border-radius: var(--radius-sm);
   padding: 18px 20px;
-  background:
-    radial-gradient(circle at 92% 20%, rgba(255, 255, 255, 0.35) 0 2px, transparent 3px),
-    radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.3) 0 1.5px, transparent 2.5px),
-    linear-gradient(135deg, #2b2650, #3d3470);
-  color: #f5efe1;
-  box-shadow: var(--print);
+  background: color-mix(in srgb, var(--scribble) 22%, var(--card));
+  color: var(--ink);
 }
 
 .limit-nudge h2 {
@@ -494,19 +492,15 @@
 
 .limit-nudge p {
   margin: 0;
-  color: #ddd6f3;
+  color: var(--ink);
 }
 
 .limit-nudge svg {
-  color: #f7c35c;
+  color: var(--star-ink);
 }
 
 .limit-nudge .button-row {
   grid-column: 1 / -1;
-}
-
-.limit-nudge .ghost-button {
-  color: #f5efe1;
 }
 
 /* -------------------------------------------------- workbench */
@@ -763,7 +757,7 @@
 /* The real file inputs are invisible, so show the focus ring on their box. */
 .upload-link:has(input:focus-visible),
 .paper-tray:has(input:focus-visible) {
-  outline: 3px solid var(--scribble);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 

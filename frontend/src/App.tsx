@@ -18,6 +18,7 @@ import type { Notice, StudyType } from "./ui/common"
 import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
 import { AccountsPanel, SignedOutElsewhere } from "./ui/AccountMenu"
 import { useAccountActions } from "./ui/accountActions"
+import { DEFAULT_ACCENT, textOnAccent, themeColors } from "./ui/themeColors"
 import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
 import { QuizPage } from "./study/QuizPage"
@@ -190,46 +191,6 @@ const collectionConfigs: CollectionConfig[] = [
     ],
   },
 ]
-
-const themeColors = [
-  { name: "Red", value: "#dc2626" },
-  { name: "Yellow", value: "#ca8a04" },
-  { name: "Teal", value: "#0f766e" },
-  { name: "Pink", value: "#db2777" },
-  { name: "Gold", value: "#b7791f" },
-  { name: "Cyan", value: "#0891b2" },
-  { name: "Purple", value: "#7c3aed" },
-  { name: "Orange", value: "#ea580c" },
-  { name: "Green", value: "#16a34a" },
-  { name: "Blue", value: "#3157d5" },
-]
-
-const DEFAULT_ACCENT = "#0f766e"
-
-/** WCAG relative luminance of a #rrggbb color (null when it can't be read). */
-function luminance(hex: string): number | null {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
-  if (!match) return null
-  const channels = [0, 2, 4].map((at) => {
-    const value = parseInt(match[1].slice(at, at + 2), 16) / 255
-    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-}
-
-const ON_ACCENT_LIGHT = "#ffffff"
-const ON_ACCENT_DARK = "#1b1626"
-
-/** Text color for buttons filled with the accent: white when it is easy to read, dark otherwise. */
-function textOnAccent(accent: string): string {
-  const background = luminance(accent)
-  if (background === null) return ON_ACCENT_LIGHT
-  const withWhite = 1.05 / (background + 0.05)
-  if (withWhite >= 4.5) return ON_ACCENT_LIGHT
-  const dark = luminance(ON_ACCENT_DARK) ?? 0
-  const withDark = (background + 0.05) / (dark + 0.05)
-  return withDark > withWhite ? ON_ACCENT_DARK : ON_ACCENT_LIGHT
-}
 
 type ThemeMode = "light" | "dark"
 
@@ -493,7 +454,7 @@ function AppLayout() {
   }
 
   return (
-    <div className={`app-shell theme-${themeMode}`}>
+    <div className="app-shell">
       <SideNav
         username={user?.username ?? "Luma student"}
         plan={profile?.subscription_status ?? "free"}
@@ -1143,7 +1104,7 @@ function ThemeSettingsForm({
   setNotice: (notice: Notice | null) => void
 }) {
   const { setProfile } = useAuth()
-  const [themeColor, setThemeColor] = useState(profile?.theme_color ?? themeColors[0].value)
+  const [themeColor, setThemeColor] = useState(profile?.theme_color ?? DEFAULT_ACCENT)
   const [themeMode, setThemeMode] = useState<ThemeMode>(profile?.theme_mode === "dark" ? "dark" : "light")
   const previewStyle = { "--theme-choice": themeColor } as CSSProperties
 
@@ -1166,7 +1127,7 @@ function ThemeSettingsForm({
   return (
     <form className="form-panel theme-panel" onSubmit={saveTheme}>
       <h2>Theme</h2>
-      <div className={`theme-preview ${themeMode}`} style={previewStyle}>
+      <div className="theme-preview" data-theme={themeMode} style={previewStyle}>
         <span />
         <strong>{themeMode === "dark" ? "Dark" : "Light"}</strong>
       </div>

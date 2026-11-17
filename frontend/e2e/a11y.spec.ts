@@ -5,21 +5,7 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
-import { API, PASSWORD, SEEDED, expectNoSeriousA11yIssues, loginAndWait } from "./helpers"
-
-type Theme = "light" | "dark"
-
-/** Sets the saved theme for an account through the fake API (the app reads it from /me/profile). */
-async function setTheme(page: Page, email: string, theme: Theme) {
-  const res = await page.request.post(`${API}/login`, { data: { email, password: PASSWORD } })
-  expect(res.ok()).toBeTruthy()
-  const { access_token } = (await res.json()) as { access_token: string }
-  const put = await page.request.put(`${API}/me/profile`, {
-    data: { theme_mode: theme },
-    headers: { authorization: `Bearer ${access_token}` },
-  })
-  expect(put.ok()).toBeTruthy()
-}
+import { SEEDED, expectNoSeriousA11yIssues, loginAndWait, setThemeMode } from "./helpers"
 
 /** Waits until the page has its heading and any loading spinners are gone, so axe sees the real page. */
 async function settle(page: Page) {
@@ -83,7 +69,7 @@ for (const theme of ["light", "dark"] as const) {
   test.describe(`app pages, ${theme} theme`, () => {
     for (const { path, label } of appPages) {
       test(`${label} has no serious axe issues (${theme})`, async ({ page }, info) => {
-        await setTheme(page, SEEDED.demo.email, theme)
+        await setThemeMode(page, SEEDED.demo.email, theme)
         await loginAndWait(page, SEEDED.demo.email)
         if (path !== "/dashboard") await page.goto(path)
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
@@ -93,7 +79,7 @@ for (const theme of ["light", "dark"] as const) {
     }
 
     test(`sidebar account button passes the full axe scan (${theme})`, async ({ page }, info) => {
-      await setTheme(page, SEEDED.demo.email, theme)
+      await setThemeMode(page, SEEDED.demo.email, theme)
       await loginAndWait(page, SEEDED.demo.email)
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await settle(page)
@@ -102,7 +88,7 @@ for (const theme of ["light", "dark"] as const) {
 
     test(`phone Add menu open has no serious axe issues (${theme})`, async ({ page }, info) => {
       test.skip(info.project.name !== "phone", "The Add (create) sheet is the phone tab bar")
-      await setTheme(page, SEEDED.demo.email, theme)
+      await setThemeMode(page, SEEDED.demo.email, theme)
       await loginAndWait(page, SEEDED.demo.email)
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await settle(page)

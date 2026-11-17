@@ -10,43 +10,17 @@
   --font-hand: "Gochi Hand", "Comic Sans MS", cursive;
 
   --accent: #0f766e;
-  --paper: #fbf6ec;
-  --paper-2: #f3ead8;
-  --card: #fffdf8;
-  --ink: #221d35;
-  --muted: #6c6580;
-  --line: #e7dcc7;
-  --line-strong: #cbbda3;
-  --scribble: #f2b33d;
   --on-accent: #ffffff;
-
-  --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
-  --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--card));
-  --accent-border: color-mix(in srgb, var(--accent) 38%, var(--card));
-  /* 60% keeps accent-colored text at 4.5:1 or more on paper and tints for every theme color. */
-  --accent-ink: color-mix(in srgb, var(--accent) 60%, var(--ink));
-
-  --danger: #c2410c;
-  --danger-soft: #fff1e8;
-  --success: #15803d;
-  --success-soft: #eaf8ee;
-
-  --glow-new: #d9cfbd;
-  --glow-learning: #fb923c;
-  --glow-shaky: #facc15;
-  --glow-solid: #22c3a6;
 
   --radius: 14px;
   --radius-sm: 10px;
-  --print: 3px 3px 0 var(--ink);
-  --print-soft: 4px 5px 0 color-mix(in srgb, var(--ink) 12%, transparent);
-  --lift: 0 18px 40px -18px color-mix(in srgb, var(--ink) 40%, transparent);
+  --radius-lg: 22px;
+  --measure: 68ch;
 
   --sidebar-w: 252px;
   --tabbar-h: 68px;
   --gutter: clamp(16px, 4vw, 40px);
 
-  color-scheme: light;
   font-family: var(--font-ui);
   font-size: 16px;
   color: var(--ink);
@@ -56,16 +30,75 @@
   -webkit-font-smoothing: antialiased;
 }
 
-:root[data-theme="dark"] {
+/*
+ * Color tokens. "Margins": warm paper by day, lamplight by night.
+ * They sit on [data-theme] too (not only :root), so a small element such as
+ * the Settings theme preview can show the other theme inside the page.
+ * src/ui/tokens.test.ts checks the contrast of these pairs.
+ */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --paper: #fbf6ec;
+  --paper-2: #f3ead8;
+  --card: #fffdf8;
+  --card-2: var(--card);
+  --ink: #1f1c18;
+  --muted: #675f52;
+  --line: #e7dcc7;
+  --line-strong: #cbbda3;
+  /* Borders of things you type in or tick: 3:1 or more on paper, paper-2 and card. */
+  --field-border: #867a62;
+  /* The brand yellow. Marks and underlines only, never text. */
+  --scribble: #f2b33d;
+  /* Yellow-family text, like "Saved" or "Ready". */
+  --star-ink: #8a5a00;
+  /* Dark text that sits on a --scribble fill, in both themes. */
+  --on-scribble: #1f1c18;
+  --highlight: color-mix(in srgb, #f2b33d 38%, var(--paper));
+  --margin-rule: color-mix(in srgb, #d9534f 35%, var(--paper));
+  --scrim: color-mix(in srgb, #1f1c18 50%, transparent);
+
+  --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
+  --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--card));
+  --accent-border: color-mix(in srgb, var(--accent) 38%, var(--card));
+  /* 60% keeps accent-colored text at 4.5:1 or more on paper and tints for every theme color. */
+  --accent-ink: color-mix(in srgb, var(--accent) 60%, var(--ink));
+
+  --danger: #b3400b;
+  --danger-soft: #fff1e8;
+  --success: #15803d;
+  --success-soft: #eaf8ee;
+
+  --glow-new: #d9cfbd;
+  --glow-learning: #fb923c;
+  --glow-shaky: #facc15;
+  --glow-solid: #22c3a6;
+
+  /* The hard "stamp" shadow. Only for the main button and the one next-step card. */
+  --print: 3px 3px 0 var(--ink);
+  --print-soft: 4px 5px 0 color-mix(in srgb, var(--ink) 12%, transparent);
+  --shadow-sheet: 0 1px 0 var(--line), 0 12px 30px -22px color-mix(in srgb, var(--ink) 35%, transparent);
+  --lift: 0 18px 40px -18px color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+/* "Lamplight": warm graphite, cream text, a little yellow lamp glow. No purple. */
+[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #13111d;
-  --paper-2: #1a1727;
-  --card: #201c30;
-  --ink: #f5efe1;
-  --muted: #a69fba;
-  --line: #322c47;
-  --line-strong: #4a4266;
+  --paper: #15140f;
+  --paper-2: #1b1a15;
+  --card: #211f19;
+  --card-2: #2a2720;
+  --ink: #f3ecdd;
+  --muted: #b2a993;
+  --line: #2e2b23;
+  --line-strong: #4a4539;
+  --field-border: #7f7865;
   --scribble: #f7c35c;
+  --star-ink: #f7c35c;
+  --highlight: color-mix(in srgb, #f7c35c 22%, var(--paper));
+  --margin-rule: color-mix(in srgb, #e0736b 40%, var(--paper));
+  --scrim: color-mix(in srgb, #0b0a07 62%, transparent);
   --accent-strong: color-mix(in srgb, var(--accent) 70%, white);
   --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--card));
   --accent-border: color-mix(in srgb, var(--accent) 50%, var(--card));
@@ -74,9 +107,10 @@
   --danger-soft: #3a2119;
   --success: #4ade80;
   --success-soft: #16301f;
-  --glow-new: #4a4266;
+  --glow-new: #4a4539;
   --print: 3px 3px 0 #000000;
   --print-soft: 4px 5px 0 rgba(0, 0, 0, 0.35);
+  --shadow-sheet: 0 0 0 1px var(--line), 0 18px 40px -20px rgba(0, 0, 0, 0.7);
   --lift: 0 18px 44px -16px rgba(0, 0, 0, 0.7);
 }
 
@@ -97,14 +131,15 @@ body {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
 }
 
-:root[data-theme="dark"] body {
+/* Lamplight: a soft yellow lamp glow in the corner, three faint stars and a little paper grain.
+   No accent wash, so a purple accent never turns the whole page purple. */
+[data-theme="dark"] body {
   background-image:
-    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.55), transparent 60%),
-    radial-gradient(1px 1px at 72% 12%, rgba(255, 255, 255, 0.5), transparent 60%),
-    radial-gradient(1.5px 1.5px at 88% 64%, rgba(255, 236, 180, 0.6), transparent 60%),
-    radial-gradient(1px 1px at 32% 82%, rgba(255, 255, 255, 0.4), transparent 60%),
-    radial-gradient(1px 1px at 55% 45%, rgba(255, 255, 255, 0.35), transparent 60%),
-    radial-gradient(900px 500px at 85% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%);
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(243, 236, 221, 0.35), transparent 60%),
+    radial-gradient(1px 1px at 72% 12%, rgba(243, 236, 221, 0.35), transparent 60%),
+    radial-gradient(1.5px 1.5px at 32% 82%, rgba(243, 236, 221, 0.35), transparent 60%),
+    radial-gradient(800px 480px at 88% -12%, color-mix(in srgb, var(--scribble) 9%, transparent), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
   background-attachment: fixed;
 }
 
@@ -173,9 +208,11 @@ kbd {
 }
 
 :focus-visible {
-  outline: 3px solid var(--scribble);
+  /* Ink ring (about 15:1 in both themes) with a soft yellow halo for the brand look. */
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 6px;
+  box-shadow: 0 0 0 6px var(--highlight);
 }
 
 .sr-only {
@@ -273,8 +310,14 @@ kbd {
 }
 
 /* Dark theme's --danger is light orange, so white text would be hard to read. */
-:root[data-theme="dark"] .danger-button {
+[data-theme="dark"] .danger-button {
   color: #1a1209;
+}
+
+/* Keep the stamp shadow and add the same yellow halo every other control gets. */
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+  box-shadow: var(--print), 0 0 0 6px var(--highlight);
 }
 
 .primary-button:hover,
@@ -370,7 +413,7 @@ textarea,
 select {
   width: 100%;
   min-height: 46px;
-  border: 2px solid var(--line);
+  border: 2px solid var(--field-border);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   background: var(--card);
@@ -389,8 +432,9 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
-  outline: none;
-  box-shadow: 0 0 0 4px var(--accent-soft);
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--highlight);
 }
 
 input::placeholder,
@@ -889,7 +933,7 @@ input[type="checkbox"] {
   --tile: #c27a3a;
 }
 .tone-lilac {
-  --tile: #8b6fd6;
+  --tile: #4f6f8f;
 }
 .tone-ink {
   --tile: var(--accent);
@@ -1352,7 +1396,7 @@ input[type="checkbox"] {
   border: 2px solid var(--ink);
   border-radius: 50%;
   background: var(--scribble);
-  color: #221d35;
+  color: var(--on-scribble);
   font-weight: 800;
   font-size: 0.85rem;
 }
@@ -1433,8 +1477,10 @@ input[type="checkbox"] {
   perspective: 1400px;
 }
 
+/* The card's accent shadow shows focus here, so skip the global ring and halo. */
 .study-stage:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .study-stage:focus-visible .flip-face.front {
@@ -1672,8 +1718,10 @@ input[type="checkbox"] {
   min-height: 320px;
 }
 
-.quiz-stage:focus {
+.quiz-stage:focus,
+.quiz-stage:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .quiz-question {
@@ -1696,7 +1744,7 @@ input[type="checkbox"] {
   border-radius: 999px;
   padding: 0 10px;
   background: var(--scribble);
-  color: #221d35;
+  color: var(--on-scribble);
   font-family: var(--font-ui);
   font-size: 0.8rem;
   font-weight: 800;
@@ -2031,7 +2079,7 @@ input[type="checkbox"] {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: color-mix(in srgb, #120f1c 55%, transparent);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
 }
 
@@ -2218,13 +2266,9 @@ input[type="checkbox"] {
   border-left: 10px solid var(--theme-choice, var(--accent));
   border-radius: var(--radius-sm);
   padding: 14px;
-  color: #221d35;
-  background: #fffdf8;
-}
-
-.theme-preview.dark {
-  color: #f5efe1;
-  background: #201c30;
+  /* The element carries data-theme, so these are the chosen theme's own colors. */
+  color: var(--ink);
+  background: var(--card);
 }
 
 .theme-preview span {
@@ -2872,7 +2916,7 @@ input[type="checkbox"] {
 }
 
 .auth-card > h1:focus-visible {
-  outline: 3px solid var(--scribble);
+  outline: 2px solid var(--ink);
   outline-offset: 4px;
 }
 
@@ -2902,7 +2946,7 @@ input[type="checkbox"] {
 }
 
 .auth-message-slot .notice:focus {
-  outline: 3px solid var(--scribble);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
