@@ -19,7 +19,7 @@ import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
 import { AccountsPanel, SignedOutElsewhere } from "./ui/AccountMenu"
 import { isBusyPath, useAccountActions } from "./ui/accountActions"
 import { DEFAULT_ACCENT, themeColors } from "./ui/themeColors"
-import { applyTheme, clearTheme, normalizeMode, resolveMode, useResolvedTheme } from "./ui/theme"
+import { applyTheme, clearTheme, normalizeMode, readThemeCache, resolveMode, useResolvedTheme } from "./ui/theme"
 import type { ThemeMode } from "./ui/theme"
 import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
@@ -412,7 +412,7 @@ function AccountLimitRedirect() {
 }
 
 function AppLayout() {
-  const { user, activeAccountId } = useAuth()
+  const { user, activeAccountId, profileLoading } = useAuth()
   const { signOut } = useAccountActions()
   const navigate = useNavigate()
   const profile = useProfile()
@@ -446,6 +446,20 @@ function AppLayout() {
     document.head.appendChild(meta)
     return () => meta.remove()
   }, [])
+
+  // Just logged in on a device with no saved theme: wait for the profile (and its theme)
+  // instead of drawing the dashboard in Light first. A failed load ends the wait too.
+  const [themeUnknown] = useState(() => {
+    if (!profileLoading || profile || !activeAccountId) return false
+    try {
+      return !readThemeCache(window.localStorage, activeAccountId)
+    } catch {
+      return true
+    }
+  })
+  if (themeUnknown && profileLoading && !profile) {
+    return <LoadingScreen message="Opening Luma..." />
+  }
 
   const handleLogout = () => {
     if (activeAccountId) {
