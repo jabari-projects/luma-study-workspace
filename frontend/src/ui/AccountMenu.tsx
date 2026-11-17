@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react"
 import type { CSSProperties, RefObject } from "react"
 import { createPortal } from "react-dom"
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
-import { Check, GearSix, Plus, SignOut, X } from "@phosphor-icons/react"
+import { Check, Flag, GearSix, Plus, SignOut, X } from "@phosphor-icons/react"
 
-import { useAuth } from "../auth"
+import { useAuth, useProfile } from "../auth"
 import type { AccountSummary } from "../auth"
 import { MAX_ACCOUNTS } from "../accounts"
 import { AI_CHAT_UI_ENABLED } from "../config"
@@ -104,6 +104,7 @@ export function AccountList({
 }) {
   const { accounts, activeAccount, canAddAccount } = useAuth()
   const { switchTo, signOut, signOutAll, addAccount, busy } = useAccountActions()
+  const profile = useProfile()
   const done = () => onDone?.()
 
   const rows = accounts.map((account) => {
@@ -172,6 +173,17 @@ export function AccountList({
     <div className={`account-list ${variant}`}>
       <ul className="account-rows">{rows}</ul>
       <div className="account-actions">
+        {showSettingsLink ? (
+          <Link className="ghost-button wide account-action" to="/settings" onClick={done}>
+            <GearSix weight="bold" aria-hidden="true" /> Settings
+          </Link>
+        ) : null}
+        {/* Luma helpers only: the review queue is not a setting, so it lives here. */}
+        {variant === "menu" && profile?.is_admin ? (
+          <Link className="ghost-button wide account-action" to="/admin/reports" onClick={done}>
+            <Flag weight="bold" aria-hidden="true" /> Review reports
+          </Link>
+        ) : null}
         <button
           type="button"
           className="ghost-button wide account-action"
@@ -190,11 +202,6 @@ export function AccountList({
             Up to {MAX_ACCOUNTS} accounts
           </p>
         )}
-        {showSettingsLink ? (
-          <Link className="ghost-button wide account-action" to="/settings" onClick={done}>
-            <GearSix weight="bold" aria-hidden="true" /> Your settings
-          </Link>
-        ) : null}
         {variant === "menu" && activeAccount ? (
           <button
             type="button"
@@ -330,32 +337,6 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
         </>
       ) : null}
     </AnimatePresence>
-  )
-}
-
-/** Settings: the accounts on this device. */
-export function AccountsPanel({ id = "accounts" }: { id?: string }) {
-  const { hash } = useLocation()
-  const ref = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    if (hash === `#${id}`) {
-      ref.current?.scrollIntoView({ block: "start" })
-    }
-  }, [hash, id])
-
-  return (
-    <section ref={ref} id={id} className="form-panel accounts-panel" aria-labelledby={`${id}-title`}>
-      <h2 id={`${id}-title`}>Accounts on this device</h2>
-      <p>You can stay signed in to up to {MAX_ACCOUNTS} accounts here and switch any time.</p>
-      {AI_CHAT_UI_ENABLED ? (
-        <p className="field-hint">
-          The AI chat works for one account per device: the first one signed in. If that account signs out, the next
-          one gets it.
-        </p>
-      ) : null}
-      <AccountList variant="panel" />
-    </section>
   )
 }
 

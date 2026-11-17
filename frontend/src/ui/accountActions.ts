@@ -7,7 +7,10 @@ import { ACCOUNT_LIMIT_MESSAGE } from "../accounts"
 import { useAuth } from "../auth"
 
 // Pages where switching or signing out would throw away work in progress.
+// The old note addresses (/import, /voice-input, /image-to-notes) stay listed for safety.
 const BUSY_PATHS = [
+  /^\/notes\/(new|import|voice|image)\/?$/,
+  /^\/(notes|summaries)\/[^/]+\/edit\/?$/,
   /^\/import(\/|$)/,
   /^\/voice-input(\/|$)/,
   /^\/image-to-notes(\/|$)/,

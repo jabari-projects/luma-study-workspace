@@ -37,6 +37,8 @@ export type AuthContextValue = {
   user: Profile | BasicUser | null
   accessToken: string | null
   loading: boolean
+  /** A log in is still fetching this tab's account profile (its theme comes with it). */
+  profileLoading: boolean
   /** This tab's account exists and is signed in. */
   isAuthenticated: boolean
   /** Every account saved on this device, oldest sign-in first. */

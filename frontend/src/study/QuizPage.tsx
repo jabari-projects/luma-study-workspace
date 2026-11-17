@@ -4,12 +4,13 @@ import { Link, useSearchParams } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
 import { ArrowLeft, ArrowsClockwise, Cards, Check, Lightning, Play, Target, X } from "@phosphor-icons/react"
 
-import { NoticeBanner, PageHeader } from "../ui/common"
+import { NoticeBanner } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import { shuffle } from "./deck"
 import type { Deck, DeckCard } from "./deck"
 import { celebrate, recordStudy } from "./celebrate"
 import { useDecks } from "./useDecks"
+import { STUDY_HUB, parseDeckParam, pickDecks } from "./hub"
 import { getTabAccountId } from "../api"
 
 type QuestionKind = "choice" | "truefalse" | "type"
@@ -85,7 +86,8 @@ function buildQuiz(decks: Deck[], length: number, kinds: QuestionKind[]): Questi
 export function QuizPage() {
   const { decks, loading, error } = useDecks()
   const [params] = useSearchParams()
-  const presetDeck = params.get("deck")
+  // One deck (?deck=a) or several (?deck=a,b).
+  const requested = parseDeckParam(params.get("deck"))
   const usable = useMemo(() => decks.filter((deck) => deck.cards.length > 0), [decks])
 
   const [picked, setSelected] = useState<string[] | null>(null)
@@ -93,9 +95,7 @@ export function QuizPage() {
   const [kinds, setKinds] = useState<QuestionKind[]>(["choice", "truefalse", "type"])
   const [questions, setQuestions] = useState<Question[] | null>(null)
 
-  const defaultPick =
-    presetDeck && usable.some((deck) => deck.id === presetDeck) ? [presetDeck] : usable.length > 0 ? [usable[0].id] : []
-  const selected = picked ?? defaultPick
+  const selected = picked ?? pickDecks(requested, usable.map((deck) => deck.id))
 
   const chosenDecks = usable.filter((deck) => selected.includes(deck.id))
   const cardCount = chosenDecks.reduce((sum, deck) => sum + deck.cards.length, 0)
@@ -122,11 +122,19 @@ export function QuizPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Study"
-        title={<Scribble type="circle">Quizzes</Scribble>}
-        description="Test yourself and find out what you really know."
-      />
+      <header className="page-head">
+        <div>
+          <h1>
+            Quiz <Scribble type="underline">yourself</Scribble>
+          </h1>
+          <p className="lede">Answer questions made from your flashcards.</p>
+        </div>
+        <div className="page-head-actions">
+          <Link className="ghost-button" to={STUDY_HUB}>
+            <ArrowLeft weight="bold" aria-hidden="true" /> Back to Study
+          </Link>
+        </div>
+      </header>
       <NoticeBanner notice={error ? { type: "error", text: error } : null} />
       {loading ? (
         <div className="loading-card" role="status">
@@ -139,7 +147,7 @@ export function QuizPage() {
         <section className="empty-state">
           <Target size={56} weight="duotone" aria-hidden="true" />
           <h2>Make a deck first</h2>
-          <p>Quizzes are made from your flashcards. Make a deck and come back.</p>
+          <p>Your quizzes use your cards. Make a deck and come back.</p>
           <Link className="primary-button" to="/flashcards/new">
             <Cards weight="bold" aria-hidden="true" /> Make a deck
           </Link>
@@ -148,8 +156,10 @@ export function QuizPage() {
 
       {!loading && usable.length > 0 ? (
         <div className="quiz-setup">
-          <section className="paper-panel">
-            <h2>1. Pick your decks</h2>
+          <section className="quiz-step" aria-labelledby="quiz-step-decks">
+            <div className="section-head">
+              <h2 id="quiz-step-decks">1. Pick your decks</h2>
+            </div>
             <div className="choice-chips">
               {usable.map((deck) => {
                 const on = selected.includes(deck.id)
@@ -172,8 +182,10 @@ export function QuizPage() {
             </div>
           </section>
 
-          <section className="paper-panel">
-            <h2>2. Pick question types</h2>
+          <section className="quiz-step" aria-labelledby="quiz-step-kinds">
+            <div className="section-head">
+              <h2 id="quiz-step-kinds">2. Pick question types</h2>
+            </div>
             <div className="choice-chips">
               {(
                 [
@@ -193,8 +205,10 @@ export function QuizPage() {
             </div>
           </section>
 
-          <section className="paper-panel">
-            <h2>3. How many questions?</h2>
+          <section className="quiz-step" aria-labelledby="quiz-step-count">
+            <div className="section-head">
+              <h2 id="quiz-step-count">3. How many questions?</h2>
+            </div>
             <div className="choice-chips">
               {[5, 10, 20].map((count) => (
                 <button
@@ -208,14 +222,20 @@ export function QuizPage() {
                 </button>
               ))}
             </div>
-            <p className="muted small-text">
+            <p className="muted small-text" aria-live="polite">
               {cardCount} card{cardCount === 1 ? "" : "s"} picked
               {cardCount < length ? ` — the quiz will have ${cardCount} question${cardCount === 1 ? "" : "s"}.` : "."}
             </p>
           </section>
 
           <div className="sticky-save">
-            <span>{kinds.length === 0 ? "Pick at least one question type" : "Ready when you are"}</span>
+            <span aria-live="polite">
+              {chosenDecks.length === 0
+                ? "Pick at least one deck."
+                : kinds.length === 0
+                  ? "Pick at least one question type"
+                  : "Ready when you are"}
+            </span>
             <button type="button" className="primary-button" onClick={begin} disabled={chosenDecks.length === 0 || kinds.length === 0}>
               <Play weight="fill" aria-hidden="true" /> Start quiz
             </button>
@@ -327,8 +347,10 @@ function QuizRun({
           <Scribble type="highlight">{message}</Scribble>
         </h1>
         {missed.length > 0 ? (
-          <div className="paper-panel">
-            <h2>Study these again</h2>
+          <section className="recap-list" aria-labelledby="quiz-missed-title">
+            <div className="section-head">
+              <h2 id="quiz-missed-title">Study these again</h2>
+            </div>
             <ul className="card-list compact">
               {missed.map((answer) => (
                 <li key={answer.question.id}>
@@ -347,7 +369,7 @@ function QuizRun({
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         ) : (
           <p className="hand-note">You got every one right!</p>
         )}

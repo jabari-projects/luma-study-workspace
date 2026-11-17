@@ -10,43 +10,17 @@
   --font-hand: "Gochi Hand", "Comic Sans MS", cursive;
 
   --accent: #0f766e;
-  --paper: #fbf6ec;
-  --paper-2: #f3ead8;
-  --card: #fffdf8;
-  --ink: #221d35;
-  --muted: #6c6580;
-  --line: #e7dcc7;
-  --line-strong: #cbbda3;
-  --scribble: #f2b33d;
   --on-accent: #ffffff;
-
-  --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
-  --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--card));
-  --accent-border: color-mix(in srgb, var(--accent) 38%, var(--card));
-  /* 60% keeps accent-colored text at 4.5:1 or more on paper and tints for every theme color. */
-  --accent-ink: color-mix(in srgb, var(--accent) 60%, var(--ink));
-
-  --danger: #c2410c;
-  --danger-soft: #fff1e8;
-  --success: #15803d;
-  --success-soft: #eaf8ee;
-
-  --glow-new: #d9cfbd;
-  --glow-learning: #fb923c;
-  --glow-shaky: #facc15;
-  --glow-solid: #22c3a6;
 
   --radius: 14px;
   --radius-sm: 10px;
-  --print: 3px 3px 0 var(--ink);
-  --print-soft: 4px 5px 0 color-mix(in srgb, var(--ink) 12%, transparent);
-  --lift: 0 18px 40px -18px color-mix(in srgb, var(--ink) 40%, transparent);
+  --radius-lg: 22px;
+  --measure: 68ch;
 
   --sidebar-w: 252px;
   --tabbar-h: 68px;
   --gutter: clamp(16px, 4vw, 40px);
 
-  color-scheme: light;
   font-family: var(--font-ui);
   font-size: 16px;
   color: var(--ink);
@@ -56,16 +30,75 @@
   -webkit-font-smoothing: antialiased;
 }
 
-:root[data-theme="dark"] {
+/*
+ * Color tokens. "Margins": warm paper by day, lamplight by night.
+ * They sit on [data-theme] too (not only :root), so a small element such as
+ * the Settings theme preview can show the other theme inside the page.
+ * src/ui/tokens.test.ts checks the contrast of these pairs.
+ */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --paper: #fbf6ec;
+  --paper-2: #f3ead8;
+  --card: #fffdf8;
+  --card-2: var(--card);
+  --ink: #1f1c18;
+  --muted: #675f52;
+  --line: #e7dcc7;
+  --line-strong: #cbbda3;
+  /* Borders of things you type in or tick: 3:1 or more on paper, paper-2 and card. */
+  --field-border: #867a62;
+  /* The brand yellow. Marks and underlines only, never text. */
+  --scribble: #f2b33d;
+  /* Yellow-family text, like "Saved" or "Ready". */
+  --star-ink: #8a5a00;
+  /* Dark text that sits on a --scribble fill, in both themes. */
+  --on-scribble: #1f1c18;
+  --highlight: color-mix(in srgb, #f2b33d 38%, var(--paper));
+  --margin-rule: color-mix(in srgb, #d9534f 35%, var(--paper));
+  --scrim: color-mix(in srgb, #1f1c18 50%, transparent);
+
+  --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
+  --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--card));
+  --accent-border: color-mix(in srgb, var(--accent) 38%, var(--card));
+  /* 60% keeps accent-colored text at 4.5:1 or more on paper and tints for every theme color. */
+  --accent-ink: color-mix(in srgb, var(--accent) 60%, var(--ink));
+
+  --danger: #b3400b;
+  --danger-soft: #fff1e8;
+  --success: #15803d;
+  --success-soft: #eaf8ee;
+
+  --glow-new: #d9cfbd;
+  --glow-learning: #fb923c;
+  --glow-shaky: #facc15;
+  --glow-solid: #22c3a6;
+
+  /* The hard "stamp" shadow. Only for the main button and the one next-step card. */
+  --print: 3px 3px 0 var(--ink);
+  --print-soft: 4px 5px 0 color-mix(in srgb, var(--ink) 12%, transparent);
+  --shadow-sheet: 0 1px 0 var(--line), 0 12px 30px -22px color-mix(in srgb, var(--ink) 35%, transparent);
+  --lift: 0 18px 40px -18px color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+/* "Lamplight": warm graphite, cream text, a little yellow lamp glow. No purple. */
+[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #13111d;
-  --paper-2: #1a1727;
-  --card: #201c30;
-  --ink: #f5efe1;
-  --muted: #a69fba;
-  --line: #322c47;
-  --line-strong: #4a4266;
+  --paper: #15140f;
+  --paper-2: #1b1a15;
+  --card: #211f19;
+  --card-2: #2a2720;
+  --ink: #f3ecdd;
+  --muted: #b2a993;
+  --line: #2e2b23;
+  --line-strong: #4a4539;
+  --field-border: #7f7865;
   --scribble: #f7c35c;
+  --star-ink: #f7c35c;
+  --highlight: color-mix(in srgb, #f7c35c 22%, var(--paper));
+  --margin-rule: color-mix(in srgb, #e0736b 40%, var(--paper));
+  --scrim: color-mix(in srgb, #0b0a07 62%, transparent);
   --accent-strong: color-mix(in srgb, var(--accent) 70%, white);
   --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--card));
   --accent-border: color-mix(in srgb, var(--accent) 50%, var(--card));
@@ -74,9 +107,10 @@
   --danger-soft: #3a2119;
   --success: #4ade80;
   --success-soft: #16301f;
-  --glow-new: #4a4266;
+  --glow-new: #4a4539;
   --print: 3px 3px 0 #000000;
   --print-soft: 4px 5px 0 rgba(0, 0, 0, 0.35);
+  --shadow-sheet: 0 0 0 1px var(--line), 0 18px 40px -20px rgba(0, 0, 0, 0.7);
   --lift: 0 18px 44px -16px rgba(0, 0, 0, 0.7);
 }
 
@@ -97,14 +131,15 @@ body {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
 }
 
-:root[data-theme="dark"] body {
+/* Lamplight: a soft yellow lamp glow in the corner, three faint stars and a little paper grain.
+   No accent wash, so a purple accent never turns the whole page purple. */
+[data-theme="dark"] body {
   background-image:
-    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.55), transparent 60%),
-    radial-gradient(1px 1px at 72% 12%, rgba(255, 255, 255, 0.5), transparent 60%),
-    radial-gradient(1.5px 1.5px at 88% 64%, rgba(255, 236, 180, 0.6), transparent 60%),
-    radial-gradient(1px 1px at 32% 82%, rgba(255, 255, 255, 0.4), transparent 60%),
-    radial-gradient(1px 1px at 55% 45%, rgba(255, 255, 255, 0.35), transparent 60%),
-    radial-gradient(900px 500px at 85% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%);
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(243, 236, 221, 0.35), transparent 60%),
+    radial-gradient(1px 1px at 72% 12%, rgba(243, 236, 221, 0.35), transparent 60%),
+    radial-gradient(1.5px 1.5px at 32% 82%, rgba(243, 236, 221, 0.35), transparent 60%),
+    radial-gradient(800px 480px at 88% -12%, color-mix(in srgb, var(--scribble) 9%, transparent), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
   background-attachment: fixed;
 }
 
@@ -173,9 +208,11 @@ kbd {
 }
 
 :focus-visible {
-  outline: 3px solid var(--scribble);
+  /* Ink ring (about 15:1 in both themes) with a soft yellow halo for the brand look. */
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 6px;
+  box-shadow: 0 0 0 6px var(--highlight);
 }
 
 .sr-only {
@@ -255,15 +292,32 @@ kbd {
 }
 
 .secondary-button {
+  border-width: 1.5px;
+  border-color: var(--field-border);
   color: var(--ink);
-  background: var(--card);
-  box-shadow: var(--print);
+  background: transparent;
 }
 
-.ghost-button {
+.ghost-button,
+.text-button {
   border-color: transparent;
   color: var(--ink);
   background: transparent;
+  text-decoration-line: underline;
+  text-decoration-color: var(--scribble);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 0;
+  padding: 0 4px;
+  font-weight: 750;
+  cursor: pointer;
 }
 
 .danger-button {
@@ -273,23 +327,36 @@ kbd {
 }
 
 /* Dark theme's --danger is light orange, so white text would be hard to read. */
-:root[data-theme="dark"] .danger-button {
+[data-theme="dark"] .danger-button {
   color: #1a1209;
 }
 
-.primary-button:hover,
-.secondary-button:hover {
+/* Keep the stamp shadow and add the same yellow halo every other control gets. */
+.primary-button:focus-visible {
+  box-shadow: var(--print), 0 0 0 6px var(--highlight);
+}
+
+.primary-button:hover {
   transform: translate(-1px, -1px);
   box-shadow: 4px 4px 0 var(--ink);
 }
 
-.primary-button:active,
-.secondary-button:active {
+.primary-button:active {
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0 var(--ink);
 }
 
-.ghost-button:hover {
+.secondary-button:hover {
+  border-color: var(--ink);
+  background: var(--paper-2);
+}
+
+.secondary-button:active {
+  transform: translateY(1px);
+}
+
+.ghost-button:hover,
+.text-button:hover {
   background: var(--paper-2);
 }
 
@@ -301,7 +368,7 @@ button:disabled,
 }
 
 .small {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 14px;
   font-size: 0.9rem;
 }
@@ -370,7 +437,7 @@ textarea,
 select {
   width: 100%;
   min-height: 46px;
-  border: 2px solid var(--line);
+  border: 1.5px solid var(--field-border);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   background: var(--card);
@@ -389,8 +456,9 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
-  outline: none;
-  box-shadow: 0 0 0 4px var(--accent-soft);
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--highlight);
 }
 
 input::placeholder,
@@ -402,36 +470,36 @@ input[type="file"] {
   padding: 10px;
 }
 
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   width: auto;
   min-height: auto;
+  padding: 0;
 }
 
 /* ----------------------------------------------------------------- panels */
 
-.paper-panel,
-.form-panel,
-.list-panel,
-.detail-panel,
-.status-panel,
-.output-block,
-.item-card,
-.public-card {
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--card);
-  box-shadow: var(--print-soft);
-}
-
-.paper-panel,
-.form-panel {
+/* A sheet: soft card paper for a whole form that stands alone (the sign-in pages). */
+.sheet {
   display: grid;
   gap: 14px;
-  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: clamp(20px, 4vw, 28px);
+  background: var(--card);
+  box-shadow: var(--shadow-sheet);
 }
 
-.form-panel h2,
-.paper-panel h2 {
+/* A ruled block: a group of controls under a thin line. No box. */
+.ruled-block {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.sheet h2,
+.ruled-block h2 {
   margin-bottom: 0;
 }
 
@@ -464,6 +532,7 @@ input[type="checkbox"] {
 .loading-card,
 .status-panel {
   display: flex;
+  color: var(--muted);
   align-items: center;
   gap: 14px;
   padding: 20px;
@@ -508,6 +577,8 @@ input[type="checkbox"] {
 .sidebar {
   position: sticky;
   top: 0;
+  /* Above the page, so the + New menu (inside the sidebar) opens over the content. */
+  z-index: 30;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -545,22 +616,80 @@ input[type="checkbox"] {
 
 .nav-stack {
   display: grid;
-  gap: 14px;
-}
-
-.nav-group {
-  display: grid;
   gap: 2px;
 }
 
-.nav-title {
-  margin: 0 0 4px;
+/* + New: one way in to everything you can make. Quiet outline, no stamp shadow. */
+.new-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 1.5px solid var(--field-border);
+  border-radius: 12px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--card);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.new-button svg {
+  flex: none;
+  color: var(--accent-ink);
+  font-size: 1.15rem;
+}
+
+.new-button:hover,
+.new-button.open {
+  background: var(--paper-2);
+}
+
+.new-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  min-width: 240px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 6px;
+  color: var(--ink);
+  background: var(--card-2);
+  box-shadow: var(--shadow-sheet), var(--lift);
+  animation: new-menu-in 0.14s ease-out;
+}
+
+@keyframes new-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border-radius: 10px;
   padding: 0 12px;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.new-menu-item svg {
+  flex: none;
+  color: var(--accent-ink);
+  font-size: 1.25rem;
+}
+
+.new-menu-item:hover,
+.new-menu-item:focus-visible {
+  background: var(--paper-2);
 }
 
 .nav-link {
@@ -588,8 +717,8 @@ input[type="checkbox"] {
 }
 
 .nav-link.active {
-  background: var(--card);
-  box-shadow: inset 0 0 0 2px var(--ink), var(--print);
+  background: var(--highlight);
+  font-weight: 750;
 }
 
 .nav-link.active svg {
@@ -598,12 +727,10 @@ input[type="checkbox"] {
 
 .sidebar-footer {
   margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-top: 2px dashed var(--line);
-  padding-top: 14px;
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }
 
 .identity {
@@ -627,7 +754,6 @@ input[type="checkbox"] {
 
 .identity small {
   color: var(--muted);
-  text-transform: capitalize;
 }
 
 .avatar {
@@ -638,7 +764,8 @@ input[type="checkbox"] {
   height: 40px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  color: var(--ink);
+  /* Dark letter on the yellow in both themes (cream on yellow is unreadable in dark). */
+  color: var(--on-scribble);
   background: var(--scribble);
   font-family: var(--font-display);
   font-weight: 800;
@@ -652,54 +779,367 @@ input[type="checkbox"] {
 
 /* ------------------------------------------------------------ page header */
 
-.page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 22px;
-}
-
-.page-header p:last-child {
-  margin-bottom: 0;
-  font-size: 1.05rem;
-}
-
 .page-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-/* ------------------------------------------------------------------ Today */
+/* =======================================================================
+   Margins layout
+   Three rules:
+   1. Boxes only for things you pick up (flashcards, decks, the note sheet and
+      the one "next step" card). Everything else is type, thin rules and space.
+   2. One stamp per screen: the hard --print shadow is only on .primary-button
+      and the Home next-step card.
+   3. Reading column plus margin: from 1100px a main column and a quiet margin
+      column for tips, counts and secondary actions.
+   Pages move to these classes one at a time.
+   ======================================================================= */
 
-.today {
+/* Page head: kicker, h1 with one Scribble word, a one-line lede, actions on the right. */
+.page-head {
   display: grid;
-  gap: 22px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px 24px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 22px;
 }
 
-.today-head h1 {
-  margin-bottom: 6px;
+.page-head h1 {
+  margin-bottom: 8px;
 }
 
-.today-head p:last-child {
+.kicker {
+  margin: 0 0 10px;
+  color: var(--star-ink);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lede {
+  max-width: var(--measure);
   margin: 0;
+  color: var(--muted);
+  font-size: 1.08rem;
 }
 
+.page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Section head: a heading, then a thin rule that runs to the "See all" link. */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0 0 4px;
+}
+
+.section-head h2 {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.section-head h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.section-head a {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+/* Ruled rows instead of boxes. The whole row is one stretched link; a row menu sits above it. */
+.row-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row-list > .row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 8px;
+  transition: background-color 0.15s ease;
+}
+
+.row-list > .row:hover,
+.row-list > .row:focus-within {
+  background: var(--paper-2);
+}
+
+.row-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  font-size: 1.3rem;
+}
+
+.row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row-link {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.row-main small,
+.row-meta {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.row-menu {
+  position: relative;
+  z-index: 1;
+}
+
+/* Phones: the date sits on the small second line, so titles keep the full width. */
+@media (max-width: 479px) {
+  .row-list > .row:has(> .row-meta) {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  .row-list > .row:has(> .row-meta) > .row-icon {
+    grid-row: span 2;
+  }
+
+  .row-list > .row > .row-meta {
+    grid-column: 2;
+    margin-top: 2px;
+  }
+}
+
+/* Main column plus a quiet margin column, from 1100px. One column below that. */
+.with-margin {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 36px;
+}
+
+.margin-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 1100px) {
+  .with-margin {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 48px;
+  }
+
+  .with-margin > .margin {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    border-left: 1px solid var(--line);
+    padding-left: 24px;
+  }
+}
+
+/* A sheet of note paper: red margin line, ruled lines in light mode only. */
+.sheet-note {
+  position: relative;
+  max-width: var(--measure);
+  border-radius: var(--radius-lg);
+  padding: 32px 40px 32px 64px;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 31px, color-mix(in srgb, var(--line) 80%, transparent) 31px 32px) 0 22px,
+    var(--card);
+  box-shadow: var(--shadow-sheet);
+}
+
+[data-theme="dark"] .sheet-note {
+  background: var(--card);
+}
+
+.sheet-note::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 44px;
+  width: 2px;
+  background: var(--margin-rule);
+}
+
+/* Index cards: only for decks and flashcards. */
+.index-card {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-sheet);
+  transition: transform 0.18s ease;
+}
+
+.index-card:hover {
+  transform: translateY(-2px);
+}
+
+/* A deck: two soft cards peek out behind it. */
+.index-card.deck::before,
+.index-card.deck::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--line);
+  border-radius: inherit;
+  background: var(--card);
+}
+
+.index-card.deck::before {
+  transform: rotate(-2deg) translate(-3px, 5px);
+}
+
+.index-card.deck::after {
+  transform: rotate(1.5deg) translate(3px, 7px);
+}
+
+/* Tabs: an underlined strip. The current tab gets a yellow underline and bold ink. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 2px;
+  color: var(--muted);
+  background: none;
+  font-size: 1rem;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tabs .tab:hover {
+  color: var(--ink);
+}
+
+.tabs .tab[aria-selected="true"],
+.tabs .tab[aria-pressed="true"],
+.tabs .tab[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 800;
+  box-shadow: inset 0 -3px var(--scribble);
+}
+
+.tabs .tab[aria-selected="true"]:focus-visible,
+.tabs .tab[aria-pressed="true"]:focus-visible,
+.tabs .tab[aria-current="page"]:focus-visible {
+  box-shadow: inset 0 -3px var(--scribble), 0 0 0 6px var(--highlight);
+}
+
+/* Toggle chips: an outline pill; pressed is filled with ink. */
+.chip[aria-pressed] {
+  border: 1.5px solid var(--field-border);
+  background: transparent;
+  box-shadow: none;
+}
+
+.chip[aria-pressed]:hover {
+  border-color: var(--ink);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--ink);
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.chip[aria-pressed="true"] small {
+  color: var(--paper);
+  background: color-mix(in srgb, var(--paper) 20%, var(--ink));
+}
+
+/* ------------------------------------------------------------------- Home */
+
+.home-main {
+  display: grid;
+  align-content: start;
+  gap: 30px;
+  min-width: 0;
+}
+
+/* The one stamped card on Home. */
 .next-step {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(170px, 1fr);
   align-items: center;
   gap: 18px;
   overflow: hidden;
   border: 2px solid var(--ink);
-  border-radius: 22px;
+  border-radius: var(--radius-lg);
   padding: clamp(20px, 4vw, 36px);
   background:
     radial-gradient(circle at 92% 20%, color-mix(in srgb, var(--scribble) 30%, transparent), transparent 40%),
     var(--accent-soft);
-  box-shadow: 6px 6px 0 var(--ink);
+  box-shadow: var(--print);
+}
+
+.next-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--accent-ink);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .next-copy h2 {
@@ -741,7 +1181,7 @@ input[type="checkbox"] {
   display: grid;
   place-items: center;
   transform: rotate(-1deg);
-  box-shadow: var(--print);
+  box-shadow: 0 14px 26px -16px color-mix(in srgb, var(--ink) 55%, transparent);
   animation: bob 5s ease-in-out infinite;
 }
 
@@ -756,22 +1196,18 @@ input[type="checkbox"] {
   }
 }
 
-.glow-week {
-  grid-template-columns: minmax(0, 1fr) auto;
+/* The week: seven small stars and one line of text. No panel. */
+.week-strip {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-}
-
-.glow-week p {
-  margin: 0;
-}
-
-.glow-week > p.small-text {
-  grid-column: 1 / -1;
+  gap: 10px 24px;
+  padding: 0 4px;
 }
 
 .week-dots {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -780,16 +1216,16 @@ input[type="checkbox"] {
 .week-dots li {
   display: grid;
   justify-items: center;
-  gap: 4px;
+  gap: 3px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
 .week-star {
-  width: 30px;
-  height: 30px;
-  background: var(--line);
+  width: 24px;
+  height: 24px;
+  background: var(--line-strong);
   clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
   transition: background-color 0.3s ease;
 }
@@ -809,198 +1245,114 @@ input[type="checkbox"] {
   opacity: 0.45;
 }
 
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 14px;
-}
-
-.tool-tile {
-  --tile: var(--accent);
-  position: relative;
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  min-height: 150px;
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  padding: 18px;
-  color: var(--ink);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--tile) 16%, transparent), transparent 60%),
-    var(--card);
-  text-decoration: none;
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
-  animation: rise 0.45s both cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-
-.tool-tile svg {
-  font-size: 2rem;
-  color: var(--tile);
-}
-
-.tool-tile strong {
-  font-family: var(--font-display);
-  font-size: 1.2rem;
-}
-
-.tool-tile p {
+.week-text {
   margin: 0;
-  font-size: 0.93rem;
-  line-height: 1.45;
+  color: var(--muted);
 }
 
-.tool-tile:hover {
-  transform: translateY(-3px) rotate(-0.6deg);
-  border-color: var(--ink);
-  box-shadow: var(--print);
+.week-text strong {
+  color: var(--ink);
 }
 
-.tile-count {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  min-width: 30px;
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-  padding: 2px 8px;
-  background: var(--card);
-  font-weight: 800;
-  font-size: 0.85rem;
-  text-align: center;
+/* Quick start: plain icon-and-text links, no tiles. Phones use the + button instead. */
+.quick-start ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.tone-sun {
-  --tile: #e0a100;
-}
-.tone-sky {
-  --tile: #2f7fd8;
-}
-.tone-rose {
-  --tile: #e2557a;
-}
-.tone-mint {
-  --tile: #12a27f;
-}
-.tone-sand {
-  --tile: #c27a3a;
-}
-.tone-lilac {
-  --tile: #8b6fd6;
-}
-.tone-ink {
-  --tile: var(--accent);
+.quick-start a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 0 6px;
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
 }
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
+.quick-start a svg {
+  flex: none;
+  color: var(--accent-ink);
+  font-size: 1.35rem;
+}
+
+.quick-start a:hover span {
+  text-decoration: underline 2px var(--scribble);
+  text-underline-offset: 5px;
+}
+
+@media (min-width: 1100px) {
+  .quick-start ul {
+    flex-direction: column;
+  }
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .with-margin > .quick-start {
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+  }
+}
+
+@media (max-width: 719px) {
+  .page-head {
+    grid-template-columns: minmax(0, 1fr);
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+  }
+
+  .sheet-note {
+    padding: 24px 18px 24px 40px;
+  }
+
+  .sheet-note::before {
+    left: 26px;
+  }
+
+  .row-list > .row {
+    gap: 12px;
+    padding: 12px 4px;
+  }
+
+  .next-step {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .next-step .primary-button {
+    width: 100%;
+  }
+
+  .next-art {
+    display: none;
+  }
+
+  .week-strip {
+    padding: 0;
+  }
+
+  .week-dots {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .home .quick-start {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .index-card:hover {
+    transform: none;
   }
 }
 
 /* ------------------------------------------------------------ flashcards */
-
-.due-ribbon {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 18px;
-  border: 2px dashed var(--accent-border);
-  border-radius: 999px;
-  padding: 8px 16px;
-  color: var(--ink);
-  background: var(--accent-soft);
-  font-weight: 600;
-}
-
-.due-ribbon svg {
-  color: var(--scribble);
-  font-size: 1.3rem;
-}
-
-.deck-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 22px 18px;
-}
-
-.deck-card {
-  position: relative;
-  display: grid;
-  border: 2px solid var(--ink);
-  border-radius: 6px 6px var(--radius) var(--radius);
-  background: var(--card);
-  box-shadow: var(--print);
-  transform: rotate(var(--tilt, 0deg));
-  transition: transform 0.2s cubic-bezier(0.3, 1.4, 0.5, 1);
-}
-
-/* Two cards peeking out behind each deck */
-.deck-card::before,
-.deck-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border: 2px solid var(--ink);
-  border-radius: inherit;
-  background: var(--card);
-}
-
-.deck-card::before {
-  transform: rotate(2deg) translate(4px, 4px);
-}
-
-.deck-card::after {
-  transform: rotate(-1.5deg) translate(-3px, 5px);
-  background: var(--paper-2);
-}
-
-.deck-card:hover {
-  transform: rotate(0deg) translateY(-4px);
-}
-
-.deck-card-main {
-  display: grid;
-  gap: 10px;
-  padding: 18px 18px 12px;
-  border-top: 10px solid var(--accent);
-  border-radius: 4px 4px 0 0;
-  color: inherit;
-  text-decoration: none;
-  background:
-    repeating-linear-gradient(to bottom, transparent 0 27px, color-mix(in srgb, var(--accent) 14%, transparent) 27px 28px)
-      0 44px / 100% calc(100% - 44px) no-repeat,
-    var(--card);
-}
-
-.deck-card-main h2 {
-  margin: 0;
-  font-size: 1.3rem;
-}
-
-.deck-count,
-.deck-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-.deck-actions {
-  display: flex;
-  gap: 8px;
-  border-top: 2px dashed var(--line);
-  border-radius: 0 0 var(--radius) var(--radius);
-  padding: 12px 14px 14px;
-  background: var(--card);
-}
 
 .tag-row {
   display: flex;
@@ -1168,35 +1520,37 @@ input[type="checkbox"] {
 .deck-hero-stack > span {
   position: absolute;
   inset: 0;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--card);
 }
 
 .deck-hero-stack > span:nth-child(1) {
-  transform: rotate(-6deg);
+  transform: rotate(-4deg) translate(-4px, 6px);
 }
 .deck-hero-stack > span:nth-child(2) {
-  transform: rotate(4deg);
-  background: var(--paper-2);
+  transform: rotate(3deg) translate(4px, 8px);
 }
 
-.index-card {
+.deck-hero-card {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  border: 2px solid var(--ink);
-  border-top: 12px solid var(--accent);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 20px;
   background:
-    repeating-linear-gradient(to bottom, transparent 0 29px, color-mix(in srgb, var(--accent) 16%, transparent) 29px 30px) 0 18px,
+    repeating-linear-gradient(to bottom, transparent 0 29px, color-mix(in srgb, var(--accent) 14%, transparent) 29px 30px) 0 18px,
     var(--card);
-  box-shadow: var(--print);
+  box-shadow: var(--shadow-sheet);
 }
 
-.index-card p {
+[data-theme="dark"] .deck-hero-card {
+  background: var(--card);
+}
+
+.deck-hero-card p {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
@@ -1243,13 +1597,8 @@ input[type="checkbox"] {
   font-size: 2.6rem;
 }
 
-.card-list-section h2 {
-  margin-bottom: 12px;
-}
-
 .card-list {
   display: grid;
-  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1260,11 +1609,8 @@ input[type="checkbox"] {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  border: 2px solid var(--line);
-  border-left: 6px solid var(--accent-border);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 8px;
 }
 
 .card-list li > div {
@@ -1292,10 +1638,6 @@ input[type="checkbox"] {
   color: var(--danger);
 }
 
-.card-list.compact li {
-  border-left-color: var(--glow-learning);
-}
-
 .deck-tag {
   flex: none;
   color: var(--muted);
@@ -1305,7 +1647,7 @@ input[type="checkbox"] {
 
 .quiet-zone {
   margin-top: 32px;
-  border-top: 2px dashed var(--line);
+  border-top: 1px solid var(--line);
   padding-top: 16px;
 }
 
@@ -1317,7 +1659,9 @@ input[type="checkbox"] {
 }
 
 .editor-head {
+  display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
 }
 
 .card-editor-list {
@@ -1352,7 +1696,7 @@ input[type="checkbox"] {
   border: 2px solid var(--ink);
   border-radius: 50%;
   background: var(--scribble);
-  color: #221d35;
+  color: var(--on-scribble);
   font-weight: 800;
   font-size: 0.85rem;
 }
@@ -1433,8 +1777,10 @@ input[type="checkbox"] {
   perspective: 1400px;
 }
 
+/* The card's accent shadow shows focus here, so skip the global ring and halo. */
 .study-stage:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .study-stage:focus-visible .flip-face.front {
@@ -1613,7 +1959,7 @@ input[type="checkbox"] {
   text-align: center;
 }
 
-.session-recap .paper-panel {
+.session-recap .recap-list {
   width: 100%;
   text-align: left;
 }
@@ -1662,18 +2008,14 @@ input[type="checkbox"] {
   border-color: var(--ink);
 }
 
-.chip.on {
-  border-color: var(--ink);
-  background: var(--accent-soft);
-  box-shadow: var(--print);
-}
-
 .quiz-stage {
   min-height: 320px;
 }
 
-.quiz-stage:focus {
+.quiz-stage:focus,
+.quiz-stage:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .quiz-question {
@@ -1696,7 +2038,7 @@ input[type="checkbox"] {
   border-radius: 999px;
   padding: 0 10px;
   background: var(--scribble);
-  color: #221d35;
+  color: var(--on-scribble);
   font-family: var(--font-ui);
   font-size: 0.8rem;
   font-weight: 800;
@@ -1912,91 +2254,7 @@ input[type="checkbox"] {
   font-weight: 700;
 }
 
-/* ------------------------------------------- existing collection screens */
-
-.split-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
-  align-items: start;
-  gap: 20px;
-}
-
-.list-panel {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-}
-
-.item-card {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-  box-shadow: none;
-}
-
-.item-fields {
-  display: grid;
-  gap: 10px;
-}
-
-.item-fields small,
-.detail-meta small,
-.detail-content small {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.item-fields p,
-.detail-content p {
-  margin: 2px 0 0;
-  color: var(--ink);
-  white-space: pre-wrap;
-}
-
-.visibility-pill {
-  justify-self: start;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.visibility-pill.public {
-  color: var(--success);
-  background: var(--success-soft);
-}
-
-.visibility-pill.private {
-  color: var(--muted);
-  background: var(--paper-2);
-}
-
-.detail-panel {
-  display: grid;
-  gap: 18px;
-  padding: clamp(16px, 3vw, 26px);
-}
-
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 32px;
-  border-bottom: 2px dashed var(--line);
-  padding-bottom: 14px;
-}
-
-.detail-meta p {
-  margin: 2px 0 0;
-  color: var(--ink);
-}
-
-.detail-content {
-  display: grid;
-  gap: 16px;
-}
+/* ------------------------------------------------------- detail screens */
 
 .floating-publish {
   position: fixed;
@@ -2031,7 +2289,7 @@ input[type="checkbox"] {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: color-mix(in srgb, #120f1c 55%, transparent);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
 }
 
@@ -2039,122 +2297,19 @@ input[type="checkbox"] {
   width: min(460px, 100%);
   display: grid;
   gap: 14px;
-  border: 2px solid var(--ink);
-  border-radius: 20px;
+  /* Transparent border: invisible normally, drawn in Windows high contrast. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
   padding: 24px;
-  background: var(--card);
-  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--card-2);
+  box-shadow: var(--shadow-sheet), var(--lift);
 }
 
 .modal-panel p {
   margin: 0;
 }
 
-.output-block {
-  margin-top: 16px;
-  padding: 18px;
-}
-
-.output-block pre {
-  margin: 0;
-  color: var(--ink);
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* search */
-
-.tabs {
-  display: inline-flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-  padding: 4px;
-  background: var(--card);
-}
-
-.tab-button {
-  min-height: 40px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0 16px;
-  background: transparent;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.tab-button.active {
-  color: var(--on-accent);
-  background: var(--accent);
-}
-
-.public-results,
-.public-section {
-  display: grid;
-  gap: 16px;
-}
-
-.public-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-}
-
-.public-card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-}
-
-.card-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.public-details {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 0.88rem;
-}
-
-.public-details dt {
-  color: var(--muted);
-}
-
-.public-details dd {
-  margin: 0;
-}
-
-.user-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* settings */
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  align-items: start;
-  gap: 18px;
-}
-
-.theme-panel {
-  min-height: 360px;
-}
+/* settings: see "Settings page" further down */
 
 .color-grid {
   display: grid;
@@ -2187,55 +2342,135 @@ input[type="checkbox"] {
   box-shadow: var(--print);
 }
 
+/* Light / Dark / Automatic: three radio choices, each with a tiny page drawn in its own theme. */
 .mode-toggle {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
 }
 
-.mode-toggle button {
+.mode-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "radio name"
+    "preview preview"
+    "help help";
+  align-items: center;
+  gap: 8px 8px;
   min-height: 44px;
-  border: 2px solid var(--line);
-  border-radius: 999px;
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px 12px;
   background: var(--card);
-  font-weight: 800;
   cursor: pointer;
 }
 
-.mode-toggle button.active {
+.mode-option.active {
   border-color: var(--ink);
-  color: var(--on-accent);
-  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--ink);
 }
 
-.theme-preview {
+/* A round radio drawn with the theme's own colors (the browser's stock one is cool gray in dark). */
+.mode-option input {
+  grid-area: radio;
+  appearance: none;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  border: 2px solid var(--field-border);
+  border-radius: 50%;
+  padding: 0;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.mode-option input:checked {
+  border-color: var(--ink);
+  background: radial-gradient(circle, var(--ink) 0 38%, var(--card) 44%);
+}
+
+/* The global input:focus rule recolors the border; keep the radio's ring round and ink. */
+.mode-option input:focus {
+  border-color: var(--ink);
+}
+
+@media (forced-colors: active) {
+  .mode-option input {
+    appearance: auto;
+  }
+}
+
+.mode-name {
+  grid-area: name;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.mode-help {
+  grid-area: help;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.mode-preview {
+  grid-area: preview;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 70px;
-  border: 2px solid var(--line);
-  border-left: 10px solid var(--theme-choice, var(--accent));
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  color: #221d35;
-  background: #fffdf8;
+  align-content: start;
+  gap: 5px;
+  height: 52px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow: hidden;
+  /* The element carries data-theme, so these are that theme's own colors. */
+  background: var(--paper);
 }
 
-.theme-preview.dark {
-  color: #f5efe1;
-  background: #201c30;
+.mode-preview.split {
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 0;
 }
 
-.theme-preview span {
-  width: 28px;
-  height: 28px;
+.mode-preview-half {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 8px 10px;
+  background: var(--paper);
+}
+
+.mode-preview-dot {
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--theme-choice, var(--accent));
 }
 
-.theme-preview strong {
-  color: inherit;
+.mode-preview-line {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ink);
+  opacity: 0.75;
+}
+
+.mode-preview-line + .mode-preview-line {
+  width: 60%;
+  background: var(--muted);
+}
+
+.mode-now {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
 }
 
 .color-preview-bar {
@@ -2260,10 +2495,6 @@ input[type="checkbox"] {
   color: var(--ink);
 }
 
-.danger-zone {
-  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
-  background: var(--danger-soft);
-}
 
 /* -------------------------------------------------- landing + auth pages */
 
@@ -2278,24 +2509,6 @@ input[type="checkbox"] {
 
 .auth-screen > section {
   width: min(460px, 100%);
-}
-
-.auth-screen .form-panel {
-  border-color: var(--ink);
-  box-shadow: 6px 6px 0 var(--ink);
-}
-
-.auth-screen .page-header {
-  display: block;
-}
-
-.auth-link {
-  margin: 14px 0 0;
-  text-align: center;
-}
-
-.auth-link a {
-  font-weight: 700;
 }
 
 .hero {
@@ -2389,7 +2602,7 @@ input[type="checkbox"] {
   }
 
   .brand span,
-  .nav-title,
+  .new-button span,
   .nav-link span,
   .identity > .identity-caret {
     display: none;
@@ -2409,9 +2622,15 @@ input[type="checkbox"] {
     padding: 0;
   }
 
-  .nav-group + .nav-group {
-    border-top: 2px dashed var(--line);
-    padding-top: 10px;
+  .new-button {
+    justify-content: center;
+    width: 54px;
+    min-height: 50px;
+    padding: 0;
+  }
+
+  .new-button svg {
+    font-size: 1.4rem;
   }
 
   .nav-link {
@@ -2426,11 +2645,7 @@ input[type="checkbox"] {
   }
 
   .sidebar-footer {
-    flex-direction: column;
-  }
-
-  .split-layout {
-    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
   }
 
   .deck-hero {
@@ -2505,14 +2720,14 @@ input[type="checkbox"] {
     grid-template-columns: repeat(5, 1fr);
     align-items: center;
     height: var(--tabbar-h);
-    border: 2px solid var(--ink);
+    border: 1px solid var(--line-strong);
     border-radius: 22px;
     padding: 0 4px;
-    background: var(--card);
-    box-shadow: var(--print), var(--lift);
+    background: var(--card-2);
+    box-shadow: var(--lift);
   }
 
-  .tab {
+  .tab-bar .tab {
     display: grid;
     justify-items: center;
     gap: 2px;
@@ -2526,15 +2741,15 @@ input[type="checkbox"] {
     cursor: pointer;
   }
 
-  .tab svg {
+  .tab-bar .tab svg {
     font-size: 1.5rem;
   }
 
-  .tab.active {
+  .tab-bar .tab.active {
     color: var(--ink);
   }
 
-  .tab.active svg {
+  .tab-bar .tab.active svg {
     color: var(--accent);
   }
 
@@ -2548,7 +2763,7 @@ input[type="checkbox"] {
     border-radius: 18px;
     color: var(--on-accent);
     background: var(--accent);
-    box-shadow: var(--print);
+    box-shadow: var(--lift);
     transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);
   }
 
@@ -2574,11 +2789,13 @@ input[type="checkbox"] {
     gap: 14px;
     max-height: 82vh;
     overflow-y: auto;
-    border: 2px solid var(--ink);
+    /* Transparent border: invisible normally, drawn in Windows high contrast. */
+    border: 1px solid transparent;
     border-bottom: 0;
-    border-radius: 24px 24px 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding: 10px 16px calc(var(--tabbar-h) + 26px + env(safe-area-inset-bottom));
-    background: var(--card);
+    background: var(--card-2);
+    box-shadow: var(--shadow-sheet);
   }
 
   .sheet-head {
@@ -2601,38 +2818,48 @@ input[type="checkbox"] {
     background: var(--line-strong);
   }
 
-  .sheet-grid {
+  /* The things you can make: ruled rows, not boxes. */
+  .sheet-list {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sheet-list li + li {
+    border-top: 1px solid var(--line);
   }
 
   .sheet-item {
     display: grid;
-    gap: 2px;
-    border: 2px solid var(--line);
-    border-radius: 16px;
-    padding: 12px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    min-height: 60px;
+    border-radius: 12px;
+    padding: 8px 8px;
     color: var(--ink);
-    background: var(--paper);
     text-decoration: none;
   }
 
+  .sheet-item:hover,
+  .sheet-item:focus-visible {
+    background: var(--paper-2);
+  }
+
   .sheet-item svg {
-    margin-bottom: 4px;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-size: 1.6rem;
+  }
+
+  .sheet-item-text {
+    display: grid;
+    gap: 2px;
   }
 
   .sheet-item small {
     color: var(--muted);
     line-height: 1.3;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-    margin-bottom: 16px;
   }
 
   .page-actions > * {
@@ -2646,67 +2873,9 @@ input[type="checkbox"] {
 
   .page-actions > .ghost-button:only-child {
     flex: 0 0 auto;
-    min-height: 36px;
+    min-height: 44px;
     margin-left: -12px;
     padding: 0 12px;
-  }
-
-  .next-step {
-    grid-template-columns: minmax(0, 1fr);
-    border-radius: 18px;
-    box-shadow: 4px 4px 0 var(--ink);
-  }
-
-  .next-step .primary-button {
-    width: 100%;
-  }
-
-  .next-art {
-    display: none;
-  }
-
-  .glow-week {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .week-dots {
-    justify-content: space-between;
-  }
-
-  .week-star {
-    width: 28px;
-    height: 28px;
-  }
-
-  .tool-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  .tool-tile {
-    min-height: 0;
-    padding: 14px;
-  }
-
-  .tool-tile p {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    font-size: 0.84rem;
-  }
-
-  .tool-tile svg {
-    font-size: 1.7rem;
-  }
-
-  .deck-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-
-  .deck-actions > * {
-    flex: 1;
   }
 
   .editor-head {
@@ -2798,6 +2967,11 @@ input[type="checkbox"] {
     bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
   }
 
+  /* Room under the last thing on the page for the Publish pill (52px) above the tab bar. */
+  .content:has(.floating-publish) {
+    padding-bottom: calc(var(--tabbar-h) + 22px + 52px + 24px + env(safe-area-inset-bottom));
+  }
+
   .score-ring {
     width: 140px;
     height: 140px;
@@ -2811,19 +2985,42 @@ input[type="checkbox"] {
     font-size: 2rem;
   }
 
-  .tabs {
-    display: flex;
-  }
-
-  .tab-button {
-    flex: 1;
-    padding: 0 8px;
-  }
-
   .button-row > .primary-button,
   .button-row > .secondary-button {
     flex: 1 1 auto;
   }
+}
+
+/* A narrow panel (phones, or the Settings column on wider screens): one choice per row,
+   with its preview on the right. */
+@container (max-width: 559px) {
+  .mode-toggle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mode-option {
+    grid-template-columns: auto minmax(0, 1fr) 80px;
+    grid-template-areas:
+      "radio name preview"
+      "help help help";
+  }
+
+  .mode-preview {
+    height: 36px;
+  }
+}
+
+/* Automatic switching by the clock fades the colors instead of jumping (never on first paint;
+   src/ui/theme.ts skips it when reduced motion is on). */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    color 300ms ease,
+    fill 300ms ease !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2872,7 +3069,7 @@ input[type="checkbox"] {
 }
 
 .auth-card > h1:focus-visible {
-  outline: 3px solid var(--scribble);
+  outline: 2px solid var(--ink);
   outline-offset: 4px;
 }
 
@@ -2888,11 +3085,6 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 
-.auth-form {
-  border-color: var(--ink);
-  box-shadow: 6px 6px 0 var(--ink);
-}
-
 .auth-message-slot:empty {
   display: none;
 }
@@ -2902,7 +3094,7 @@ input[type="checkbox"] {
 }
 
 .auth-message-slot .notice:focus {
-  outline: 3px solid var(--scribble);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -3014,6 +3206,42 @@ input[aria-invalid="true"] {
   font-weight: 700;
 }
 
+/* A quiet link at the bottom of a hub page (Study plans on the Study hub). */
+.page-footer-link {
+  margin: 40px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.page-footer-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--accent-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.page-footer-link a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.page-footer-link a svg:last-child {
+  transition: transform 160ms ease;
+}
+
+.page-footer-link a:hover svg:last-child {
+  transform: translateX(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-footer-link a:hover svg:last-child {
+    transform: none;
+  }
+}
+
 .verify-banner {
   display: flex;
   flex-wrap: wrap;
@@ -3042,8 +3270,8 @@ input[aria-invalid="true"] {
     padding-top: 20px;
   }
 
-  .auth-form {
-    box-shadow: 4px 4px 0 var(--ink);
+  .auth-form.sheet {
+    padding: 18px 16px;
   }
 }
 
@@ -3074,8 +3302,8 @@ input[aria-invalid="true"] {
 
 .report-list {
   display: grid;
-  gap: 14px;
-  margin: 16px 0 0;
+  margin: 18px 0 0;
+  border-top: 1px solid var(--line);
   padding: 0;
   list-style: none;
 }
@@ -3159,12 +3387,12 @@ button.avatar {
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   overflow-y: auto;
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   padding: 12px;
   color: var(--ink);
-  background: var(--card);
-  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--card-2);
+  box-shadow: var(--shadow-sheet), var(--lift);
 }
 
 .account-menu:focus {
@@ -3290,6 +3518,8 @@ button.account-row:hover {
   justify-content: flex-start;
   min-height: 44px;
   padding: 0 12px;
+  /* Menu rows, so no yellow underline. */
+  text-decoration-line: none;
 }
 
 .account-limit-hint {
@@ -3354,4 +3584,439 @@ button.account-row:hover {
   .account-sheet .account-list {
     padding-bottom: 4px;
   }
+}
+
+/* =======================================================================
+   Settings page: one column (max 760px). A strip of section links on top
+   (a sticky column on the left from 1100px), then each group with its name
+   and a short help line above its controls. Thin rules between groups, no boxes.
+   ======================================================================= */
+
+.settings-page {
+  max-width: 760px;
+}
+
+/* The section links draw the rule under the title (phones and tablets). */
+.settings-page > .page-head {
+  margin-bottom: 4px;
+  border-bottom: 0;
+  padding-bottom: 6px;
+}
+
+.settings-index {
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-index ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-index a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.settings-index a:hover {
+  color: var(--ink);
+  text-decoration: underline 2px var(--scribble);
+  text-underline-offset: 6px;
+}
+
+.settings-main {
+  min-width: 0;
+}
+
+.settings-main > .notice {
+  margin: 16px 0 0;
+}
+
+.settings-section {
+  display: grid;
+  gap: 16px 32px;
+  border-bottom: 1px solid var(--line);
+  padding: 28px 0;
+  scroll-margin-top: 24px;
+}
+
+.settings-section:last-child {
+  border-bottom: 0;
+}
+
+.settings-label h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+}
+
+.settings-label p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.settings-section.danger .settings-label h2 {
+  color: var(--danger);
+}
+
+.settings-body {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  min-width: 0;
+}
+
+.settings-body h3 {
+  margin: 0 0 4px;
+  font-size: 1.02rem;
+}
+
+.settings-row {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-row .field-hint {
+  margin: 0;
+}
+
+/* A field and its Save button on one line; the button drops below when there is no room. */
+.input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.input-row input {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+}
+
+.theme-form {
+  display: grid;
+  gap: 14px;
+  /* The three theme choices sit side by side only when there is room. */
+  container-type: inline-size;
+}
+
+.theme-form h3 + .color-preview-bar {
+  margin-top: -6px;
+}
+
+/* Delete account: last, in red, and with a red line instead of a box. */
+.danger-zone {
+  display: grid;
+  gap: 14px;
+  border-left: 3px solid var(--danger);
+  padding-left: 18px;
+}
+
+.danger-zone > p {
+  margin: 0;
+  color: var(--ink);
+}
+
+/* Accounts on this device: ruled rows instead of boxes. */
+.account-list.panel .account-row {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 12px 4px;
+  background: transparent;
+}
+
+.account-list.panel .account-row[aria-current="true"] {
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.account-list.panel .account-rows {
+  gap: 0;
+}
+
+/* Wide screens: the section links stay in view in a column of their own, beside the
+   settings (never on top of them), and each group puts its name beside its controls. */
+@media (min-width: 1100px) {
+  .settings-page {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 760px);
+    gap: 0 28px;
+    max-width: none;
+  }
+
+  .settings-page > .page-head {
+    grid-column: 1 / -1;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 22px;
+  }
+
+  .settings-index {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    border-bottom: 0;
+    padding-top: 22px;
+  }
+
+  .settings-index ul {
+    flex-direction: column;
+  }
+
+  .settings-index a {
+    min-height: 40px;
+    line-height: 1.25;
+  }
+
+  /* The index already names each group, so the group name and help sit above its
+     controls here instead of in a second column beside them. */
+}
+
+@media (max-width: 719px) {
+  .settings-index ul {
+    gap: 0 16px;
+  }
+
+  .settings-section {
+    padding: 22px 0;
+    scroll-margin-top: 72px;
+  }
+
+  .danger-zone {
+    padding-left: 14px;
+  }
+}
+
+/* =======================================================================
+   Search: a search line, two plain tabs, then ruled lists. One column on
+   phones and tablets, two borderless columns from 1100px. No card grid.
+   ======================================================================= */
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 760px;
+  margin: 0 0 14px;
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.search-field svg {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  color: var(--muted);
+  font-size: 1.15rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-field input {
+  min-height: 50px;
+  border-radius: 999px;
+  padding-left: 44px;
+}
+
+/* The browser's own clear (x) is blue; paint it in the muted ink so it matches the page. */
+.search-field input::-webkit-search-cancel-button {
+  width: 24px;
+  height: 24px;
+  margin: 0 2px 0 8px;
+  background-color: var(--muted);
+  cursor: pointer;
+  appearance: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+}
+
+.search-field input::-webkit-search-cancel-button:hover {
+  background-color: var(--ink);
+}
+
+.search-results {
+  display: grid;
+  gap: 30px;
+}
+
+.result-group,
+.person {
+  display: grid;
+  gap: 2px;
+}
+
+.result-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result-list > li {
+  border-bottom: 1px solid var(--line);
+}
+
+.result {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px 4px;
+}
+
+.result-kind {
+  margin: 0;
+  color: var(--star-ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.result h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+/* Two lines of the preview, like a peek. */
+.result-preview {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.result .report-control {
+  margin-top: 0;
+}
+
+.result .report-toggle {
+  margin-left: -12px;
+}
+
+.person-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.person-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.person-head p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 1100px) {
+  .result-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 40px;
+  }
+}
+
+/* =======================================================================
+   Review queue (admin): filter chips, then one ruled row per report with
+   a status chip. No boxes.
+   ======================================================================= */
+
+.report-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "main status"
+    "actions actions";
+  align-items: start;
+  gap: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 4px;
+}
+
+.report-main {
+  grid-area: main;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.report-main h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.report-main p {
+  margin: 0;
+}
+
+.report-kind {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.report-reason {
+  color: var(--ink);
+}
+
+.report-details {
+  max-width: var(--measure);
+}
+
+.report-actions {
+  grid-area: actions;
+}
+
+.status-chip {
+  grid-area: status;
+  border: 1.5px solid var(--field-border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-chip.open {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-chip.reviewing {
+  border-color: var(--star-ink);
+  color: var(--star-ink);
+}
+
+.status-chip.resolved {
+  border-color: var(--success);
+  color: var(--success);
 }

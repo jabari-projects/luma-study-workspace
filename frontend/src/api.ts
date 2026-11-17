@@ -5,17 +5,22 @@ import {
   AUTH_STORAGE_KEY,
   AccountBlockedError,
   LEGACY_ACTIVITY_KEY,
+  NOTE_DRAFT_PREFIX,
+  STUDY_INTRO_PREFIX,
   TAB_ACCOUNT_KEY,
   activityKey,
   classifyUnauthorized,
   markExpired,
+  noteDraftKey,
   parseBook,
   remove,
   resolveRequestAuth,
+  studyIntroKey,
   upsertSignedIn,
 } from "./accounts"
 import type { AccountBook } from "./accounts"
 import type { BasicUser, Profile } from "./types"
+import { THEME_CACHE_PREFIX, themeCacheKey } from "./ui/theme"
 
 export type { BasicUser, Profile } from "./types"
 export { AUTH_STORAGE_KEY }
@@ -250,10 +255,16 @@ export function writeStoredSession(stored: StoredAuthSession): void {
   setTabAccountId(stored.user.id)
 }
 
-/** Removes one account and its study activity from this device. */
+/**
+ * Removes one account, its study activity, its saved theme, its unsaved note draft and its
+ * "don't show the review intro" choice from this device.
+ */
 export function removeStoredAccount(id: string): void {
   writeBook(remove(readBook(), id))
   storageSet(local, activityKey(id), null)
+  storageSet(local, themeCacheKey(id), null)
+  storageSet(local, noteDraftKey(id), null)
+  storageSet(local, studyIntroKey(id), null)
 }
 
 /** Signs out only this tab's account. */
@@ -269,7 +280,13 @@ export function clearAllStoredSessions(): void {
     const keys: string[] = []
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index)
-      if (key && key.startsWith(`${LEGACY_ACTIVITY_KEY}:`)) {
+      if (
+        key &&
+        (key.startsWith(`${LEGACY_ACTIVITY_KEY}:`) ||
+          key.startsWith(THEME_CACHE_PREFIX) ||
+          key.startsWith(NOTE_DRAFT_PREFIX) ||
+          key.startsWith(STUDY_INTRO_PREFIX))
+      ) {
         keys.push(key)
       }
     }

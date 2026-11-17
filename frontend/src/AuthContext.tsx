@@ -58,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [start] = useState<StartState>(initialState)
   const [state, setState] = useState<AuthState>(() => ({ book: start.book, tabId: start.tabId }))
   const [loading, setLoading] = useState(true)
+  /** The account whose profile a log in is fetching right now. */
+  const [profileLoadingId, setProfileLoadingId] = useState<string | null>(null)
   const [signedOutElsewhere, setSignedOutElsewhere] = useState<{ username: string } | null>(() =>
     // The account is gone from the book, so its name is unknown.
     start.lostBinding ? { username: "This account" } : null,
@@ -178,12 +180,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const alreadyListed = Boolean(readBook().accounts[user.id])
       writeStoredSession({ accessToken: response.data.access_token, user })
       setSignedOutElsewhere(null)
+      // While the profile loads, the app waits on its loading screen instead of drawing
+      // the dashboard in Light for a student who picked Dark (see AppLayout).
+      setProfileLoadingId(user.id)
       resync()
 
       try {
         await refreshProfile(user.id)
       } catch {
         // The login token is valid even when profile hydration is unavailable.
+      } finally {
+        setProfileLoadingId((current) => (current === user.id ? null : current))
       }
       return { user, alreadyListed }
     },
@@ -290,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: signedIn && active ? active.user : null,
       accessToken: signedIn && active ? active.accessToken : null,
       loading,
+      profileLoading: Boolean(tabId && tabId === profileLoadingId),
       isAuthenticated: signedIn,
       accounts,
       activeAccountId: active ? tabId : null,
@@ -316,6 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     logoutAccount,
     logoutAll,
+    profileLoadingId,
     refreshProfile,
     setProfile,
     signedOutElsewhere,

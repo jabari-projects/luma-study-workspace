@@ -11,6 +11,7 @@ import "@fontsource/gochi-hand"
 import "./styles.css"
 import "./capture/capture.css"
 import "./notes/notes.css"
+import "./study/study.css"
 
 const rootElement = document.getElementById("root")
 

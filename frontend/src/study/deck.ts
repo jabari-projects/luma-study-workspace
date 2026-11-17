@@ -135,20 +135,30 @@ export function masteryOf(card: DeckCard): Mastery {
   return "solid"
 }
 
+/** A review takes at most this many never-studied cards, so it stays short. */
+export const NEW_PER_SESSION = 15
+
+/**
+ * `due` is how many cards the next review will show: every seen card that is due, plus
+ * new cards up to NEW_PER_SESSION. It is the same count as buildSession(deck).length.
+ */
 export function deckStats(deck: Deck, now = new Date()) {
   const counts: Record<Mastery, number> = { new: 0, learning: 0, shaky: 0, solid: 0 }
-  let due = 0
+  let dueSeen = 0
+  let fresh = 0
   for (const card of deck.cards) {
     counts[masteryOf(card)] += 1
-    if (isDue(card, now)) due += 1
+    if (!card.review) fresh += 1
+    else if (isDue(card, now)) dueSeen += 1
   }
+  const due = dueSeen + Math.min(fresh, NEW_PER_SESSION)
   const total = deck.cards.length
   const mastered = total === 0 ? 0 : Math.round((counts.solid / total) * 100)
   return { total, due, counts, mastered }
 }
 
 /** Cards to study now: due cards first (oldest due first), new cards capped so a session stays short. */
-export function buildSession(deck: Deck, { newLimit = 15, now = new Date() } = {}): DeckCard[] {
+export function buildSession(deck: Deck, { newLimit = NEW_PER_SESSION, now = new Date() } = {}): DeckCard[] {
   const dueSeen = deck.cards
     .filter((card) => card.review && isDue(card, now))
     .sort((a, b) => new Date(a.review!.due).getTime() - new Date(b.review!.due).getTime())

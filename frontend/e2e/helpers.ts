@@ -1,6 +1,6 @@
 // Shared helpers for the browser tests. Everything talks to the FAKE API only.
 import AxeBuilder from "@axe-core/playwright"
-import { expect, type Page, type TestInfo } from "@playwright/test"
+import { expect, type Locator, type Page, type TestInfo } from "@playwright/test"
 
 export const API = `http://127.0.0.1:${process.env.E2E_API_PORT || 8788}`
 export const PASSWORD = "demo-password"
@@ -57,4 +57,56 @@ export async function expectNoSeriousA11yIssues(page: Page, label: string, info:
     })
   }
   expect(serious.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`), `axe on ${label}`).toEqual([])
+}
+
+export type ThemeMode = "light" | "dark" | "auto"
+
+/** Saves theme fields on an account's profile through the fake API (the app reads them from /me/profile). */
+export async function setProfileTheme(
+  page: Page,
+  email: string,
+  fields: { theme_mode?: ThemeMode; theme_color?: string | null },
+) {
+  const res = await page.request.post(`${API}/login`, { data: { email, password: PASSWORD } })
+  expect(res.ok()).toBeTruthy()
+  const { access_token } = (await res.json()) as { access_token: string }
+  const put = await page.request.put(`${API}/me/profile`, {
+    data: fields,
+    headers: { authorization: `Bearer ${access_token}` },
+  })
+  expect(put.ok()).toBeTruthy()
+}
+
+/** Sets the saved theme mode (light, dark or automatic) for an account. */
+export async function setThemeMode(page: Page, email: string, mode: ThemeMode) {
+  await setProfileTheme(page, email, { theme_mode: mode })
+}
+
+/**
+ * Moves focus to an element with the Tab key (so :focus-visible applies the way it does
+ * for a keyboard user) and checks it shows a solid ring of 2px or more in the ink color.
+ */
+export async function expectFocusRing(locator: Locator, maxTabs = 80) {
+  const page = locator.page()
+  await expect(locator).toBeVisible()
+  const isFocused = () => locator.evaluate((el) => el === document.activeElement)
+  for (let i = 0; i < maxTabs && !(await isFocused()); i++) {
+    await page.keyboard.press("Tab")
+  }
+  await expect(locator, `reached by Tab within ${maxTabs} presses`).toBeFocused()
+  const ring = await locator.evaluate((el) => {
+    const s = getComputedStyle(el)
+    return {
+      style: s.outlineStyle,
+      width: parseFloat(s.outlineWidth),
+      color: s.outlineColor,
+      ink: getComputedStyle(document.body).color,
+      focusVisible: el.matches(":focus-visible"),
+    }
+  })
+  expect(ring.focusVisible, "the element matches :focus-visible").toBe(true)
+  expect(ring.style, JSON.stringify(ring)).toBe("solid")
+  expect(ring.width, JSON.stringify(ring)).toBeGreaterThanOrEqual(2)
+  // The ring is the ink color (about 15:1 on paper), not the pale yellow it used to be.
+  expect(ring.color, JSON.stringify(ring)).toBe(ring.ink)
 }

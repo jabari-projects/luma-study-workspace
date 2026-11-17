@@ -373,7 +373,7 @@ export function LoginPage() {
 
   return (
     <AuthShell title={title} intro={intro} footer={footer}>
-      <form className="form-panel auth-form" method="post" onSubmit={submit} noValidate={false}>
+      <form className="auth-form sheet" method="post" onSubmit={submit} noValidate={false}>
         <FormMessage message={message} id={messageId} />
         <TextField
           label="Email"
@@ -472,7 +472,7 @@ export function SignupPage() {
         )
       }
     >
-      <form className="form-panel auth-form" method="post" onSubmit={submit}>
+      <form className="auth-form sheet" method="post" onSubmit={submit}>
         <FormMessage message={message} id={messageId} />
         <TextField
           label="Email"
@@ -727,7 +727,7 @@ export function VerifyEmailPage() {
         )
       }
     >
-      <form className="form-panel auth-form" method="post" onSubmit={submit}>
+      <form className="auth-form sheet" method="post" onSubmit={submit}>
         <FormMessage message={message} id={messageId} />
         {knownEmail ? null : (
           <TextField
@@ -820,7 +820,7 @@ export function ForgotPasswordPage() {
         </p>
       }
     >
-      <form className="form-panel auth-form" method="post" onSubmit={submit}>
+      <form className="auth-form sheet" method="post" onSubmit={submit}>
         <FormMessage message={message} id={messageId} />
         <TextField
           label="Email"
@@ -922,7 +922,7 @@ export function ResetPasswordPage() {
 
   return (
     <AuthShell title="Make a new password" intro="After this, you'll be logged out on your other devices.">
-      <form className="form-panel auth-form" method="post" onSubmit={submit}>
+      <form className="auth-form sheet" method="post" onSubmit={submit}>
         <FormMessage message={message} id={messageId} />
         {/* Hidden username helps password managers save the new password. */}
         <input type="text" name="username" autoComplete="username" hidden readOnly value="" />
@@ -1016,7 +1016,7 @@ export function AccountDeletedPage() {
       }
     >
       {kept.length ? (
-        <section className="form-panel auth-form" aria-labelledby="kept-heading">
+        <section className="auth-form sheet" aria-labelledby="kept-heading">
           <h2 id="kept-heading">A few records stay, and here is why</h2>
           <ul>
             {kept.map((line) => (

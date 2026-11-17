@@ -1,25 +1,12 @@
 // Accessibility checks for Luma against the FAKE API (dev/mock-api.mjs).
-// axe scans on the main pages in light and dark theme, keyboard order and
+// axe scans on the main pages in light, dark and automatic theme, keyboard order and
 // focus rings on login, how login errors are announced, and reduced motion.
 // Made-up data only; nothing leaves localhost.
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
-import { API, PASSWORD, SEEDED, expectNoSeriousA11yIssues, loginAndWait } from "./helpers"
-
-type Theme = "light" | "dark"
-
-/** Sets the saved theme for an account through the fake API (the app reads it from /me/profile). */
-async function setTheme(page: Page, email: string, theme: Theme) {
-  const res = await page.request.post(`${API}/login`, { data: { email, password: PASSWORD } })
-  expect(res.ok()).toBeTruthy()
-  const { access_token } = (await res.json()) as { access_token: string }
-  const put = await page.request.put(`${API}/me/profile`, {
-    data: { theme_mode: theme },
-    headers: { authorization: `Bearer ${access_token}` },
-  })
-  expect(put.ok()).toBeTruthy()
-}
+import { SEEDED, expectNoSeriousA11yIssues, loginAndWait, setThemeMode } from "./helpers"
+import { APP_PAGES, PUBLIC_PAGES } from "./pages"
 
 /** Waits until the page has its heading and any loading spinners are gone, so axe sees the real page. */
 async function settle(page: Page) {
@@ -56,14 +43,12 @@ for (const scheme of ["light", "dark"] as const) {
   test.describe(`public pages, OS color scheme ${scheme}`, () => {
     test.use({ colorScheme: scheme })
 
-    test("login, signup and forgot password have no serious axe issues", async ({ page }, info) => {
-      for (const [path, label] of [
-        ["/login", "login"],
-        ["/signup", "signup"],
-        ["/forgot-password", "forgot-password"],
-      ] as const) {
+    test("the start page and every sign-in page have no serious axe issues", async ({ page }, info) => {
+      for (const { path, label } of PUBLIC_PAGES) {
         await page.goto(path)
         await settle(page)
+        // Public pages never get a theme (only the signed-in app does).
+        await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/)
         await expectNoSeriousA11yIssues(page, `${label}-${scheme}`, info)
       }
     })
@@ -71,19 +56,11 @@ for (const scheme of ["light", "dark"] as const) {
 }
 
 // --------------------------------------------------------------- signed-in pages
-const appPages = [
-  { path: "/dashboard", label: "dashboard" },
-  { path: "/import", label: "import" },
-  { path: "/voice-input", label: "voice-to-notes" },
-  { path: "/flashcards", label: "decks" },
-  { path: "/settings", label: "settings" },
-]
-
 for (const theme of ["light", "dark"] as const) {
   test.describe(`app pages, ${theme} theme`, () => {
-    for (const { path, label } of appPages) {
+    for (const { path, label } of APP_PAGES) {
       test(`${label} has no serious axe issues (${theme})`, async ({ page }, info) => {
-        await setTheme(page, SEEDED.demo.email, theme)
+        await setThemeMode(page, SEEDED.demo.email, theme)
         await loginAndWait(page, SEEDED.demo.email)
         if (path !== "/dashboard") await page.goto(path)
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
@@ -93,7 +70,7 @@ for (const theme of ["light", "dark"] as const) {
     }
 
     test(`sidebar account button passes the full axe scan (${theme})`, async ({ page }, info) => {
-      await setTheme(page, SEEDED.demo.email, theme)
+      await setThemeMode(page, SEEDED.demo.email, theme)
       await loginAndWait(page, SEEDED.demo.email)
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await settle(page)
@@ -102,13 +79,13 @@ for (const theme of ["light", "dark"] as const) {
 
     test(`phone Add menu open has no serious axe issues (${theme})`, async ({ page }, info) => {
       test.skip(info.project.name !== "phone", "The Add (create) sheet is the phone tab bar")
-      await setTheme(page, SEEDED.demo.email, theme)
+      await setThemeMode(page, SEEDED.demo.email, theme)
       await loginAndWait(page, SEEDED.demo.email)
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await settle(page)
       const add = page.getByRole("button", { name: "Create something" })
       await add.click()
-      const sheet = page.getByRole("dialog", { name: "Create something" })
+      const sheet = page.getByRole("dialog", { name: "What do you want to make?" })
       await expect(sheet).toBeVisible()
       await expect(add).toHaveAttribute("aria-expanded", "true")
       await page.waitForTimeout(800) // spring animation
@@ -117,8 +94,58 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Escape")
       await expect(sheet).toBeHidden()
     })
+
+    test(`+ New menu open has no serious axe issues (${theme})`, async ({ page }, info) => {
+      test.skip(info.project.name === "phone", "Phones use the + sheet (tested above)")
+      await setThemeMode(page, SEEDED.demo.email, theme)
+      await loginAndWait(page, SEEDED.demo.email)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+      await settle(page)
+      const button = page.getByRole("complementary", { name: "Main navigation" }).getByRole("button", { name: "Make something new" })
+      await button.click()
+      const menu = page.getByRole("menu", { name: "Make something new" })
+      await expect(menu).toBeVisible()
+      await expect(button).toHaveAttribute("aria-expanded", "true")
+      await page.waitForTimeout(300) // fade in
+      await expectNoSeriousA11yIssues(page, `new-menu-${theme}`, info)
+      await page.keyboard.press("Escape")
+      await expect(menu).toHaveCount(0)
+      await expect(button).toBeFocused()
+    })
   })
 }
+
+// ------------------------------------------------- Automatic theme (by the clock)
+// Automatic is light from 7 am to 6:59 pm and dark from 7 pm to 6:59 am, on the device clock.
+test.describe("app pages, automatic theme (Chicago time)", () => {
+  test.use({ timezoneId: "America/Chicago" })
+
+  // Every app page with Automatic on: at 8 pm the clock picks dark, at 10 am light.
+  for (const { time, expected } of [
+    { time: "2026-11-16T20:00:00-06:00", expected: "dark" },
+    { time: "2026-11-16T10:00:00-06:00", expected: "light" },
+  ] as const) {
+    test(`every app page at ${time.slice(11, 16)} is ${expected} with no serious axe issues`, async ({ page }, info) => {
+      test.setTimeout(300_000)
+      try {
+        await setThemeMode(page, SEEDED.demo.email, "auto")
+        await page.clock.setFixedTime(new Date(time))
+        await loginAndWait(page, SEEDED.demo.email)
+        for (const { path, label } of APP_PAGES) {
+          if (path !== "/dashboard") await page.goto(path)
+          await expect(page.locator("html")).toHaveAttribute("data-theme", expected)
+          await settle(page)
+          await expectNoSeriousA11yIssuesExceptKnown(page, `${label}-auto-${expected}`, info)
+        }
+        // Settings says which one Automatic shows right now.
+        await page.goto("/settings")
+        await expect(page.getByText(`Right now: ${expected}.`)).toBeVisible()
+      } finally {
+        await setThemeMode(page, SEEDED.demo.email, "light")
+      }
+    })
+  }
+})
 
 // ------------------------------------------------------------------- keyboard
 test("Tab on login reaches every control in order, each with a visible focus ring", async ({ page }) => {

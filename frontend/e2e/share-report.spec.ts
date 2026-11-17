@@ -2,7 +2,7 @@
 // Fresh made-up accounts are created through the fake API for anything that
 // changes state; seeded accounts are only read from (demo is the fake admin).
 import AxeBuilder from "@axe-core/playwright"
-import { expect, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test"
+import { expect, test, type APIRequestContext, type Locator, type Page, type TestInfo } from "@playwright/test"
 
 import { API, PASSWORD, SEEDED, fakeEmail, latestMail, login, loginAndWait } from "./helpers"
 
@@ -79,6 +79,18 @@ async function searchTopics(page: Page, query: string) {
   await done
 }
 
+/** The account menu: a popover beside the sidebar button, or a sheet from the avatar on a phone. */
+async function openAccountMenu(page: Page, project: string): Promise<Locator> {
+  if (project === "phone") {
+    await page.getByRole("button", { name: "Accounts and settings" }).click()
+  } else {
+    await page.getByRole("button", { name: /^Accounts/ }).click()
+  }
+  const menu = page.getByRole("dialog", { name: "Accounts" })
+  await expect(menu).toBeVisible()
+  return menu
+}
+
 function resultCard(page: Page, title: string) {
   return page.getByRole("article").filter({ has: page.getByRole("heading", { name: title, exact: true }) })
 }
@@ -86,8 +98,14 @@ function resultCard(page: Page, title: string) {
 test.describe("Search entry point", () => {
   test("there is exactly one visible Search entry, and on phone it is in the bottom bar", async ({ page }, info) => {
     await loginAndWait(page, SEEDED.sam.email)
-    const visibleSearch = page.getByRole("link", { name: "Search", exact: true }).filter({ visible: true })
+    // Wait until Home has drawn its content (sam has no decks yet).
+    await expect(page.getByRole("heading", { level: 2, name: "Make your first flashcard deck" })).toBeVisible()
+    // Any link whose name STARTS with Search or Discover counts, so a tile like
+    // "Search Find study sets other students shared." can't hide from this check.
+    const visibleSearch = page.getByRole("link", { name: /^(Search|Discover)/ }).filter({ visible: true })
     await expect(visibleSearch).toHaveCount(1)
+    // Home itself has no Search or Discover link; the navigation has the only one.
+    await expect(page.locator('main a[href="/search"], main a[href="/discover"]')).toHaveCount(0)
 
     if (info.project.name === "phone") {
       const bottomBar = page.locator("nav.tab-bar")
@@ -213,10 +231,14 @@ test.describe("Reporting public sets", () => {
     await expect(card.getByText("Thanks. A Luma helper will look at this.")).toBeVisible()
     await expect(card.getByRole("button", { name: `Reported ${title}` })).toBeVisible()
 
-    // The reporter is not an admin: no queue link, and the page refuses them.
+    // The reporter is not an admin: no queue link in the account menu (or Settings), and the page refuses them.
     await reporterPage.goto("/settings")
     await expect(reporterPage.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible()
-    await expect(reporterPage.getByRole("link", { name: "Open the review queue" })).toHaveCount(0)
+    await expect(reporterPage.getByRole("link", { name: /review reports|review queue/i })).toHaveCount(0)
+    const reporterMenu = await openAccountMenu(reporterPage, info.project.name)
+    await expect(reporterMenu.getByRole("button", { name: /add another account/i })).toBeVisible()
+    await expect(reporterMenu.getByRole("link", { name: "Review reports" })).toHaveCount(0)
+    await reporterPage.keyboard.press("Escape")
     await reporterPage.goto("/admin/reports")
     await expect(reporterPage.getByText("Only Luma helpers can see this page.")).toBeVisible()
     await expect(reporterPage.getByRole("heading", { name: title })).toHaveCount(0)
@@ -239,8 +261,11 @@ test.describe("Reporting public sets", () => {
     const adminContext = await browser.newContext()
     const adminPage = await adminContext.newPage()
     await loginAndWait(adminPage, SEEDED.demo.email)
+    // The review queue is not a setting: it opens from the account menu, for Luma helpers only.
     await adminPage.goto("/settings")
-    await adminPage.getByRole("link", { name: "Open the review queue" }).click()
+    await expect(adminPage.getByRole("link", { name: /review reports|review queue/i })).toHaveCount(0)
+    const adminMenu = await openAccountMenu(adminPage, info.project.name)
+    await adminMenu.getByRole("link", { name: "Review reports" }).click()
     await expect(adminPage).toHaveURL(/\/admin\/reports$/)
     await expect(adminPage.getByRole("heading", { level: 1, name: "Reports" })).toBeVisible()
     const item = adminPage.getByRole("listitem").filter({ has: adminPage.getByRole("heading", { name: title }) })
