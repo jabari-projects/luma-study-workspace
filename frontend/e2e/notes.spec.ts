@@ -218,7 +218,7 @@ test.describe("making notes", () => {
 
   test("image to notes page loads and asks for a picture first", async ({ page }, info) => {
     await page.goto("/image-to-notes")
-    await expect(pageTitle(page)).toHaveText("Image to Notes")
+    await expect(pageTitle(page)).toHaveText("Image to notes")
     const picker = page.getByLabel("Image")
     await expect(picker).toHaveAttribute("type", "file")
     await expect(picker).toHaveAttribute("accept", /image\/png/)
@@ -269,21 +269,7 @@ test.describe("making notes", () => {
     await expect(page.getByRole("link", { name: "All summarys" })).toHaveAttribute("href", "/summaries")
   })
 
-  test("creation tools are reachable from the main navigation", async ({ page }, info) => {
-    test.skip(info.project.name === "phone", "Phone uses the + sheet (tested below).")
-    const nav = page.getByRole("complementary", { name: "Main navigation" })
-    for (const [name, path] of [
-      ["Notes", "/notes"],
-      ["Summaries", "/summaries"],
-      ["Voice to Notes", "/voice-input"],
-      ["Import to Notes", "/import"],
-      ["Image to Notes", "/image-to-notes"],
-    ] as const) {
-      await nav.getByRole("link", { name, exact: true }).click()
-      await expect(page).toHaveURL(new RegExp(`${path}$`))
-      await expect(pageTitle(page)).toBeVisible()
-    }
-  })
+  // The sidebar and its + New menu (desktop and tablet) are tested in nav.spec.ts.
 })
 
 test.describe("phone + (Create something) sheet", () => {
@@ -293,28 +279,29 @@ test.describe("phone + (Create something) sheet", () => {
   })
 
   const plus = (page: Page) => page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Create something" })
-  const sheet = (page: Page) => page.getByRole("dialog", { name: "Create something" })
+  const sheet = (page: Page) => page.getByRole("dialog", { name: "What do you want to make?" })
 
   test("opens, lists the creation tools, and closes with the X button", async ({ page }, info) => {
     await expect(plus(page)).toHaveAttribute("aria-expanded", "false")
     await plus(page).click()
     await expect(sheet(page)).toBeVisible()
     await expect(plus(page)).toHaveAttribute("aria-expanded", "true")
-    await expect(sheet(page).getByRole("heading", { name: "What do you want to do?" })).toBeVisible()
+    await expect(sheet(page).getByRole("heading", { name: "What do you want to make?" })).toBeVisible()
+    // Only things you make. Studying (quizzes, study plans) lives under Study.
     const links = sheet(page).getByRole("link")
-    await expect(links).toHaveCount(8)
-    for (const [name, href] of [
-      ["Flashcard deck", "/flashcards/new"],
-      ["Note", "/notes"],
-      ["Summary", "/summaries"],
+    await expect(links).toHaveCount(5)
+    const expected = [
+      ["Write a note", "/notes"],
+      ["Import a file or link", "/import"],
       ["Voice to notes", "/voice-input"],
-      ["Import to notes", "/import"],
       ["Image to notes", "/image-to-notes"],
-      ["Study plan", "/study-sessions"],
-      ["Quiz", "/quizzes"],
-    ] as const) {
-      await expect(sheet(page).getByRole("link", { name: new RegExp(`^${name} `) })).toHaveAttribute("href", href)
+      ["New flashcard deck", "/flashcards/new"],
+    ] as const
+    for (const [index, [name, href]] of expected.entries()) {
+      await expect(links.nth(index)).toHaveAccessibleName(new RegExp(`^${name} `))
+      await expect(links.nth(index)).toHaveAttribute("href", href)
     }
+    await expect(sheet(page).getByRole("link", { name: /^(Quiz|Study plan|Summary)\b/ })).toHaveCount(0)
     await expectNoSeriousA11yIssues(page, "create-sheet", info)
 
     await sheet(page).getByRole("button", { name: "Close" }).click()
@@ -329,7 +316,7 @@ test.describe("phone + (Create something) sheet", () => {
     await expect(sheet(page)).toHaveCount(0)
 
     await plus(page).click()
-    await sheet(page).getByRole("link", { name: /^Import to notes / }).click()
+    await sheet(page).getByRole("link", { name: /^Import a file or link / }).click()
     await expect(page).toHaveURL(/\/import$/)
     await expect(sheet(page)).toHaveCount(0)
     await expect(pageTitle(page)).toContainText("Make it notes")

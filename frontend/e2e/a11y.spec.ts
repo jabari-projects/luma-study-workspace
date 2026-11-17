@@ -96,7 +96,7 @@ for (const theme of ["light", "dark"] as const) {
       await settle(page)
       const add = page.getByRole("button", { name: "Create something" })
       await add.click()
-      const sheet = page.getByRole("dialog", { name: "Create something" })
+      const sheet = page.getByRole("dialog", { name: "What do you want to make?" })
       await expect(sheet).toBeVisible()
       await expect(add).toHaveAttribute("aria-expanded", "true")
       await page.waitForTimeout(800) // spring animation
@@ -104,6 +104,24 @@ for (const theme of ["light", "dark"] as const) {
       // Escape closes it.
       await page.keyboard.press("Escape")
       await expect(sheet).toBeHidden()
+    })
+
+    test(`+ New menu open has no serious axe issues (${theme})`, async ({ page }, info) => {
+      test.skip(info.project.name === "phone", "Phones use the + sheet (tested above)")
+      await setThemeMode(page, SEEDED.demo.email, theme)
+      await loginAndWait(page, SEEDED.demo.email)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+      await settle(page)
+      const button = page.getByRole("complementary", { name: "Main navigation" }).getByRole("button", { name: "Make something new" })
+      await button.click()
+      const menu = page.getByRole("menu", { name: "Make something new" })
+      await expect(menu).toBeVisible()
+      await expect(button).toHaveAttribute("aria-expanded", "true")
+      await page.waitForTimeout(300) // fade in
+      await expectNoSeriousA11yIssues(page, `new-menu-${theme}`, info)
+      await page.keyboard.press("Escape")
+      await expect(menu).toHaveCount(0)
+      await expect(button).toBeFocused()
     })
   })
 }

@@ -17,7 +17,7 @@ import { NoticeBanner, PageHeader } from "./ui/common"
 import type { Notice, StudyType } from "./ui/common"
 import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
 import { AccountsPanel, SignedOutElsewhere } from "./ui/AccountMenu"
-import { isBusyPath, useAccountActions } from "./ui/accountActions"
+import { isBusyPath } from "./ui/accountActions"
 import { DEFAULT_ACCENT, themeColors } from "./ui/themeColors"
 import { applyTheme, clearTheme, normalizeMode, readThemeCache, resolveMode, useResolvedTheme } from "./ui/theme"
 import type { ThemeMode } from "./ui/theme"
@@ -413,8 +413,6 @@ function AccountLimitRedirect() {
 
 function AppLayout() {
   const { user, activeAccountId, profileLoading } = useAuth()
-  const { signOut } = useAccountActions()
-  const navigate = useNavigate()
   const profile = useProfile()
   const initials = (user?.username ?? user?.email ?? "L").slice(0, 1).toUpperCase()
   const { pathname } = useLocation()
@@ -461,21 +459,12 @@ function AppLayout() {
     return <LoadingScreen message="Opening Luma..." />
   }
 
-  const handleLogout = () => {
-    if (activeAccountId) {
-      signOut(activeAccountId)
-    } else {
-      navigate("/", { replace: true })
-    }
-  }
-
   return (
     <div className="app-shell">
       <SideNav
         username={user?.username ?? "Luma student"}
         plan={profile?.subscription_status ?? "free"}
         initials={initials}
-        onLogout={handleLogout}
       />
       <MobileTopBar initials={initials} />
       <main className="content">
@@ -795,7 +784,7 @@ function ImageToNotesPage() {
     <>
       <PageHeader
         eyebrow="Tools"
-        title="Image to Notes"
+        title="Image to notes"
         description="Upload a picture and turn it into notes."
       />
       <form className="form-panel" onSubmit={generateNotes}>

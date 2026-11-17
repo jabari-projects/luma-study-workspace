@@ -578,6 +578,8 @@ input[type="radio"] {
 .sidebar {
   position: sticky;
   top: 0;
+  /* Above the page, so the + New menu (inside the sidebar) opens over the content. */
+  z-index: 30;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -615,22 +617,80 @@ input[type="radio"] {
 
 .nav-stack {
   display: grid;
-  gap: 14px;
-}
-
-.nav-group {
-  display: grid;
   gap: 2px;
 }
 
-.nav-title {
-  margin: 0 0 4px;
+/* + New: one way in to everything you can make. Quiet outline, no stamp shadow. */
+.new-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 1.5px solid var(--field-border);
+  border-radius: 12px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--card);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.new-button svg {
+  flex: none;
+  color: var(--accent-ink);
+  font-size: 1.15rem;
+}
+
+.new-button:hover,
+.new-button.open {
+  background: var(--paper-2);
+}
+
+.new-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  min-width: 240px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 6px;
+  color: var(--ink);
+  background: var(--card-2);
+  box-shadow: var(--shadow-sheet), var(--lift);
+  animation: new-menu-in 0.14s ease-out;
+}
+
+@keyframes new-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border-radius: 10px;
   padding: 0 12px;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.new-menu-item svg {
+  flex: none;
+  color: var(--accent-ink);
+  font-size: 1.25rem;
+}
+
+.new-menu-item:hover,
+.new-menu-item:focus-visible {
+  background: var(--paper-2);
 }
 
 .nav-link {
@@ -668,12 +728,10 @@ input[type="radio"] {
 
 .sidebar-footer {
   margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-top: 2px dashed var(--line);
-  padding-top: 14px;
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }
 
 .identity {
@@ -697,7 +755,6 @@ input[type="radio"] {
 
 .identity small {
   color: var(--muted);
-  text-transform: capitalize;
 }
 
 .avatar {
@@ -2852,7 +2909,7 @@ input[type="radio"] {
   }
 
   .brand span,
-  .nav-title,
+  .new-button span,
   .nav-link span,
   .identity > .identity-caret {
     display: none;
@@ -2872,9 +2929,15 @@ input[type="radio"] {
     padding: 0;
   }
 
-  .nav-group + .nav-group {
-    border-top: 2px dashed var(--line);
-    padding-top: 10px;
+  .new-button {
+    justify-content: center;
+    width: 54px;
+    min-height: 50px;
+    padding: 0;
+  }
+
+  .new-button svg {
+    font-size: 1.4rem;
   }
 
   .nav-link {
@@ -2889,7 +2952,7 @@ input[type="radio"] {
   }
 
   .sidebar-footer {
-    flex-direction: column;
+    justify-items: center;
   }
 
   .split-layout {
@@ -3066,27 +3129,43 @@ input[type="radio"] {
     background: var(--line-strong);
   }
 
-  .sheet-grid {
+  /* The things you can make: ruled rows, not boxes. */
+  .sheet-list {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sheet-list li + li {
+    border-top: 1px solid var(--line);
   }
 
   .sheet-item {
     display: grid;
-    gap: 2px;
-    border: 2px solid var(--line);
-    border-radius: 16px;
-    padding: 12px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    min-height: 60px;
+    border-radius: 12px;
+    padding: 8px 8px;
     color: var(--ink);
-    background: var(--paper);
     text-decoration: none;
   }
 
+  .sheet-item:hover,
+  .sheet-item:focus-visible {
+    background: var(--paper-2);
+  }
+
   .sheet-item svg {
-    margin-bottom: 4px;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-size: 1.6rem;
+  }
+
+  .sheet-item-text {
+    display: grid;
+    gap: 2px;
   }
 
   .sheet-item small {
@@ -3456,6 +3535,42 @@ input[aria-invalid="true"] {
   align-items: center;
   min-height: 44px;
   font-weight: 700;
+}
+
+/* A quiet link at the bottom of a hub page (Study plans on the Study hub). */
+.page-footer-link {
+  margin: 40px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.page-footer-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--accent-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.page-footer-link a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.page-footer-link a svg:last-child {
+  transition: transform 160ms ease;
+}
+
+.page-footer-link a:hover svg:last-child {
+  transform: translateX(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-footer-link a:hover svg:last-child {
+    transform: none;
+  }
 }
 
 .verify-banner {

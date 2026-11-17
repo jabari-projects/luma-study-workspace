@@ -160,7 +160,7 @@ for (const theme of ["light", "dark"] as const) {
       // Desktop and tablet use the sidebar; phones use the bottom tab bar.
       const link =
         info.project.name === "phone"
-          ? page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Me" })
+          ? page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Notes" })
           : page.getByRole("complementary", { name: "Main navigation" }).getByRole("link", { name: "Settings" })
       await expectFocusRing(link)
     } finally {

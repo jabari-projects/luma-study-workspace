@@ -172,6 +172,11 @@ export function AccountList({
     <div className={`account-list ${variant}`}>
       <ul className="account-rows">{rows}</ul>
       <div className="account-actions">
+        {showSettingsLink ? (
+          <Link className="ghost-button wide account-action" to="/settings" onClick={done}>
+            <GearSix weight="bold" aria-hidden="true" /> Settings
+          </Link>
+        ) : null}
         <button
           type="button"
           className="ghost-button wide account-action"
@@ -190,11 +195,6 @@ export function AccountList({
             Up to {MAX_ACCOUNTS} accounts
           </p>
         )}
-        {showSettingsLink ? (
-          <Link className="ghost-button wide account-action" to="/settings" onClick={done}>
-            <GearSix weight="bold" aria-hidden="true" /> Your settings
-          </Link>
-        ) : null}
         {variant === "menu" && activeAccount ? (
           <button
             type="button"

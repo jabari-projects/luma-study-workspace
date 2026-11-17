@@ -5,7 +5,9 @@ import { AnimatePresence, motion } from "motion/react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import {
   ArrowLeft,
+  ArrowRight,
   ArrowsClockwise,
+  CalendarBlank,
   Cards,
   ListChecks,
   PencilSimple,
@@ -140,6 +142,13 @@ export function DecksPage() {
           </div>
         </>
       ) : null}
+
+      <p className="page-footer-link">
+        <Link to="/study-sessions">
+          <CalendarBlank weight="duotone" aria-hidden="true" /> Study plans
+          <ArrowRight weight="bold" aria-hidden="true" />
+        </Link>
+      </p>
     </>
   )
 }

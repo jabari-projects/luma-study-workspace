@@ -137,7 +137,7 @@ async function readPdf(file: File, onProgress: Progress) {
   if (letters / Math.max(1, lastPage) < 20) {
     throw new ExtractError(
       "scanned",
-      "This PDF looks like a picture, so we can't read the words. Take a photo of the page and use Image to Notes.",
+      "This PDF looks like a picture, so we can't read the words. Take a photo of the page and use Image to notes.",
     )
   }
   return { text, pagesRead: lastPage, pagesTotal }
