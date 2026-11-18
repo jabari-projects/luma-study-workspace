@@ -5,8 +5,8 @@
 -- Additive: new feedback_* tables, functions and triggers only. Changes no existing table or row.
 --
 -- One ballot per account per poll, enforced here (unique keys), plus one per EMAIL per poll:
--- voter_key is a keyed one-way hash of the normalized email (made by the backend with
--- FEEDBACK_VOTER_KEY_SECRET, or the JWT secret when that isn't set), so deleting an account
+-- voter_key is a keyed one-way hash of the normalized email (made by the backend with a key
+-- derived from JWT_SECRET_KEY and a fixed label), so deleting an account
 -- and signing up again with the same email can't vote twice in the same poll. The key is only
 -- needed while the poll is open: once the poll has closed, an anonymous ballot's voter_key is
 -- cleared (feedback_forget_voter_keys), so nobody holding the secret can match a known email

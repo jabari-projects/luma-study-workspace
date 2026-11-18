@@ -50,7 +50,7 @@ JWT_SECRET_KEY=
 FRONTEND_ORIGIN=http://localhost:5173
 ```
 
-Use a private, randomly generated `JWT_SECRET_KEY` that stays the same between server restarts. For example, generate one locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in the backend environment only. The server will not start without `JWT_SECRET_KEY`, or with one shorter than 32 characters.
+Use a private, randomly generated `JWT_SECRET_KEY` that stays the same between server restarts. For example, generate one locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in the backend environment only. The server will not start without `JWT_SECRET_KEY`, or with one shorter than 32 characters. Changing it later signs everyone out and also resets the monthly feedback poll's email keys, so change it only between polls (see `docs/api.md`).
 
 `SUPABASE_KEY` is accepted as an alternative to `SUPABASE_SERVICE_ROLE_KEY`. `FRONTEND_ORIGINS` accepts a comma-separated list or JSON array of allowed origins; `PUBLIC_APP_URL` is also recognized for the frontend origin. `APP_ENV` and `LOG_LEVEL` are optional deployment settings.
 

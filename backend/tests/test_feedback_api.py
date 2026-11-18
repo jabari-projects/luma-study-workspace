@@ -6,6 +6,8 @@ In-memory fake database only (tests/feedback_fake.py): no Supabase, no network.
 from __future__ import annotations
 
 import ast
+import hashlib
+import hmac
 import json
 import logging
 import socket
@@ -36,7 +38,6 @@ def env(monkeypatch):
     monkeypatch.setattr(feedback, "get_supabase", lambda: fake)
     monkeypatch.setattr(auth, "get_supabase", lambda: fake)
     monkeypatch.setattr(feedback, "_clock", lambda: clock["t"])
-    monkeypatch.delenv(feedback.VOTER_KEY_SECRET_ENV, raising=False)
     for limiter in feedback.LIMITERS:
         limiter.clear()
     feedback._forget_state["last"] = None
@@ -955,13 +956,17 @@ def test_voter_key_cleanup_runs_from_the_admin_list_and_is_throttled(env, admin,
     assert [n for n, op in env.db.calls if n == "feedback_forget_voter_keys"] == calls  # throttled
 
 
-def test_voter_key_uses_its_own_secret_when_set(env, monkeypatch):
-    jwt_based = feedback.voter_key("Sam@Example.com")
-    monkeypatch.setenv(feedback.VOTER_KEY_SECRET_ENV, "made-up-feedback-secret-for-tests")
-    own = feedback.voter_key("sam@example.com")
-    assert own and own != jwt_based and len(own) == 64
-    monkeypatch.setenv(feedback.VOTER_KEY_SECRET_ENV, "   ")
-    assert feedback.voter_key("sam@example.com") == jwt_based  # blank falls back to the JWT secret
+def test_voter_key_is_keyed_by_a_label_derived_from_the_jwt_secret(env, monkeypatch):
+    key = feedback.voter_key("Sam@Example.com")
+    assert key == feedback.voter_key(" sam@example.com ") and len(key) == 64
+    jwt_secret = feedback.get_jwt_secret_key().encode("utf-8")
+    derived = hmac.new(jwt_secret, b"luma-feedback-voter-key-v1", hashlib.sha256).digest()
+    assert key == hmac.new(derived, b"sam@example.com", hashlib.sha256).hexdigest()
+    # Never the plain JWT secret as the key (domain separation).
+    assert key != hmac.new(jwt_secret, b"sam@example.com", hashlib.sha256).hexdigest()
+    assert not hasattr(feedback, "VOTER_KEY_SECRET_ENV")
+    monkeypatch.setattr(feedback, "get_jwt_secret_key", lambda: "a-different-made-up-secret-for-tests-0123")
+    assert feedback.voter_key("sam@example.com") != key  # rotating the JWT secret resets voter keys
 
 
 def test_unverified_signup_cannot_see_whether_an_email_voted(env, student, open_poll):

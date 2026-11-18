@@ -23,7 +23,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import os
 import threading
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -176,17 +175,22 @@ def _uuid_or_none(value: Any) -> Optional[str]:
         return None
 
 
-VOTER_KEY_SECRET_ENV = "FEEDBACK_VOTER_KEY_SECRET"
+# The voter key's own HMAC key is derived from the JWT secret with a fixed label, so it
+# can never be confused with a token signature or any other use of that secret.
+VOTER_KEY_LABEL = b"luma-feedback-voter-key-v1"
 
 
-def _voter_key_secret() -> str:
-    """FEEDBACK_VOTER_KEY_SECRET, or the JWT secret when it isn't set.
+def _voter_key_secret() -> bytes:
+    """HMAC(JWT_SECRET_KEY, VOTER_KEY_LABEL).
 
-    Changing this secret while a poll is open changes every voter_key, so a deleted
-    account's email no longer matches its ballot: a re-made account could vote again
-    in THAT poll. Rotate it between polls.
+    Rotating JWT_SECRET_KEY signs everyone out AND changes every voter_key: a deleted
+    account's email no longer matches its ballot, so a re-made account could vote again
+    in a poll that is open at the time. Rotate the JWT secret only between polls.
     """
-    return os.environ.get(VOTER_KEY_SECRET_ENV, "").strip() or get_jwt_secret_key() or ""
+    jwt_secret = get_jwt_secret_key() or ""
+    if not jwt_secret:
+        return b""
+    return hmac.new(jwt_secret.encode("utf-8"), VOTER_KEY_LABEL, hashlib.sha256).digest()
 
 
 def voter_key(email: Any) -> Optional[str]:
@@ -195,8 +199,7 @@ def voter_key(email: Any) -> Optional[str]:
     secret = _voter_key_secret()
     if normalized is None or not secret:
         return None
-    message = b"luma-feedback-voter:" + normalized.encode("utf-8")
-    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return hmac.new(secret, normalized.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 # A deleted account's ballot keeps its voter_key only while that poll is open (to stop a
