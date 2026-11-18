@@ -164,19 +164,39 @@ describe("color tokens", () => {
         }
       })
 
-      it("ink and muted text stay readable on the yellow highlight", () => {
-        expectContrast(color("--ink"), color("--highlight"), 4.5, "--ink on --highlight")
-        expectContrast(color("--muted"), color("--highlight"), 4.5, "--muted on --highlight")
+      it("ink and muted text stay readable on the highlight wash for all 10 theme colors", () => {
+        for (const swatch of themeColors) {
+          const withAccent = { ...tokens, "--accent": swatch.value }
+          const highlight = resolve("var(--highlight)", withAccent)
+          expectContrast(color("--ink"), highlight, 4.5, `--ink on ${swatch.name} --highlight`)
+          expectContrast(color("--muted"), highlight, 4.5, `--muted on ${swatch.name} --highlight`)
+          // Icons drawn in the accent on the wash (the "Ready" icon) need 3:1.
+          expectContrast(resolve("var(--accent-ink)", withAccent), highlight, 3, `${swatch.name} --accent-ink on --highlight`)
+        }
+      })
+
+      it("the hand-drawn marks are 3:1 or more on paper and card for all 10 theme colors", () => {
+        for (const swatch of themeColors) {
+          const scribble = resolve("var(--scribble)", { ...tokens, "--accent": swatch.value })
+          for (const surface of ["--paper", "--card"]) {
+            expectContrast(scribble, color(surface), 3, `${swatch.name} --scribble on ${surface}`)
+          }
+        }
       })
 
       it("the focus ring (ink) is 3:1 or more against every surface", () => {
         for (const surface of surfaces) {
           expectContrast(color("--ink"), surface.color, 3, `focus ring on ${surface.token}`)
+          // ...and against the grey halo around it.
+          expectContrast(color("--ink"), color("--focus-halo"), 3, "focus ring on --focus-halo")
         }
       })
 
-      it("dark text on the yellow scribble fill is 4.5:1 or more", () => {
-        expectContrast(color("--on-scribble"), color("--scribble"), 4.5, "--on-scribble on --scribble")
+      it("lines, outlines, the focus halo and the note margin are plain grey, not a warm color", () => {
+        for (const token of ["--line", "--line-strong", "--field-border", "--focus-halo", "--margin-rule"]) {
+          const [r, g, b] = hexToRgb(color(token))
+          assert.ok(Math.max(r, g, b) - Math.min(r, g, b) <= 6, `${token} is ${color(token)}, not a grey`)
+        }
       })
 
       it("accent-colored text is 4.5:1 or more on every surface for all 10 theme colors", () => {
@@ -189,6 +209,87 @@ describe("color tokens", () => {
       })
     })
   }
+})
+
+/** Every rule in the style sheets as { file, selector, body }, comments removed. */
+function rulesOf(files: Record<string, string>) {
+  const rules: { file: string; selector: string; body: string }[] = []
+  for (const [file, css] of Object.entries(files)) {
+    const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "")
+    const rule = /([^{}]+)\{([^{}]*)\}/g
+    for (let match = rule.exec(withoutComments); match; match = rule.exec(withoutComments)) {
+      rules.push({ file, selector: match[1].trim().replace(/\s+/g, " "), body: match[2] })
+    }
+  }
+  return rules
+}
+
+describe("the student's color reaches every personal mark", () => {
+  const rules = rulesOf(cssFiles)
+
+  it("the underline marks and the highlight wash are made from --accent in light and dark", () => {
+    for (const [name, tokens] of Object.entries(themes)) {
+      assert.match(tokens["--scribble"], /var\(--accent\)/, `${name} --scribble`)
+      assert.match(tokens["--highlight"], /var\(--accent\)/, `${name} --highlight`)
+    }
+  })
+
+  it("the avatar circle is filled with the accent and its letter uses the accent's text color", () => {
+    const avatar = rules.find((rule) => rule.file === "styles.css" && rule.selector === ".avatar")
+    assert.ok(avatar, "no .avatar rule")
+    assert.match(avatar.body, /background:\s*var\(--accent\)/)
+    assert.match(avatar.body, /(^|[^-])color:\s*var\(--on-accent\)/)
+  })
+
+  it("every accent fill with text on it uses the accent's text color", () => {
+    for (const rule of rules) {
+      if (!/background:\s*var\(--accent\)\s*;/.test(rule.body) || !/(^|[\s;])color:/.test(rule.body)) continue
+      assert.match(rule.body, /(^|[\s;])color:\s*var\(--on-accent\)/, `${rule.file} ${rule.selector}`)
+    }
+  })
+
+  it("the fixed star yellow only appears on the star logo, the week stars and warnings", () => {
+    // Anything else that is personal follows the theme color; outlines are grey.
+    const allowed = [
+      ".brand img",
+      ".auth-brand img",
+      ".hero-mark",
+      ".paper-card.three img",
+      ".week-dots li.lit .week-star",
+      ".limit-nudge", // a warning
+      ".limit-nudge svg",
+      ".status-chip.reviewing", // a report status
+    ]
+    for (const rule of rules) {
+      if (!/var\(--star(-ink)?\)/.test(rule.body)) continue
+      assert.ok(allowed.includes(rule.selector), `${rule.file} ${rule.selector} uses the fixed star yellow`)
+    }
+    // The yellow hex values live only in the --star tokens: #f2b33d is light --star, #f7c35c is
+    // dark --star and --star-ink. The old orange-red margin colors are gone.
+    const expected: Record<string, number> = { "#f2b33d": 1, "#f7c35c": 2 }
+    for (const [file, css] of Object.entries(cssFiles)) {
+      const code = css.replace(/\/\*[\s\S]*?\*\//g, "").toLowerCase()
+      for (const hex of ["#f2b33d", "#f7c35c", "#f5b82e", "#d9534f", "#e0736b"]) {
+        const uses = code.split(hex).length - 1
+        assert.equal(uses, file === "styles.css" ? (expected[hex] ?? 0) : 0, `${file} uses ${hex} ${uses} times`)
+      }
+    }
+    assert.equal(light["--star"], "#f2b33d")
+    assert.equal(dark["--star"], "#f7c35c")
+  })
+
+  it("the end-of-session star burst uses the student's color, with no fixed yellow in its place", () => {
+    const celebrate = read("../study/celebrate.ts")
+    assert.match(celebrate, /export function celebrate\(\)/)
+    assert.match(celebrate, /getPropertyValue\("--accent"\)/)
+    assert.ok(!celebrate.toLowerCase().includes("#f5b82e"), "celebrate.ts still has the old yellow")
+  })
+
+  it("leaves no old fixed-yellow tokens behind", () => {
+    for (const [file, css] of Object.entries(cssFiles)) {
+      assert.ok(!css.includes("--on-scribble"), `${file} still uses --on-scribble`)
+    }
+  })
 })
 
 describe("theme colors", () => {
