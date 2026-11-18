@@ -118,7 +118,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
       if (error instanceof CaptureError && error.limitReached) {
         setNotice({ type: "info", text: error.message })
       } else {
-        setNotice({ type: "error", text: error instanceof Error ? error.message : "We couldn't make more cards right now." })
+        setNotice({ type: "error", text: getErrorMessage(error, "We couldn't make more cards right now.") })
       }
     } finally {
       setAskingAi(false)
@@ -171,7 +171,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
         if (error instanceof CaptureError && error.limitReached) {
           setSummaryNotice({ type: "info", text: error.message })
         } else {
-          setSummaryNotice({ type: "error", text: error instanceof Error ? error.message : "We couldn't make a summary right now." })
+          setSummaryNotice({ type: "error", text: getErrorMessage(error, "We couldn't make a summary right now.") })
         }
         return
       }

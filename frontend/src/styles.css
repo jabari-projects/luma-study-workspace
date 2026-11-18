@@ -2480,91 +2480,364 @@ input[type="radio"] {
 .auth-screen,
 .center-screen {
   min-height: 100vh;
+  min-height: 100svh;
   display: grid;
   place-items: center;
   padding: 32px var(--gutter);
 }
 
-.auth-screen > section {
+/*
+ * The start page and the account pages are a notebook page, edge to edge:
+ * faint ruled lines and the red margin line, so no part of the screen is left blank.
+ */
+.landing,
+.auth-screen {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 39px,
+    color-mix(in srgb, var(--accent) 9%, transparent) 39px 40px
+  );
+}
+
+.landing::before,
+.auth-screen::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: max(6px, calc(var(--gutter) / 2));
+  z-index: -1;
+  width: 2px;
+  background: var(--margin-rule);
+}
+
+.auth-screen > .auth-layout {
   width: min(460px, 100%);
 }
 
-.hero {
-  width: min(1040px, 100%);
+.landing-inner {
   display: grid;
-  gap: 24px;
+  justify-items: center;
+  gap: clamp(28px, 5vw, 56px);
+  width: min(1480px, 100%);
+  text-align: center;
 }
 
-.hero-copy {
-  position: relative;
+.landing-copy {
   display: grid;
-  justify-items: start;
-  gap: 4px;
-  max-width: 640px;
+  justify-items: center;
+  max-width: 40rem;
 }
 
-.hero-copy h1 {
-  font-size: clamp(3.4rem, 2rem + 7vw, 6.5rem);
-  font-weight: 700;
-  line-height: 0.95;
-}
-
-.hero-copy > p:not(.eyebrow) {
-  max-width: 34ch;
-  color: var(--ink);
-  font-size: clamp(1.1rem, 1rem + 0.6vw, 1.4rem);
-}
-
-.hero-mark {
-  width: 72px;
-  margin-bottom: 8px;
+.landing-star {
+  width: clamp(64px, 2.5rem + 4vw, 128px);
+  height: auto;
+  margin-bottom: 6px;
   filter: drop-shadow(0 0 22px color-mix(in srgb, var(--scribble) 80%, transparent));
   animation: bob 5s ease-in-out infinite;
 }
 
-.hero-actions {
+.landing-copy h1 {
+  margin: 0;
+  font-size: clamp(4rem, 2.4rem + 8vw, 11rem);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
+.landing-lede {
+  max-width: 30ch;
+  margin: 16px 0 0;
+  color: var(--ink);
+  font-size: clamp(1.15rem, 0.9rem + 0.85vw, 1.9rem);
+  line-height: 1.45;
+  text-wrap: balance;
+}
+
+.landing-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: clamp(22px, 1rem + 1vw, 40px);
 }
 
-.backend-banner {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 4px 10px;
-  margin-bottom: 16px;
-  border: 2px dashed var(--line-strong);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  background: var(--card);
+.landing-actions a {
+  min-height: clamp(52px, 2.6rem + 1vw, 64px);
+  padding: 0 clamp(26px, 1rem + 0.6vw, 36px);
+  font-size: clamp(1.05rem, 0.85rem + 0.4vw, 1.25rem);
 }
 
-.backend-banner p,
-.backend-banner small {
-  grid-column: 2;
+.landing-free.hand-note {
+  margin: 14px 0 0;
+  font-size: clamp(1.35rem, 1rem + 0.5vw, 1.75rem);
+  transform: rotate(-2deg);
+  transform-origin: center;
+}
+
+.landing-preview {
+  width: min(520px, 100%);
+}
+
+@media (min-width: 960px) {
+  .landing-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    justify-items: stretch;
+    gap: clamp(48px, 6vw, 112px);
+    text-align: left;
+  }
+
+  .landing-copy {
+    justify-items: start;
+  }
+
+  .landing-actions {
+    justify-content: flex-start;
+  }
+
+  .landing-free.hand-note {
+    transform-origin: left;
+  }
+
+  /* As big as the column allows, but never taller than the screen. */
+  .landing-preview {
+    justify-self: center;
+    width: min(760px, 100%, calc((100svh - 96px) * 1.2));
+  }
+}
+
+/* The account pages: the form, and the same little picture as the start page when there is room. */
+.auth-side {
+  display: none;
+}
+
+.auth-side .hand-note {
+  margin: 0;
+  text-align: center;
+  transform-origin: center;
+}
+
+/*
+ * Phones and tablets with room to spare: the form at the top, and the picture fills the rest of
+ * the screen under it (never wider than the form, never taller than 360px).
+ */
+@media (max-width: 959px) and (min-height: 720px) {
+  .auth-screen > .auth-layout {
+    display: grid;
+    grid-template-rows: auto minmax(160px, 1fr);
+    align-self: stretch;
+  }
+
+  .auth-side {
+    display: grid;
+    place-items: center;
+    container-type: inline-size;
+    margin-top: 28px;
+  }
+
+  .auth-side .note-preview {
+    width: auto;
+    height: min(100%, 360px, 83cqi);
+  }
+
+  .auth-side .hand-note {
+    display: none;
+  }
+}
+
+@media (min-width: 700px) and (max-width: 959px) {
+  .auth-screen > .auth-layout {
+    width: min(520px, 100%);
+  }
+
+  .auth-layout > .auth-card {
+    width: 100%;
+  }
+}
+
+@media (min-width: 960px) {
+  .auth-screen > .auth-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+    align-items: center;
+    gap: clamp(48px, 6vw, 112px);
+    width: min(1360px, 100%);
+  }
+
+  .auth-side {
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+    order: -1;
+  }
+
+  .auth-side .note-preview {
+    width: min(100%, 720px, 48vw, calc((100svh - 200px) * 1.2));
+  }
+
+  .auth-side .hand-note {
+    font-size: 1.5rem;
+  }
+}
+
+/* Very big screens: show the whole page a bit bigger, so it doesn't float in the middle. */
+@media (min-width: 2200px) and (min-height: 1250px) {
+  .landing-inner,
+  .auth-screen > .auth-layout {
+    zoom: 1.4;
+  }
+}
+
+/*
+ * What Luma does: a note turns into a flashcard. Only a picture (aria-hidden).
+ * Everything inside is sized from the picture's own width (cqi), so it scales like an image.
+ */
+.note-preview {
+  position: relative;
+  isolation: isolate;
+  container-type: inline-size;
+  aspect-ratio: 6 / 5;
+  text-align: left;
+}
+
+.note-preview p {
   margin: 0;
 }
 
-.backend-banner small {
+.note-preview-note {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 64%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1cqi 1cqi 2.8cqi 1cqi;
+  padding: 0.75em 0.8em 0 2.3em;
+  color: var(--ink);
+  background:
+    linear-gradient(to right, transparent 1.5em, var(--margin-rule) 1.5em calc(1.5em + 2px), transparent calc(1.5em + 2px)),
+    repeating-linear-gradient(
+        to bottom,
+        transparent 0 calc(1.7em - 1px),
+        color-mix(in srgb, var(--accent) 16%, transparent) calc(1.7em - 1px) 1.7em
+      )
+      0 0.75em,
+    var(--card);
+  box-shadow: var(--shadow-sheet);
+  font-size: 3.2cqi;
+  line-height: 1.7em;
+  white-space: nowrap;
+  transform: rotate(-3deg);
+}
+
+.note-preview-note p {
+  color: var(--ink);
+  line-height: inherit;
+}
+
+.note-preview .note-preview-title {
+  font-family: var(--font-display);
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
+/* Starts just right of the note and curls down to the cards. */
+.note-preview-arrow {
+  position: absolute;
+  top: 31%;
+  left: 67%;
+  width: 22%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.note-preview .note-preview-label {
+  position: absolute;
+  top: 17%;
+  left: 66%;
+  color: var(--accent-ink);
+  font-family: var(--font-hand);
+  font-size: 4cqi;
+  line-height: 1.1;
+  white-space: nowrap;
+  transform: rotate(4deg);
+}
+
+/* The deck sits bottom right. Two more cards peek out behind the front one. */
+.note-preview-deck {
+  position: absolute;
+  right: 2%;
+  bottom: 4%;
+  width: 60%;
+  aspect-ratio: 5 / 3;
+}
+
+.note-preview-deck::before,
+.note-preview-deck::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--line);
+  border-radius: 2.4cqi;
+  background: var(--card);
+  box-shadow: var(--shadow-sheet);
+}
+
+.note-preview-deck::before {
+  transform: rotate(-3deg) translate(-1.4cqi, 1cqi);
+}
+
+.note-preview-deck::after {
+  transform: rotate(6deg) translate(1cqi, 0.7cqi);
+}
+
+.note-preview-card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 1.4cqi;
+  border: 1px solid var(--line);
+  border-top: 1.4cqi solid var(--accent);
+  border-radius: 2.4cqi;
+  padding: 2.8cqi;
+  text-align: center;
+  background: var(--card);
+  box-shadow: var(--print-soft);
+  transform: rotate(2deg);
+  animation: note-preview-in 700ms 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.note-preview .note-preview-card p {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 4cqi;
+  font-weight: 650;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.note-preview-count {
   color: var(--muted);
-  overflow-wrap: anywhere;
+  font-size: 2.2cqi;
+  font-weight: 700;
 }
 
-.health-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--glow-shaky);
-}
-
-.health-dot.offline {
-  background: var(--danger);
-}
-
-.health-dot.online {
-  background: var(--success);
+@keyframes note-preview-in {
+  from {
+    opacity: 0;
+    transform: rotate(6deg) translateY(16px);
+  }
 }
 
 /* ===================================================== tablet: icon rail */
@@ -3032,13 +3305,11 @@ input[type="radio"] {
   line-height: 1.05;
 }
 
-.auth-card > h1:focus {
-  outline: none;
-}
-
+/* The page moves focus to its title for screen readers. It isn't a control, so no ring. */
+.auth-card > h1:focus,
 .auth-card > h1:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 4px;
+  outline: none;
+  box-shadow: none;
 }
 
 .auth-intro {
@@ -3047,6 +3318,7 @@ input[type="radio"] {
   color: var(--ink);
   font-size: 1.05rem;
   line-height: 1.5;
+  text-wrap: pretty;
 }
 
 /* A long email address wraps instead of widening the page (code pages and Settings). */
@@ -3099,6 +3371,7 @@ input[type="radio"] {
   color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.4;
+  text-wrap: pretty;
 }
 
 input[aria-invalid="true"] {
@@ -3235,8 +3508,7 @@ input[aria-invalid="true"] {
 
 @media (max-width: 420px) {
   .auth-screen {
-    place-items: start center;
-    padding-top: 20px;
+    padding-block: 20px;
   }
 
   .auth-form.sheet {

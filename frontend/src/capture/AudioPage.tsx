@@ -3,6 +3,7 @@ import type { ChangeEvent } from "react"
 import { Link } from "react-router-dom"
 import { ArrowLeft, Microphone, Pause, Play, Stop, UploadSimple } from "@phosphor-icons/react"
 
+import { getErrorMessage } from "../api"
 import { NoticeBanner, PageHeader } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import { CaptureError, makeNotes, transcribeAudio } from "./capture-api"
@@ -73,7 +74,7 @@ export function AudioToNotesPage() {
     } catch (err: unknown) {
       setStage("capture")
       if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
-      else setError(err instanceof Error ? err.message : "Something went wrong. Your recording is still here.")
+      else setError(getErrorMessage(err, "Something went wrong. Your recording is still here."))
     }
   }
 
@@ -95,7 +96,7 @@ export function AudioToNotesPage() {
     } catch (err: unknown) {
       setStage("transcript")
       if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
-      else setError(err instanceof Error ? err.message : "Something went wrong. Your words are still here.")
+      else setError(getErrorMessage(err, "Something went wrong. Your words are still here."))
     } finally {
       window.clearTimeout(timer)
     }

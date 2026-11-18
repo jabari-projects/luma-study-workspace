@@ -21,6 +21,7 @@ import {
 import type { AccountBook } from "./accounts"
 import type { BasicUser, Profile } from "./types"
 import { THEME_CACHE_PREFIX, themeCacheKey } from "./ui/theme"
+import { shownServerText } from "./serverText"
 
 export type { BasicUser, Profile } from "./types"
 export { AUTH_STORAGE_KEY }
@@ -367,6 +368,48 @@ api.interceptors.response.use(
   },
 )
 
+/**
+ * Errors from the browser or from a bug (TypeError, DOMException and the like). Their text is
+ * technical, like a file address or "Cannot read properties of undefined", so students never see it.
+ */
+function isTechnicalError(error: Error): boolean {
+  return (
+    error instanceof TypeError ||
+    error instanceof SyntaxError ||
+    error instanceof RangeError ||
+    error instanceof ReferenceError ||
+    error instanceof EvalError ||
+    error instanceof URIError ||
+    (typeof DOMException !== "undefined" && error instanceof DOMException)
+  )
+}
+
+/** The words in a server's error answer: `detail`, the first problem in a `detail` list, `error` or `message`. */
+function payloadText(data: ApiErrorPayload | undefined): string | undefined {
+  if (typeof data?.detail === "string" && data.detail) {
+    return data.detail
+  }
+  if (Array.isArray(data?.detail)) {
+    const first = data.detail.find((item) => typeof item.msg === "string" && item.msg)
+    if (first?.msg) {
+      return first.msg
+    }
+  }
+  if (typeof data?.error === "string" && data.error) {
+    return data.error
+  }
+  if (typeof data?.message === "string" && data.message) {
+    return data.message
+  }
+  return undefined
+}
+
+/**
+ * A plain message to show a student. It is the server's own message (on a 5xx, only the ones
+ * written for students), or the text of an error Luma made on purpose (like ApiRequestError or
+ * CaptureError). Anything else gets `fallback`, so server addresses, setup details, status codes
+ * and code errors never reach the page.
+ */
 export function getErrorMessage(error: unknown, fallback = "Something went wrong."): string {
   if (error instanceof AxiosError) {
     if (!error.response) {
@@ -377,27 +420,11 @@ export function getErrorMessage(error: unknown, fallback = "Something went wrong
     if (isMissingRoute(error.response.status, data)) {
       return CANT_REACH_MESSAGE
     }
-    if (typeof data?.detail === "string" && data.detail) {
-      return data.detail
-    }
-
-    if (Array.isArray(data?.detail)) {
-      const firstMessage = data.detail.find((item) => typeof item.msg === "string" && item.msg)
-      if (firstMessage?.msg) {
-        return firstMessage.msg
-      }
-    }
-
-    if (typeof data?.error === "string" && data.error) {
-      return data.error
-    }
-
-    if (typeof data?.message === "string" && data.message) {
-      return data.message
-    }
+    // Axios's own text ("Request failed with status code 500") is never used.
+    return shownServerText(error.response.status, payloadText(data)) ?? fallback
   }
 
-  if (error instanceof Error && error.message) {
+  if (error instanceof Error && error.message && !isTechnicalError(error)) {
     return error.message
   }
 
@@ -430,28 +457,15 @@ export async function signupWithBackend(payload: SignupPayload): Promise<SignupP
     let message = "We couldn't make your account. Try again."
     if (isMissingRoute(response.status, data)) {
       message = CANT_REACH_MESSAGE
-    } else if (typeof data?.detail === "string" && data.detail) {
-      message = data.detail
-    } else if (Array.isArray(data?.detail)) {
-      const first = data.detail.find((item) => typeof item.msg === "string" && item.msg)
-      if (first?.msg) {
-        message = /email/i.test(first.msg) ? "Check your email address." : first.msg
+    } else {
+      const text = shownServerText(response.status, payloadText(data))
+      if (text) {
+        // A form check from the server ("value is not a valid email address") gets plain words.
+        message = Array.isArray(data?.detail) && /email/i.test(text) ? "Check your email address." : text
       }
-    } else if (typeof data?.error === "string" && data.error) {
-      message = data.error
     }
     throw new ApiRequestError(message, response.status, data)
   }
 
   return response.json() as Promise<SignupPending>
-}
-
-export async function checkBackendHealth(): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/health`, {
-    method: "GET",
-  })
-
-  if (response.status !== 200) {
-    throw new Error(`Luma answered with HTTP ${response.status}.`)
-  }
 }

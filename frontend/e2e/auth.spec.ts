@@ -23,7 +23,7 @@ async function fillSignup(page: Page, email: string, username: string, password 
   await page.getByLabel("Email").fill(email)
   await page.getByLabel("Username").fill(username)
   await page.getByLabel("Password", { exact: true }).fill(password)
-  await page.getByRole("button", { name: "Make account" }).click()
+  await page.getByRole("button", { name: "Make an account" }).click()
 }
 
 /** Makes a fresh verified account in this page. Finishing signup opens Discover. */
@@ -334,7 +334,7 @@ test.describe("form errors are announced", () => {
     page.on("request", (r) => {
       if (r.url() === `${API}/signup`) signupCalls += 1
     })
-    const button = page.getByRole("button", { name: "Make account" })
+    const button = page.getByRole("button", { name: "Make an account" })
     await button.click()
     await expect(page.getByLabel("Email")).toBeFocused()
     expect(await page.getByLabel("Email").evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true)
