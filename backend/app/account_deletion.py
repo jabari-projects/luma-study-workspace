@@ -4,7 +4,8 @@ INVENTORY (from app code, app/schemas/*.sql and the routes, Nov 2026)
 
 Database (Supabase Postgres, service-role client):
   users              id = user id. email, username, password hash, role,
-                     email_verified, email_verification_token(+sent_at),
+                     email_verified, email_verification_token(+sent_at)
+                     (unused old link columns, still in the table),
                      password_reset_token(+sent_at) (tokens stored as SHA-256).
                      -> deleted LAST, only when every earlier step succeeded.
   profiles           user_id. username, display_name, avatar_url,

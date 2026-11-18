@@ -69,10 +69,15 @@ test("delete needs the word delete typed; a wrong word deletes nothing", async (
     if (r.method() === "DELETE" && r.url() === `${API}/me/account`) deleteCalls += 1
   })
 
-  // Empty and wrong word: refused with a message, still on Settings.
+  // Empty and wrong word: refused with a message next to the box, still on Settings.
+  const confirmBox = panel.getByLabel("Type delete to confirm")
   await panel.getByRole("button", { name: "Delete my account" }).click()
   await expect(page.getByText("Type delete to confirm.", { exact: true })).toBeVisible()
-  await panel.getByLabel("Type delete to confirm").fill("remove")
+  await expect(confirmBox).toBeFocused()
+  await expect(confirmBox).toHaveAttribute("aria-invalid", "true")
+  await expect(confirmBox).toHaveAttribute("aria-describedby", "delete-account-message")
+  await confirmBox.fill("remove")
+  await expect(confirmBox).not.toHaveAttribute("aria-invalid", "true")
   await panel.getByRole("button", { name: "Delete my account" }).click()
   await expect(page.getByText("Type delete to confirm.", { exact: true })).toBeVisible()
   await expect(page).toHaveURL(/\/settings/)
@@ -83,12 +88,46 @@ test("delete needs the word delete typed; a wrong word deletes nothing", async (
   expect(me.status()).toBe(200)
 })
 
+test("delete needs your password; a missing or wrong one deletes nothing", async ({ page }, info) => {
+  const email = fakeEmail("pwcheck", info)
+  await signUp(page, email, fakeUsername("pw", info))
+  const panel = await openDeletePanel(page)
+
+  let deleteCalls = 0
+  page.on("request", (r) => {
+    if (r.method() === "DELETE" && r.url() === `${API}/me/account`) deleteCalls += 1
+  })
+
+  // No password: asked for it, nothing sent.
+  await panel.getByLabel("Type delete to confirm").fill("delete")
+  await panel.getByRole("button", { name: "Delete my account" }).click()
+  await expect(page.getByText("Type your password to delete your account.")).toBeVisible()
+  await expect(panel.getByLabel("Your password")).toBeFocused()
+  await expect(panel.getByLabel("Your password")).toHaveAttribute("aria-invalid", "true")
+  await expect(panel.getByRole("button", { name: "Show password" })).toBeVisible()
+  expect(deleteCalls).toBe(0)
+
+  // Wrong password: the server says no, and the account stays.
+  const answer = page.waitForResponse((r) => r.url() === `${API}/me/account` && r.request().method() === "DELETE")
+  await panel.getByLabel("Your password").fill("not-my-password")
+  await panel.getByRole("button", { name: "Delete my account" }).click()
+  const response = await answer
+  expect(response.status()).toBe(400)
+  expect(response.request().postDataJSON()).toEqual({ current_password: "not-my-password" })
+  await expect(page.getByText("That password is wrong. Your account is not deleted.")).toBeVisible()
+  await expect(panel.getByLabel("Your password")).toHaveAttribute("aria-invalid", "true")
+  await expect(panel.getByLabel("Your password")).toBeFocused()
+  await expect(page).toHaveURL(/\/settings/)
+  expect((await page.request.post(`${API}/login`, { data: { email, password: PASSWORD } })).status()).toBe(200)
+})
+
 test("deleting lands on /account-deleted and that account can no longer log in", async ({ page }, info) => {
   const email = fakeEmail("gone", info)
   await signUp(page, email, fakeUsername("gn", info))
   const panel = await openDeletePanel(page)
 
   await panel.getByLabel("Type delete to confirm").fill("  DELETE ")
+  await panel.getByLabel("Your password").fill(PASSWORD)
   const deleted = page.waitForResponse((r) => r.url() === `${API}/me/account` && r.request().method() === "DELETE")
   await panel.getByRole("button", { name: "Delete my account" }).click()
   expect((await deleted).status()).toBe(200)
@@ -131,6 +170,7 @@ test("with two accounts signed in, only the deleted one is removed", async ({ pa
 
   const panel = await openDeletePanel(page)
   await panel.getByLabel("Type delete to confirm").fill("delete")
+  await panel.getByLabel("Your password").fill(PASSWORD)
   await panel.getByRole("button", { name: "Delete my account" }).click()
   await expect(page).toHaveURL(/\/account-deleted$/)
 

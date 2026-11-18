@@ -476,12 +476,6 @@ def test_send_verification_sends_code_stored_only_as_digest(api, db, sent_emails
     assert db.users()[0]["email_verified"] is True
 
 
-def test_verify_old_raw_token_row_no_longer_matches(api, db):
-    db.user(email_verification_token="legacy-raw-token", email_verification_sent_at="2099-01-01T00:00:00")
-    response = api.get("/auth/verify", params={"token": "legacy-raw-token"})
-    assert response.json()["success"] is False
-
-
 # ---------- Password reset ----------
 
 GENERIC_RESET = {"success": True, "message": "If an account with that email exists, a reset link has been sent"}
@@ -619,9 +613,8 @@ def test_no_token_or_password_in_logs(api, db, sent_emails, debug_logs):
 
 
 def test_log_link_helpers_do_not_log_tokens(debug_logs):
-    main.log_verification_link("tok-AAA")
     main.log_password_reset_link("tok-BBB")
-    assert "tok-AAA" not in debug_logs.text and "tok-BBB" not in debug_logs.text
+    assert "tok-BBB" not in debug_logs.text
 
 
 def test_reset_email_html_escapes_values():

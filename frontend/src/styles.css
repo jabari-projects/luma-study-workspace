@@ -3081,19 +3081,20 @@ input[type="radio"] {
   line-height: 1.5;
 }
 
+/* A long email address wraps instead of widening the page (code pages and Settings). */
 .auth-email {
   overflow-wrap: anywhere;
 }
 
-.auth-message-slot:empty {
+.message-slot:empty {
   display: none;
 }
 
-.auth-message-slot .notice {
+.message-slot .notice {
   margin-bottom: 0;
 }
 
-.auth-message-slot .notice:focus {
+.message-slot .notice:focus {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
@@ -3316,8 +3317,24 @@ input[aria-invalid="true"] {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 10px;
   cursor: pointer;
   font-weight: 700;
+}
+
+/* display: flex hides the browser's triangle, so draw a chevron that turns when open. */
+.danger-zone summary::before {
+  content: "";
+  flex: none;
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.danger-zone details[open] > summary::before {
+  transform: rotate(45deg);
 }
 
 /* ===================================================== accounts on this device */

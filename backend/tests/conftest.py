@@ -68,6 +68,8 @@ def auth_test_defaults(monkeypatch):
         main.verify_code_email_limiter,
         main.resend_code_ip_limiter,
         main.signup_notice_limiter,
+        main.password_check_limiter,
+        main.password_check_daily_limiter,
     )
     for limiter in limiters:
         limiter.clear()
