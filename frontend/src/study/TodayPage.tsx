@@ -21,6 +21,7 @@ import { deckStats } from "./deck"
 import { quizHref, readyLine } from "./hub"
 import { weekActivity } from "./celebrate"
 import { useDecks } from "./useDecks"
+import { FeedbackAnnouncement } from "../feedback/FeedbackAnnouncement"
 
 const WEEK_GOAL = 4
 /** How many items the Recent list shows. Home stays short; the hubs show the rest. */
@@ -165,6 +166,9 @@ export function TodayPage() {
               </span>
             </div>
           </section>
+
+          {/* The monthly poll: a small note under the study step, never a pop-up. */}
+          <FeedbackAnnouncement />
 
           <section className="week-strip" aria-labelledby="week-title">
             <h2 id="week-title" className="sr-only">

@@ -41,6 +41,9 @@ import { AdminReportsPage } from "./account/Reporting"
 import { SettingsPage } from "./account/SettingsPage"
 import { SearchPage } from "./discover/SearchPage"
 import { ImportPage } from "./capture/ImportPage"
+import { FeedbackPage } from "./feedback/FeedbackPage"
+import { FeedbackArchivePage, FeedbackResultsPage } from "./feedback/FeedbackResultsPage"
+import { AdminFeedbackPage, AdminPollPage } from "./feedback/AdminFeedbackPage"
 
 type HealthState = {
   status: "checking" | "online" | "offline"
@@ -271,6 +274,11 @@ function AppLayout() {
           <Route path="/subscribe" element={<Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin/reports" element={<AdminReportsPage />} />
+          <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/feedback/results" element={<FeedbackArchivePage />} />
+          <Route path="/feedback/results/:pollId" element={<FeedbackResultsPage />} />
+          <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+          <Route path="/admin/feedback/:pollId" element={<AdminPollPage />} />
           <Route path="/profile" element={<Navigate to="/settings" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

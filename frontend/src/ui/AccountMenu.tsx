@@ -3,7 +3,7 @@ import type { CSSProperties, RefObject } from "react"
 import { createPortal } from "react-dom"
 import { Link, useNavigate } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
-import { Check, Flag, GearSix, Plus, SignOut, X } from "@phosphor-icons/react"
+import { ChartBar, Check, Flag, GearSix, Plus, SignOut, X } from "@phosphor-icons/react"
 
 import { useAuth, useProfile } from "../auth"
 import type { AccountSummary } from "../auth"
@@ -182,6 +182,11 @@ export function AccountList({
         {variant === "menu" && profile?.is_admin ? (
           <Link className="ghost-button wide account-action" to="/admin/reports" onClick={done}>
             <Flag weight="bold" aria-hidden="true" /> Review reports
+          </Link>
+        ) : null}
+        {variant === "menu" && profile?.is_admin ? (
+          <Link className="ghost-button wide account-action" to="/admin/feedback" onClick={done}>
+            <ChartBar weight="bold" aria-hidden="true" /> Student feedback
           </Link>
         ) : null}
         <button

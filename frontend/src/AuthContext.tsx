@@ -8,6 +8,7 @@ import {
 import type { ReactNode } from "react"
 
 import { AuthContext } from "./auth"
+import { clearFeedbackDrafts } from "./feedback/skip"
 import {
   ACCOUNT_EXPIRED_EVENT,
   AUTH_STORAGE_KEY,
@@ -234,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!readBook().accounts[id]) {
         return
       }
+      clearFeedbackDrafts()
       setTabAccountId(id)
       setSignedOutElsewhere(null)
       resync()
@@ -244,6 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutAccount = useCallback(
     (id: string) => {
       const wasTabAccount = id === getTabAccountId()
+      clearFeedbackDrafts()
       removeStoredAccount(id)
       if (wasTabAccount) {
         const rest = orderedAccounts(readBook())
@@ -264,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logoutAccount])
 
   const logoutAll = useCallback(() => {
+    clearFeedbackDrafts()
     clearAllStoredSessions()
     setSignedOutElsewhere(null)
     resync()
