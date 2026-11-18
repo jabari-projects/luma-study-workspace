@@ -262,3 +262,19 @@ def test_second_copy_checks_hashes(good, j_base):
     assert "1 already there" in again.stdout
     inside = run_script("luma_backup.copy_second", [*sc.args(), "--dest", str(sc.paths.backup_root / "x")])
     assert inside.returncode == 2
+
+
+def test_a_killed_runs_unlocked_copy_is_removed_by_the_next_run(j_base, g_base, pg_bin, source, storage):
+    """Power loss mid-backup leaves db.dump in the work folder. check_status calls it a FAIL,
+    and the next real run deletes it under the lock before doing anything else."""
+    sc = scenario("leftover", j_base, g_base, pg_bin, source, storage)
+    left = sc.paths.work_base / "20261122T150000Z"
+    left.mkdir(parents=True)
+    (left / "db.dump").write_bytes(b"SYNTHETIC unlocked dump from a killed run")
+    sc.paths.backup_root.mkdir(parents=True, exist_ok=True)
+    check = run_script("luma_backup.check_status", sc.args())
+    assert check.returncode == 2 and "unlocked copy of student data" in check.stdout
+    proc = backup(sc)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not left.exists()
+    assert empty(sc.paths.work_base) and empty(sc.paths.restore_base)

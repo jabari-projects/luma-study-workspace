@@ -94,6 +94,25 @@ def run_lock(paths: Paths, stamp: str, what: str):
             log.info("could not remove the lock file")
 
 
+def clear_leftover_work(paths: Paths) -> int:
+    """Call while holding the run lock. Deletes work and restore folders that a killed run
+    (power loss, a crash) left behind with unlocked student data in them, and checks they
+    are gone. Only stamp-named folders are touched. Returns how many were removed."""
+    from .config import STAMP_RE
+
+    removed = 0
+    for base in (paths.work_base, paths.restore_base):
+        if not Path(base).is_dir():
+            continue
+        for child in sorted(Path(base).iterdir()):
+            if child.is_dir() and STAMP_RE.match(child.name[:16]):
+                remove_tree_checked(child)
+                removed += 1
+    if removed:
+        log.info("removed %d unlocked copies left over from an earlier run", removed)
+    return removed
+
+
 def remove_tree_checked(folder: Path) -> None:
     """Delete a plaintext folder and prove it is gone."""
     shutil.rmtree(folder, ignore_errors=True)

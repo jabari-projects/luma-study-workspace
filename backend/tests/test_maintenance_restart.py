@@ -153,7 +153,9 @@ def test_unreadable_state_keeps_the_last_known_phase(world, caplog):
     assert "simulated database failure" not in caplog.text
 
 
-def test_a_process_that_never_read_the_state_treats_it_as_none():
+def test_a_new_process_whose_first_read_fails_keeps_reads_open_and_refuses_changes():
+    """Restart during a break while the database is slow or unreachable: the new process
+    can't tell that a break is on, so it fails closed for changes (C.3, fixed)."""
     db = FakeMaintenanceDB()
     db.state["phase"] = "active"
     db.fail_tables.add(maintenance.STATE_TABLE)
@@ -164,7 +166,53 @@ def test_a_process_that_never_read_the_state_treats_it_as_none():
 
         w = World(db=db, clock=runtime.clock, rt=runtime, who={"id": None}, client=None)
         gate, _ = make_gate(w)
-        assert gate.get("/notes").status_code == 200
+        assert not runtime.state_known
+        assert gate.get("/notes").status_code == 200  # reading stays open
+        assert gate.get("/maintenance/status").status_code == 200
+        for method, path in [
+            ("PUT", "/notes/n1"),
+            ("POST", "/notes"),
+            ("POST", "/api/summarize"),
+            ("POST", "/api/stripe-webhook"),
+            ("DELETE", "/me/account"),
+            ("PATCH", "/me/profile"),
+        ]:
+            response = gate.request(method, path)
+            assert response.status_code == 503, (method, path)
+            body = response.json()
+            assert body["error_code"] == "maintenance_unavailable"
+            assert response.headers["Retry-After"] == str(maintenance.UNKNOWN_STATE_RETRY_SECONDS)
+            assert "http" not in body["detail"] and "Exception" not in body["detail"]
+        assert db.tables[maintenance.JOBS_TABLE] == []  # no AI job was started
+
+        # Once a read works, it behaves as before: the stored break is enforced.
+        db.fail_tables.discard(maintenance.STATE_TABLE)
+        runtime.clock.advance(seconds=10)
+        response = gate.put("/notes/n1")
+        assert response.status_code == 503 and response.json()["error_code"] == "maintenance_active"
+        assert runtime.state_known
+
+        # And with no break stored, changes go through.
+        db.state["phase"] = "none"
+        db.state["rev"] = int(db.state.get("rev") or 0) + 1
+        runtime.clock.advance(seconds=10)
+        assert gate.put("/notes/n1").status_code == 200
+    finally:
+        maintenance.set_runtime(None)
+
+
+def test_a_process_whose_first_read_works_but_finds_no_row_is_open():
+    """Local development (no break tables configured) and a missing row both read as 'none'."""
+    db = FakeMaintenanceDB(seed_state=False)
+    runtime = make_runtime(db, FakeClock(), "instance-y")
+    maintenance.set_runtime(runtime)
+    try:
+        from tests.maintenance_fakes import World, gate_app as make_gate
+
+        w = World(db=db, clock=runtime.clock, rt=runtime, who={"id": None}, client=None)
+        gate, _ = make_gate(w)
+        assert gate.put("/notes/n1").status_code == 200
+        assert runtime.state_known
     finally:
         maintenance.set_runtime(None)
 
@@ -177,3 +225,43 @@ def test_admin_routes_report_trouble_plainly_when_the_table_is_missing(world):
         "detail": "We can't reach the break settings right now. Try again in a minute.",
         "error_code": "maintenance_unavailable",
     }
+
+
+def test_two_workers_on_one_render_instance_get_their_own_rows(world, monkeypatch):
+    """With WEB_CONCURRENCY > 1, several uvicorn workers share one RENDER_INSTANCE_ID.
+    Each still gets its own instance row, and the admin's worker counts its sibling's work."""
+    monkeypatch.setenv("RENDER_INSTANCE_ID", "srv-shared-1")
+    first = maintenance.make_instance_id(pid=101)
+    second = maintenance.make_instance_id(pid=102)
+    assert first != second
+    assert first.startswith("srv-shared-1-101-") and second.startswith("srv-shared-1-102-")
+    assert maintenance.make_instance_id(pid=101) != first  # even a reused pid gets a new id
+
+    worker_a = make_runtime(world.db, world.clock, first)
+    worker_b = make_runtime(world.db, world.clock, second)
+    maintenance.set_runtime(worker_a)
+    world.rt = worker_a
+    world.to_draining()
+    maintenance.set_runtime(worker_b)
+    gate, _ = gate_app(world)
+    gate.get("/notes")  # worker B reads the state (draining) and reports itself
+    worker_b.request_started()  # a save is still running on worker B
+    worker_b.wait_for_reports()
+    worker_a.request_started()
+    worker_a.request_finished()  # worker A writes its own row, not worker B's
+    worker_a.wait_for_reports()
+    rows = {r["instance_id"]: r for r in world.db.tables[maintenance.INSTANCES_TABLE]}
+    assert rows[second]["in_flight"] == 1
+    assert rows[first]["in_flight"] == 0
+
+    maintenance.set_runtime(worker_a)
+    world.clock.advance(minutes=6)
+    worker_b.request_started()  # fresh heartbeat from B
+    worker_b.wait_for_reports()
+    refused = world.activate()
+    assert refused.status_code == 409
+    assert [r["code"] for r in refused.json()["reasons"]] == ["requests_in_flight"]
+    worker_b.request_finished()
+    worker_b.request_finished()
+    worker_b.wait_for_reports()
+    assert world.activate().status_code == 200

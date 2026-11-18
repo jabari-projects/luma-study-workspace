@@ -19,6 +19,9 @@ from .config import (DEFAULT_WARN_HOURS, SET_DIR_RE, STALE_PARTIAL_HOURS, Paths,
 
 OK, WARN, FAIL = 0, 1, 2
 
+UNREADABLE_MESSAGE = ("Luma can't read the backup status file. Don't trust the backups until "
+                      "a new backup runs and this check says OK.")
+
 
 def _age_words(hours: float) -> str:
     if hours < 48:
@@ -47,6 +50,16 @@ def evaluate(paths: Paths, now: dt.datetime) -> tuple[int, str]:
     if rt and rt.get("result") == "failed":
         return FAIL, f"The last restore test of backup {rt.get('stamp')} did not work: {rt.get('message')}"
 
+    # Unencrypted student data left on disk is a failure, not a warning, unless a run that
+    # holds the lock right now is still using its work folder.
+    running = paths.lock_file.exists() and not lock_is_stale(paths.lock_file, now)
+    if not running:
+        for base in (paths.work_base, paths.restore_base):
+            leftover = _has_files(base)
+            if leftover is not None:
+                return FAIL, (f"An unlocked copy of student data is left over at {leftover}. "
+                              "The next backup deletes it, or delete it by hand now.")
+
     warnings: list[str] = []
     warn_hours = status.get("warn_after_hours") or DEFAULT_WARN_HOURS
     verified = status.get("last_verified")
@@ -65,10 +78,6 @@ def evaluate(paths: Paths, now: dt.datetime) -> tuple[int, str]:
                     warnings.append(f"An unfinished backup folder is left over. Delete {child}.")
     if paths.lock_file.exists() and lock_is_stale(paths.lock_file, now):
         warnings.append(f"An old lock file is left over. If no backup is running, delete {paths.lock_file}.")
-    for base in (paths.work_base, paths.restore_base):
-        leftover = _has_files(base)
-        if leftover is not None:
-            warnings.append(f"An unlocked temporary copy is left over. Delete {leftover}.")
 
     if warnings:
         more = f" (and {len(warnings) - 1} more)" if len(warnings) > 1 else ""
@@ -76,14 +85,29 @@ def evaluate(paths: Paths, now: dt.datetime) -> tuple[int, str]:
     return OK, f"Backups are OK. Newest checked backup: {verified['stamp']}."
 
 
+def safe_evaluate(paths: Paths, now: dt.datetime) -> tuple[int, str]:
+    """evaluate(), but a status file that can't be read (bad JSON, no permission, a broken
+    date) is a FAIL with plain words, never a crash that looks like a warning (exit 1)."""
+    try:
+        return evaluate(paths, now)
+    except Exception:  # noqa: BLE001 - any problem reading the status must be reported, not hidden
+        return FAIL, UNREADABLE_MESSAGE
+
+
 def notify(paths: Paths, code: int, message: str, show_box: bool = True) -> None:
     """Show a message box and leave ATTENTION.txt when something is wrong; clear it when OK."""
     if code == OK:
-        paths.attention_file.unlink(missing_ok=True)
+        try:
+            paths.attention_file.unlink(missing_ok=True)
+        except OSError:
+            pass
         return
     if drive_present(paths.backup_root):
-        paths.backup_root.mkdir(parents=True, exist_ok=True)
-        paths.attention_file.write_text(message + "\n", encoding="utf-8")
+        try:
+            paths.backup_root.mkdir(parents=True, exist_ok=True)
+            paths.attention_file.write_text(message + "\n", encoding="utf-8")
+        except OSError:
+            pass  # the message box below still shows
     if show_box and sys.platform == "win32":
         import ctypes
         MB_ICONWARNING, MB_SETFOREGROUND = 0x30, 0x10000
@@ -109,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Backups are expected every {hours} hours." if hours else "No backup schedule is recorded.")
         return OK
     now = parse_iso(args.now) if args.now else utc_now()
-    code, message = evaluate(paths, now)
+    code, message = safe_evaluate(paths, now)
     print(message)
     if args.notify:
         notify(paths, code, message, show_box=not args.no_box)

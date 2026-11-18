@@ -228,6 +228,41 @@ describe("SaveClient: bounded retries", () => {
     assert.equal(client.latest(), "w")
   })
 
+  it("after a long break runs out of retries, Luma reopening saves once; Try again works too", async () => {
+    const down = http(503, { error_code: "maintenance_active", retry_after: 900 })
+    const { client, clock, server, last } = makeClient([down, down, down, down, down, down, ok(2), down, ok(3)])
+    client.change("w")
+    await clock.advance(1500)
+    // Five waits of at most 5 minutes each, then it stops (no endless retrying).
+    await clock.advance(6 * 5 * 60_000)
+    assert.equal(server.requests.length, 6)
+    assert.equal(last().state, "maintenance")
+    assert.equal(clock.pendingTimers(), 0)
+    await clock.advance(60 * 60_000)
+    assert.equal(server.requests.length, 6) // nothing by itself during the break
+
+    // Luma reopens (maintenance/observe.ts calls this once): one save, and it lands.
+    client.retryAfterBreak()
+    await clock.settle()
+    assert.equal(server.requests.length, 7)
+    assert.equal(last().state, "saved")
+    assert.equal(client.latest(), null)
+
+    // Not waiting on a break: retryAfterBreak does nothing.
+    client.retryAfterBreak()
+    await clock.settle()
+    assert.equal(server.requests.length, 7)
+
+    // Try again (the button shows in the break state too) sends once.
+    client.change("wx")
+    await clock.advance(1500)
+    assert.equal(last().state, "maintenance")
+    client.retry()
+    await clock.settle()
+    assert.equal(server.requests.length, 9)
+    assert.equal(last().state, "saved")
+  })
+
   it("500, 422, 401, 403, 404 and 409 are never retried by themselves", async () => {
     for (const [status, state] of [
       [500, "failed"],
@@ -365,7 +400,7 @@ describe("SaveClient: new items and retries without copies", () => {
     assert.equal(buttonResult, true)
   })
 
-  it("a replay (200) with older words is followed by an update with the returned version", async () => {
+  it("a replay (200) with older words is followed by an update checked against version 1", async () => {
     const { client, clock, server, last } = makeClient([ok(1, { text: "old" }), ok(2)], {
       itemId: null,
       version: null,
@@ -378,6 +413,26 @@ describe("SaveClient: new items and retries without copies", () => {
     assert.equal(server.requests.length, 2)
     assert.deepEqual(server.requests[1], { content: "new words", mode: "update", itemId: "n1", expectedVersion: 1, createKey: null })
     assert.equal(last().state, "saved")
+  })
+
+  it("two tabs with the same create key: a replay of an item edited since gets a conflict, not an overwrite", async () => {
+    // Tab 1 (same key, copied by "Duplicate tab") saved first and kept editing: the item is at v3.
+    // This tab's create is a replay that returns v3 with tab 1's words.
+    const conflict = http(409, { error_code: "edit_conflict", current: { id: "n1", version: 3, text: "tab 1 words" } })
+    const { client, clock, server, last } = makeClient([ok(3, { text: "tab 1 words" }), conflict], {
+      itemId: null,
+      version: null,
+      createKey: "k-dup",
+      rowHas: (row, content) => row.text === content,
+    })
+    client.change("tab 2 words")
+    void client.flush({ allowCreate: true })
+    await clock.settle()
+    assert.equal(server.requests.length, 2)
+    assert.equal(server.requests[1].mode, "update")
+    assert.equal(server.requests[1].expectedVersion, 1) // never 3: that would overwrite tab 1's v2 and v3
+    assert.equal(last().state, "conflict")
+    assert.equal(client.latest(), "tab 2 words") // kept for the conflict panel
   })
 
   it("after a create, later edits save by themselves as updates", async () => {

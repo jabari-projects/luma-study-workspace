@@ -3,12 +3,14 @@
 // - when any API answer carries a different X-Luma-Maintenance-Rev than we know
 //   (every answer from the server has it, errors included);
 // - on focus, or when the tab is shown again, if the last check is over a minute old.
+// When a read says there is no break, saves still waiting on the break message try once.
 // Imported once from main.tsx. Nothing here ever navigates, reloads or signs anyone out.
 import { useSyncExternalStore } from "react"
 import { AxiosError } from "axios"
 import type { AxiosResponse } from "axios"
 
 import { api } from "../api"
+import { retryWorkAfterBreak } from "../work/unsaved"
 import { fetchMaintenanceStatus } from "./maintenance-api"
 import {
   getMaintenanceSnapshot,
@@ -27,7 +29,12 @@ export function checkMaintenanceNow(): Promise<void> {
   updateMaintenance({ checking: true })
   inFlight = fetchMaintenanceStatus()
     .then(
-      (status) => updateMaintenance({ status, checkedAt: Date.now(), failed: false, checking: false }),
+      (status) => {
+        updateMaintenance({ status, checkedAt: Date.now(), failed: false, checking: false })
+        // No break now: saves that were waiting on the break message try once more (one
+        // event per status read, not polling). It only touches editors in that state.
+        if (status && (status.phase === "none" || status.phase === "announced")) retryWorkAfterBreak()
+      },
       () => updateMaintenance({ checkedAt: Date.now(), failed: true, checking: false }),
     )
     .finally(() => {

@@ -314,7 +314,8 @@ def save_flashcard_progress(
     user_id: str = Depends(get_current_user_id),
 ):
     """Merge review progress into the deck's cards. It never changes card words or `version`,
-    so studying never conflicts with an open deck editor. Unknown card ids are ignored."""
+    so studying never conflicts with an open deck editor. Unknown card ids are ignored.
+    The write checks both progress_rev and version, so neither writer undoes the other."""
     for _ in range(MAX_CAS_ROUNDS):
         row = load_row(get_supabase(), TABLE_NAME, user_id, flashcard_id)
         if row is None:
@@ -334,6 +335,10 @@ def save_flashcard_progress(
             .eq("id", flashcard_id)
             .eq("user_id", user_id)
             .eq("progress_rev", rev)
+            # The deck editor's save moves `version` but not progress_rev. Matching both means
+            # an editor save that lands between this read and write makes us read again, so
+            # the old card words are never written back over the new ones.
+            .eq("version", row_version(row))
             .execute()
             .data
             or []

@@ -33,6 +33,8 @@ export type WorkEntry = {
   flush: () => Promise<boolean>
   /** Try the paused saves again once (after signing in again). */
   resume: () => void
+  /** Try a save that waits on the break message once more (Luma reopened). */
+  retryAfterBreak?: () => void
   /** Throw this work away (the student said so). */
   discard: () => void
 }
@@ -123,6 +125,13 @@ export async function flushAllWork(): Promise<boolean> {
 export function resumeWork(accountId: string): void {
   for (const entry of [...entries.values()]) {
     if (entry.accountId === accountId && entry.state === "signed_out") entry.resume()
+  }
+}
+
+/** Luma reopened after a break: every save waiting on the break message tries once more. */
+export function retryWorkAfterBreak(): void {
+  for (const entry of [...entries.values()]) {
+    if (entry.state === "maintenance") entry.retryAfterBreak?.()
   }
 }
 

@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from luma_backup import manifest as mf  # noqa: E402
 from luma_backup import restore_test, secrets_store, storage_export  # noqa: E402
-from luma_backup.common import (check_free_space, close_logging, drive_present, remove_tree_checked,  # noqa: E402
-                                run_lock, setup_logging)
+from luma_backup.common import (check_free_space, clear_leftover_work, close_logging, drive_present,  # noqa: E402
+                                remove_tree_checked, run_lock, setup_logging)
 from luma_backup.config import (LOCAL_HOST, UnsafePath, add_path_args, check_paths, iso, make_stamp,  # noqa: E402
                                 paths_from_args, utc_now)
 from luma_backup.crypto import CryptoFailure, Gpg, sha256_file  # noqa: E402
@@ -98,6 +98,9 @@ def run_backup(paths, source: str, stamp: str, started, waits) -> dict:
     partial = paths.backup_root / f"{stamp}.partial"
     work = paths.work_base / stamp
     with run_lock(paths, stamp, "backup"):
+        # A run that was killed earlier may have left unlocked student data behind: remove it
+        # first (checked gone), or stop with cleanup_failed.
+        clear_leftover_work(paths)
         try:
             secrets = secrets_store.load(paths.secrets_file)
         except secrets_store.SecretsUnavailable as exc:
@@ -156,6 +159,27 @@ def run_backup(paths, source: str, stamp: str, started, waits) -> dict:
                 gpg.kill_agent()
 
 
+STATUS_WRITE_FAILED = ("Luma couldn't write the backup status file, so this backup can't be "
+                       "trusted. Look at the backup drive, then run a backup again.")
+
+
+def record(paths, **attempt) -> bool:
+    """Writes the attempt to status.json. If that fails, leaves ATTENTION.txt directly, so a
+    broken status file is never silent. Returns False when the status could not be written."""
+    try:
+        mf.record_attempt(paths.status_file, **attempt)
+        return True
+    except Exception as exc:  # noqa: BLE001 - a status that can't be written must be reported
+        log.info("could not write the status file: %s", type(exc).__name__)
+        try:
+            paths.backup_root.mkdir(parents=True, exist_ok=True)
+            paths.attention_file.write_text(STATUS_WRITE_FAILED + "\n", encoding="utf-8")
+        except OSError:
+            log.info("could not write ATTENTION.txt either")
+        print(STATUS_WRITE_FAILED)
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Make one encrypted, restore-tested Luma backup.")
     which = parser.add_mutually_exclusive_group(required=True)
@@ -187,22 +211,23 @@ def main(argv: list[str] | None = None) -> int:
         message = (f"Backup {stamp} is saved, locked and checked: {len(db)} tables, "
                    f"{sum(v['rows_after'] for v in db.values())} rows, "
                    f"{sum(b['objects'] for b in manifest['storage'].values())} uploaded files.")
-        mf.record_attempt(paths.status_file, stamp=stamp, started_at=iso(started), finished_at=iso(utc_now()),
-                          result="verified", error_code=None, message=message)
+        if not record(paths, stamp=stamp, started_at=iso(started), finished_at=iso(utc_now()),
+                      result="verified", error_code=None, message=message):
+            return 2
         log.info(message)
         return 0
     except BackupError as exc:
         if exc.detail:
             log.info("details: %s", exc.detail)
-        mf.record_attempt(paths.status_file, stamp=stamp, started_at=iso(started), finished_at=iso(utc_now()),
-                          result="failed", error_code=exc.code, message=exc.message)
+        record(paths, stamp=stamp, started_at=iso(started), finished_at=iso(utc_now()),
+               result="failed", error_code=exc.code, message=exc.message)
         log.info("Backup failed (%s): %s See %s", exc.code, exc.message, log_path)
         return 2
     except Exception as exc:  # noqa: BLE001 - an unknown problem must still be recorded, never hidden
         log.info("unexpected problem: %s", type(exc).__name__)
         message = "The backup stopped because of an unexpected problem."
-        mf.record_attempt(paths.status_file, stamp=stamp, started_at=iso(started), finished_at=iso(utc_now()),
-                          result="failed", error_code=None, message=message)
+        record(paths, stamp=stamp, started_at=iso(started), finished_at=iso(utc_now()),
+               result="failed", error_code=None, message=message)
         log.info("Backup failed: %s See %s", message, log_path)
         return 2
     finally:

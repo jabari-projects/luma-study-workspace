@@ -60,15 +60,13 @@ def deliver(w):
     )
 
 
-@pytest.mark.parametrize("step", ["none", "announced", "draining", "draining_after_grace"])
+@pytest.mark.parametrize("step", ["none", "announced", "draining"])
 def test_webhooks_are_handled_outside_the_break(stripe_env, step):
     w = stripe_env
     if step != "none":
         w.schedule()
-    if step.startswith("draining"):
+    if step == "draining":
         w.drain()
-    if step == "draining_after_grace":
-        w.clock.advance(minutes=30)
     response = deliver(w)
     assert response.status_code == 200 and response.json() == {"success": True}
     assert [h["event"] for h in w.handled] == ["evt_synthetic_1"]
@@ -77,10 +75,15 @@ def test_webhooks_are_handled_outside_the_break(stripe_env, step):
     assert w.handled[0]["thread"] != threading.main_thread().name
 
 
-@pytest.mark.parametrize("phase", ["active", "checking"])
+@pytest.mark.parametrize("phase", ["draining_after_grace", "active", "checking"])
 def test_webhooks_wait_during_the_break(stripe_env, phase):
     w = stripe_env
-    if phase == "active":
+    if phase == "draining_after_grace":
+        # From the last settle seconds of the grace on, events wait too.
+        w.schedule()
+        w.drain()
+        w.clock.advance(minutes=30)
+    elif phase == "active":
         w.to_active()
     else:
         w.to_checking()
@@ -90,7 +93,9 @@ def test_webhooks_wait_during_the_break(stripe_env, phase):
     assert response.json()["retry_after"] == 600
     assert w.handled == []  # nothing was half-done; Stripe sends it again later
     # After reopening, the retried delivery goes through once.
-    if phase == "active":
+    if phase == "draining_after_grace":
+        assert w.activate().status_code == 200
+    if phase in ("draining_after_grace", "active"):
         assert w.checks().status_code == 200
     assert w.reopen().status_code == 200
     assert deliver(w).status_code == 200

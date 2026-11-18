@@ -5,8 +5,10 @@ import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 import { ArrowCounterClockwise, Cards, Check, FloppyDisk, MoonStars, Plus, Sparkle, X } from "@phosphor-icons/react"
 
-import { api, getErrorMessage, getTabAccountId } from "../api"
+import { getErrorMessage, getTabAccountId } from "../api"
 import { newCardId } from "../study/deck"
+import { createWithApi } from "../work/apiCreate"
+import { sameCards, sameText } from "../work/createOnce"
 import { LEAVE_ANYWAY_STATE } from "../work/leave"
 import { useEditSession } from "../work/useAutosave"
 import { newDraftCard } from "./capture-api"
@@ -123,16 +125,20 @@ export function NotesWorkbench({
   const updateCard = (id: string, patch: Partial<DraftCard>) =>
     update({ cards: draft.cards.map((card) => (card.id === id ? { ...card, ...patch } : card)) })
 
-  const postDeck = async (title: string, tags: string[], accountId: string | undefined) =>
-    api.post<{ id: string }>(
+  const postDeck = async (title: string, tags: string[], accountId: string | undefined) => {
+    const body = {
+      title,
+      tags,
+      cards: kept.map((card) => ({ id: newCardId(), front: card.front.trim(), back: card.back.trim(), review: null })),
+    }
+    return createWithApi<{ id: string; version: number; title?: string; cards?: unknown }>(
       "/flashcards",
-      {
-        title,
-        tags,
-        cards: kept.map((card) => ({ id: newCardId(), front: card.front.trim(), back: card.back.trim(), review: null })),
-      },
-      { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": keys.deck } },
+      body,
+      (row) => sameText(row.title, body.title) && sameCards(row.cards, body.cards),
+      keys.deck,
+      { lumaAccountId: accountId, timeout: 30_000, headers: sessionHeaders() },
     )
+  }
 
   const save = async (withDeck: boolean) => {
     const title = draft.title.trim() || "My notes"
@@ -147,12 +153,15 @@ export function NotesWorkbench({
     let noteId = savedNoteId
     try {
       if (!noteId) {
-        const note = await api.post<{ id: string }>(
+        const body = { title, content: noteContent(draft), tags }
+        const note = await createWithApi<{ id: string; version: number; title?: string; content?: string }>(
           "/notes",
-          { title, content: noteContent(draft), tags },
-          { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": keys.note } },
+          body,
+          (row) => sameText(row.title, body.title) && sameText(row.content, body.content),
+          keys.note,
+          { lumaAccountId: accountId, timeout: 30_000, headers: sessionHeaders() },
         )
-        noteId = note.data.id
+        noteId = note.id
       }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "We couldn't save that. Your work is still here."))
@@ -181,7 +190,7 @@ export function NotesWorkbench({
       toast.success("Saved your note and deck!", {
         action: { label: "Open note", onClick: () => navigate(`/notes/${noteId}`) },
       })
-      navigate(`/flashcards/${deck.data.id}`, { state: LEAVE_ANYWAY_STATE })
+      navigate(`/flashcards/${deck.id}`, { state: LEAVE_ANYWAY_STATE })
     } catch (error: unknown) {
       // Stay here so the cards aren't lost. The note is already saved.
       setSavedNoteId(noteId)

@@ -53,7 +53,7 @@ export function SaveStatus({
         {text}
         {snapshot.state === "failed" && snapshot.message ? <span className="save-status-why"> {snapshot.message}</span> : null}
       </span>
-      {snapshot.state === "failed" ? (
+      {snapshot.state === "failed" || snapshot.state === "maintenance" ? (
         <button type="button" className="secondary-button small" onClick={onRetry}>
           Try again
         </button>

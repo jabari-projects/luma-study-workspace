@@ -11,6 +11,7 @@ import {
   hasUnsavedWorkFor,
   registerWork,
   resumeWork,
+  retryWorkAfterBreak,
   subscribeUnsaved,
 } from "./unsaved.ts"
 import type { WorkEntry, WorkState } from "./unsaved.ts"
@@ -109,5 +110,24 @@ describe("unsaved work registry", () => {
     assert.deepEqual(thrown, ["l"])
     mine.unregister()
     theirs.unregister()
+  })
+
+  it("after a break, only editors waiting on the break message try again, in every account", () => {
+    const tried: string[] = []
+    const handles = [
+      registerWork(entry("m1", { retryAfterBreak: () => tried.push("m1") })),
+      registerWork(entry("m2", { accountId: "u2", retryAfterBreak: () => tried.push("m2") })),
+      registerWork(entry("f", { retryAfterBreak: () => tried.push("f") })),
+      registerWork(entry("s", { retryAfterBreak: () => tried.push("s") })),
+      registerWork(entry("old")), // an editor without the hook is skipped safely
+    ]
+    handles[0].update("maintenance")
+    handles[1].update("maintenance")
+    handles[2].update("failed")
+    handles[3].update("saved")
+    handles[4].update("maintenance")
+    retryWorkAfterBreak()
+    assert.deepEqual(tried.sort(), ["m1", "m2"])
+    handles.forEach((handle) => handle.unregister())
   })
 })

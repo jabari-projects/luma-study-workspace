@@ -87,8 +87,8 @@ def test_draining_after_grace_refuses_every_write_but_keeps_reads(world):
     world.drain(grace_minutes=5)
     world.clock.advance(minutes=5, seconds=1)
     got = {case: outcome(hit(gate, case)) for case in CASES}
-    assert got["content_write"] == got["other_write"] == got["ai"] == "maintenance_draining"
-    assert got["read"] == got["webhook"] == got["status"] == got["login"] == "ok"
+    assert got["content_write"] == got["other_write"] == got["ai"] == got["webhook"] == "maintenance_draining"
+    assert got["read"] == got["status"] == got["login"] == "ok"
     assert outcome(hit(gate, "content_write", {"X-Luma-Edit-Session": token})) == "maintenance_draining"
 
 
@@ -340,3 +340,64 @@ def test_admin_view_shows_counts_and_log_without_student_data(world):
     assert view["safety"][0]["code"] == "grace_not_over"
     text = str(view)
     assert "SYNTH" not in text and "example.test" not in text
+
+
+def test_missing_column_fails_schema_check_and_blocks_reopen(world, monkeypatch):
+    """A deploy whose code needs notes.version, without the student-work migration, must
+    not reopen: every save would fail."""
+    from tests import maintenance_fakes
+
+    world.to_active()
+    monkeypatch.setitem(maintenance_fakes.TABLE_COLUMNS, "notes", {"id", "user_id", "title", "create_key"})
+    assert world.checks().status_code == 200
+    results = {r["name"]: r for r in world.db.state["checks"]["results"]}
+    assert results["schema"]["passed"] is False
+    assert results["schema"]["detail"] == {"failed_tables": ["notes"]}
+    assert world.db.state["checks_passed_at"] is None
+    refused = world.reopen()
+    assert refused.status_code == 409 and refused.json()["error_code"] == "checks_not_passed"
+    # Apply the migration (the column exists again), check again, and it can reopen.
+    monkeypatch.setitem(maintenance_fakes.TABLE_COLUMNS, "notes", {"id", "user_id", "title", "version", "create_key"})
+    assert world.checks().status_code == 200
+    assert world.reopen().status_code == 200
+
+
+def test_required_schema_includes_student_work_columns():
+    for table in ("notes", "summaries", "flashcards", "study_sessions"):
+        assert {"version", "create_key"} <= set(maintenance.REQUIRED_SCHEMA[table]), table
+    assert "progress_rev" in maintenance.REQUIRED_SCHEMA["flashcards"]
+
+
+def test_two_code_versions_running_fail_the_code_version_check(world):
+    """A deploy still rolling out (or half failed) leaves two code versions answering."""
+    world.to_active()
+    now = world.clock()
+    world.db.tables[maintenance.INSTANCES_TABLE].append({
+        "instance_id": "instance-new", "started_at": maintenance.iso(now), "heartbeat_at": maintenance.iso(now),
+        "in_flight": 0, "phase_seen": "active", "code_version": "other-commit",
+    })
+    assert world.checks().status_code == 200
+    results = {r["name"]: r for r in world.db.state["checks"]["results"]}
+    assert results["code_version"]["passed"] is False
+    assert results["code_version"]["detail"]["versions_seen"] == 2
+    assert world.reopen().json()["error_code"] == "checks_not_passed"
+    # The old server has gone quiet for over two minutes (the deploy finished): it passes.
+    world.clock.advance(minutes=3)
+    assert world.checks().status_code == 200
+    results = {r["name"]: r for r in world.db.state["checks"]["results"]}
+    assert results["code_version"]["passed"] is True
+
+
+def test_webhooks_wait_in_the_last_settle_seconds_of_the_grace(world):
+    """Payment events are refused (Stripe retries them) from DRAIN_SETTLE_SECONDS before the
+    grace ends, so a server with a stale 'draining' copy or a slow clock can't write after
+    the break starts."""
+    gate, _ = gate_app(world)
+    world.schedule()
+    world.drain(grace_minutes=5)
+    world.clock.advance(minutes=5, seconds=-(maintenance.DRAIN_SETTLE_SECONDS + 1))
+    assert outcome(hit(gate, "webhook")) == "ok"
+    world.clock.advance(seconds=2)
+    response = hit(gate, "webhook")
+    assert outcome(response) == "maintenance_draining"
+    assert response.headers["retry-after"] == str(maintenance.WEBHOOK_RETRY_AFTER_SECONDS)

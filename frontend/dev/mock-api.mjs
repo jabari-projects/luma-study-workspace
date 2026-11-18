@@ -228,7 +228,9 @@ function maintGate(req, path, parts) {
   if (maint.phase === "active" || maint.phase === "checking") return ["maintenance_active", MAINT_ACTIVE, group === "webhook" ? 600 : maintRetryAfter()]
   const graceOver = Date.now() >= (msOf(maint.grace_ends_at) ?? 0)
   const draining = ["maintenance_draining", MAINT_DRAINING, maintRetryAfter()]
-  if (group === "read" || group === "webhook") return null
+  if (group === "read") return null
+  // Payment events wait from 60 s (DRAIN_SETTLE_SECONDS) before the grace ends, like the server.
+  if (group === "webhook") return Date.now() >= (msOf(maint.grace_ends_at) ?? 0) - 60_000 ? draining : null
   if (group === "long" || group === "edit") return draining
   if (group === "write") return graceOver ? draining : null
   const issued = editSessions.get(String(req.headers["x-luma-edit-session"] || ""))
@@ -918,6 +920,9 @@ http
         return send(res, 201, shape(d))
       }
       // Review progress: merged per card id. Never changes the words or the version.
+      // The real server writes only if both progress_rev and version are still what it read,
+      // so an editor save that lands in between is never undone. Here the read and the write
+      // are one synchronous step, so nothing can land in between.
       if (parts[2] === "progress" && req.method === "PATCH") {
         const deck = decks.find((x) => x.id === parts[1] && x.user_id === me.id)
         if (!deck) return send(res, 404, { detail: "Flashcard not found", error_code: "item_gone" })

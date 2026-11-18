@@ -250,6 +250,7 @@ export function useAutosave<C, Row extends SavedRow>(options: AutosaveOptions<C,
       },
       flush: () => client.flush(),
       resume: () => client.resume(),
+      retryAfterBreak: () => client.retryAfterBreak(),
       discard: () => client.discard(),
     })
     // Remember how to keep a copy right away (used when the editor closes).

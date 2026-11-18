@@ -133,3 +133,42 @@ def test_a_retried_editor_save_that_already_landed_is_200(work_api, work_db):
     retry = work_api.put(f"/flashcards/{deck['id']}", json=body)
     assert retry.status_code == 200
     assert retry.json()["version"] == 2
+
+
+def test_editor_save_between_the_progress_read_and_write_is_kept(work_api, work_db):
+    deck = _deck(work_api)
+    row = work_db.row("flashcards", deck["id"])
+    fired = {"n": 0}
+
+    def editor_lands_first(query):
+        if fired["n"]:
+            return
+        fired["n"] = 1
+        # The editor tab's PUT lands between the study tab's read and write: version moves,
+        # progress_rev does not.
+        row["cards"] = [{**row["cards"][0], "front": "Q1 EDITED"}, row["cards"][1]]
+        row["version"] = 2
+
+    work_db.before_update = editor_lands_first
+    response = work_api.patch(f"/flashcards/{deck['id']}/progress", json={"reviews": {"c1": REVIEW}})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"version": 2, "progress_rev": 1}
+    stored = work_db.row("flashcards", deck["id"])
+    assert stored["cards"][0]["front"] == "Q1 EDITED"  # the editor's words were not undone
+    assert stored["cards"][0]["review"] == REVIEW  # and the progress still landed
+    assert stored["version"] == 2  # progress never bumps version
+
+
+def test_progress_that_keeps_losing_to_editor_saves_says_progress_busy(work_api, work_db):
+    deck = _deck(work_api)
+    row = work_db.row("flashcards", deck["id"])
+
+    def an_editor_always_first(query):
+        row["version"] += 1
+
+    work_db.before_update = an_editor_always_first
+    response = work_api.patch(f"/flashcards/{deck['id']}/progress", json={"reviews": {"c1": REVIEW}})
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "progress_busy"
+    assert row["progress_rev"] == 0
+    assert row["cards"][0]["review"] is None

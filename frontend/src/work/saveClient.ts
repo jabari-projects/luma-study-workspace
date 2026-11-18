@@ -218,6 +218,15 @@ export class SaveClient<C, Row extends SavedRow> {
     void this.run()
   }
 
+  /**
+   * Luma reopened after a break (maintenance/observe.ts saw it): a save that waits on the
+   * break message tries once now. One event, not polling.
+   */
+  retryAfterBreak(): void {
+    if (this.state !== "maintenance") return
+    this.retry()
+  }
+
   /** After signing in again: the paused save tries once. */
   resume(): void {
     if (this.state !== "signed_out") return
@@ -403,10 +412,14 @@ export class SaveClient<C, Row extends SavedRow> {
       this.version = row.version
       if (request.mode === "create") {
         this.itemId = typeof row.id === "string" ? row.id : this.itemId
-        // A 200 here is a replay: the first copy landed earlier. If it holds older words than
-        // the ones we just sent, send ours as an update next (with the version it returned).
+        // A 200 here is a replay: the first copy landed earlier, and the server answers with
+        // the row as it is NOW. If it lacks the words we just sent, send ours as an update,
+        // checked against version 1 (the version a create makes), never the replayed row's
+        // version: if the item was edited since (another tab with the same key, say), that
+        // is a 409 and the conflict panel, not a quiet overwrite.
         if (reply.status === 200 && this.opts.rowHas && !this.opts.rowHas(row, request.content)) {
           this.pending = this.pending ?? request.content
+          this.version = 1
         }
       }
       this.savedAt = this.opts.env.now()

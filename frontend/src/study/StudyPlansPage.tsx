@@ -9,6 +9,8 @@ import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner } from "../ui/common"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
+import { createWithApi } from "../work/apiCreate"
+import { sameText } from "../work/createOnce"
 import { DraftOffer } from "../work/DraftOffer"
 import { newCreateKey, useEditSession } from "../work/useAutosave"
 import { useExplicitWork } from "../work/useExplicitWork"
@@ -23,6 +25,7 @@ type StudyPlan = {
   duration_seconds?: number | null
   created_at?: string
   updated_at?: string | null
+  version?: number
 }
 
 const emptyForm = { name: "", subject: "", minutes: "", notes: "" }
@@ -92,20 +95,27 @@ export function StudyPlansPage() {
     const createKey = form.createKey ?? newCreateKey()
     setSaving(true)
     try {
-      const response = await api.post<StudyPlan>(
+      const body = {
+        name: form.name.trim(),
+        subject: form.subject.trim(),
+        notes: form.notes.trim(),
+        duration_seconds: secondsFromMinutes(form.minutes),
+      }
+      const saved = await createWithApi<StudyPlan>(
         STUDY_PLANS,
-        {
-          name: form.name.trim(),
-          subject: form.subject.trim(),
-          notes: form.notes.trim(),
-          duration_seconds: secondsFromMinutes(form.minutes),
-        },
-        { lumaAccountId: accountId ?? undefined, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": createKey } },
+        body,
+        (row) =>
+          sameText(row.name, body.name) &&
+          sameText(row.subject, body.subject) &&
+          sameText(row.notes, body.notes) &&
+          row.duration_seconds === body.duration_seconds,
+        createKey,
+        { lumaAccountId: accountId ?? undefined, timeout: 30_000, headers: sessionHeaders() },
       )
       if ((getTabAccountId() ?? null) !== accountId) return
       setForm({ ...emptyForm, createKey: newCreateKey() })
-      setPlans((current) => [response.data, ...current.filter((plan) => plan.id !== response.data.id)])
-      toast.success(`Saved “${planName(response.data)}”.`)
+      setPlans((current) => [saved, ...current.filter((plan) => plan.id !== saved.id)])
+      toast.success(`Saved “${planName(saved)}”.`)
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "We couldn't save this plan. Try again in a moment.") })
     } finally {

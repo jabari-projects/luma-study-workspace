@@ -75,7 +75,17 @@ EDIT_SESSION_HEADER = "x-luma-edit-session"
 WEBHOOK_RETRY_AFTER_SECONDS = 600
 JOB_SLACK_SECONDS = 30
 
-INSTANCE_ID = os.getenv("RENDER_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
+
+
+def make_instance_id(render_instance_id: Optional[str] = None, pid: Optional[int] = None) -> str:
+    """One id per server PROCESS. Render's instance id alone is not enough: with more than one
+    uvicorn worker (WEB_CONCURRENCY) every worker on an instance would share one row and
+    overwrite the others' in-flight counts. So the pid and a random part are always added."""
+    base = render_instance_id if render_instance_id is not None else os.getenv("RENDER_INSTANCE_ID")
+    return f"{base or socket.gethostname()}-{pid if pid is not None else os.getpid()}-{uuid.uuid4().hex[:6]}"
+
+
+INSTANCE_ID = make_instance_id()
 CODE_VERSION = os.getenv("RENDER_GIT_COMMIT", "")
 
 STATE_TABLE = "maintenance_state"
@@ -87,9 +97,13 @@ LOG_TABLE = "maintenance_log"
 COUNT_TABLES = ("users", "profiles", "notes", "summaries", "flashcards", "study_sessions")
 # The "database" reopen check reads no rows from each of these.
 CORE_TABLES = COUNT_TABLES
-# The "schema" reopen check: these columns must exist. Integration adds the student-work
-# columns (version, create_key, progress_rev) once that track is merged.
+# The "schema" reopen check: these columns must exist. The student-work columns come from
+# 2026_11_19_student_work_versions.sql: without them every save fails, so Luma must not reopen.
 REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
+    "notes": ("id", "user_id", "version", "create_key"),
+    "summaries": ("id", "user_id", "version", "create_key"),
+    "flashcards": ("id", "user_id", "version", "create_key", "progress_rev"),
+    "study_sessions": ("id", "user_id", "version", "create_key"),
     STATE_TABLE: (
         "id", "phase", "rev", "reason", "note", "start_at", "estimated_end_at", "drain_started_at",
         "grace_ends_at", "activated_at", "backup_ref", "counts_at_activation", "checks",
@@ -109,6 +123,9 @@ DRAINING_MESSAGE = (
     "Work you already started can still be saved for a few minutes."
 )
 UNAVAILABLE_MESSAGE = "We can't reach the break settings right now. Try again in a minute."
+STARTING_MESSAGE = "Luma is just starting up and can't save changes yet. Your work is still here. Try again in a minute."
+# Retry-After for a process that has not read the break state yet (see state_known).
+UNKNOWN_STATE_RETRY_SECONDS = 30
 CHANGED_MESSAGE = "Someone else changed the break just now. Look at the page again before you try."
 NOT_SAFE_MESSAGE = "It isn't safe to start yet."
 TIME_SKIPPED_MESSAGE = "That time is skipped when clocks change. Pick another time."
@@ -453,6 +470,9 @@ class MaintenanceRuntime:
         self._checked_at: Optional[datetime] = None
         self._refreshing: Optional[Future] = None
         self._read_failing = False
+        # False until this process has read the break state once. Until then it can't know
+        # whether a break is on, so the middleware refuses writes (fails closed).
+        self._known = False
         self.in_flight = 0
         self._reported_phase = "none"
         self._last_report_mono = -1e9
@@ -504,6 +524,8 @@ class MaintenanceRuntime:
             ok = True
         with self._lock:
             self._checked_at = self.clock()
+            if ok:
+                self._known = True
             if ok and row is not None:
                 self._set_state_locked(normalize_state(row))
 
@@ -521,7 +543,13 @@ class MaintenanceRuntime:
         """Admin transitions update this process's cache right away."""
         with self._lock:
             self._checked_at = self.clock()
+            self._known = True
             self._set_state_locked(normalize_state(row))
+
+    @property
+    def state_known(self) -> bool:
+        """True once this process has read the break state at least once."""
+        return self._known
 
     async def current_state(self) -> dict:
         now = self.clock()
@@ -669,6 +697,14 @@ def set_runtime(runtime: Optional[MaintenanceRuntime]) -> None:
         _runtime = runtime
 
 
+def writes_paused() -> bool:
+    """True during the break (or before this process could read the break state). Routes
+    that stay open during a break (like log in) use it to skip optional writes. Uses the
+    cached state only: no database call."""
+    runtime = get_runtime()
+    return (not runtime.state_known) or runtime.state["phase"] in ("active", "checking")
+
+
 # ------------------------------------------------------------------ the gate
 
 
@@ -691,7 +727,15 @@ def decide(state: dict, group: str, edit_token: Optional[str], now: datetime) ->
     # draining
     grace_ends = parse_ts(state.get("grace_ends_at"))
     grace_over = grace_ends is None or now >= grace_ends
-    if group in (READ, WEBHOOK):
+    if group == READ:
+        return None
+    if group == WEBHOOK:
+        # Payment events wait (Stripe sends them again) from DRAIN_SETTLE_SECONDS before the
+        # grace ends. Another server whose 5-second copy still says "draining", or whose clock
+        # is a little behind, then can't change the database after the break starts.
+        settle_from = grace_ends - timedelta(seconds=DRAIN_SETTLE_SECONDS) if grace_ends else None
+        if settle_from is None or now >= settle_from:
+            return ("maintenance_draining", DRAINING_MESSAGE)
         return None
     if group in (AI, LONG, EDIT_SESSION):
         return ("maintenance_draining", DRAINING_MESSAGE)
@@ -726,6 +770,21 @@ class MaintenanceMiddleware:
                     edit_token = value.decode("latin-1")
                     break
         blocked = decide(state, group, edit_token, now)
+        if blocked is None and not runtime.state_known and group not in (ALWAYS_OPEN, READ):
+            # A new process (a deploy, a crash or a cold start) whose first read failed can't
+            # tell whether a break is on. Fail closed: reading stays open, changes wait.
+            response = JSONResponse(
+                status_code=503,
+                content={
+                    "detail": STARTING_MESSAGE,
+                    "error_code": "maintenance_unavailable",
+                    "retry_after": UNKNOWN_STATE_RETRY_SECONDS,
+                },
+            )
+            response.headers["Retry-After"] = str(UNKNOWN_STATE_RETRY_SECONDS)
+            response.headers["Cache-Control"] = "no-store"
+            await response(scope, receive, send)
+            return
         phase_headers = [
             (b"x-luma-maintenance", state["phase"].encode()),
             (b"x-luma-maintenance-rev", str(int(state.get("rev") or 0)).encode()),
@@ -1213,8 +1272,30 @@ def run_checks(runtime: MaintenanceRuntime, state: dict, counts_drop_reason: Opt
         storage_ok, bucket_count = False, 0
     results.append({"name": "storage", "passed": storage_ok, "detail": {"buckets": bucket_count}})
 
-    results.append({"name": "code_version", "passed": True, "detail": {"version": runtime.code_version[:12]}})
+    results.append(_code_version_check(runtime))
     return results
+
+
+def _code_version_check(runtime: MaintenanceRuntime) -> dict:
+    """Every server that reported in the last two minutes runs the same code as this one.
+    Two different versions mean a deploy is still rolling out (or half failed): don't reopen."""
+    now = runtime.clock()
+    try:
+        instances = runtime.call(runtime.store.list_instances)
+    except MaintenanceUnavailable:
+        return {"name": "code_version", "passed": False, "detail": {"version": runtime.code_version[:12], "versions_seen": 0}}
+    versions = {runtime.code_version} if runtime.code_version else set()
+    for row in instances:
+        heartbeat = parse_ts(row.get("heartbeat_at"))
+        if heartbeat is None or (now - heartbeat).total_seconds() > HEARTBEAT_FRESH_SECONDS:
+            continue
+        if row.get("code_version"):
+            versions.add(str(row["code_version"]))
+    return {
+        "name": "code_version",
+        "passed": len(versions) <= 1,
+        "detail": {"version": runtime.code_version[:12], "versions_seen": len(versions)},
+    }
 
 
 @admin_maintenance_router.post("/checks")

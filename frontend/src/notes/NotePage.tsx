@@ -12,6 +12,8 @@ import { NoticeBanner, PageHeader } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
 import { ShareControl } from "../ui/Share"
 import { sharedLine, useShareName } from "../ui/sharing"
+import { createWithApi } from "../work/apiCreate"
+import { sameCards, sameText } from "../work/createOnce"
 import { DraftOffer } from "../work/DraftOffer"
 import { LEAVE_ANYWAY_STATE } from "../work/leave"
 import { newCreateKey, useEditSession } from "../work/useAutosave"
@@ -159,19 +161,22 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
     // Make the deck in the account that showed this note, even if the tab switches meanwhile.
     const accountId = getTabAccountId() ?? undefined
     try {
-      const response = await api.post<{ id: string }>(
+      const body = {
+        title: `${title} cards`.slice(0, 200),
+        tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
+        cards: kept.map((card) => ({ id: newCardId(), front: card.front, back: card.back, review: null })),
+      }
+      const deck = await createWithApi<{ id: string; version: number; title?: string; cards?: unknown }>(
         "/flashcards",
-        {
-          title: `${title} cards`.slice(0, 200),
-          tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
-          cards: kept.map((card) => ({ id: newCardId(), front: card.front, back: card.back, review: null })),
-        },
-        { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": deckKey.current } },
+        body,
+        (row) => sameText(row.title, body.title) && sameCards(row.cards, body.cards),
+        deckKey.current,
+        { lumaAccountId: accountId, timeout: 30_000, headers: sessionHeaders() },
       )
       deckKey.current = newCreateKey()
       if ((getTabAccountId() ?? undefined) !== accountId) return
       toast.success("Your deck is ready!")
-      navigate(`/flashcards/${response.data.id}`)
+      navigate(`/flashcards/${deck.id}`)
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "We couldn't make the deck. Your note is safe.") })
     } finally {
@@ -206,17 +211,20 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
       }
     }
     try {
-      const response = await api.post<{ id: string }>(
+      const body = {
+        title: (made.title || `Summary of ${title}`).slice(0, 200),
+        content: made.summary,
+        tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
+      }
+      const summary = await createWithApi<{ id: string; version: number; title?: string; content?: string }>(
         "/summaries",
-        {
-          title: (made.title || `Summary of ${title}`).slice(0, 200),
-          content: made.summary,
-          tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
-        },
-        { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": summaryKey } },
+        body,
+        (row) => sameText(row.title, body.title) && sameText(row.content, body.content),
+        summaryKey,
+        { lumaAccountId: accountId, timeout: 30_000, headers: sessionHeaders() },
       )
       setSummaryKey(newCreateKey())
-      const summaryPath = `/summaries/${response.data.id}`
+      const summaryPath = `/summaries/${summary.id}`
       if (!onThisNote.current) {
         // They moved on while Luma was working: don't pull them back. Let them open it if they want.
         if ((getTabAccountId() ?? undefined) === accountId) {

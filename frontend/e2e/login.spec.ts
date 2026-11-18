@@ -62,3 +62,21 @@ test("session survives a reload and logout really signs out", async ({ page }) =
   await page.goto("/settings")
   await expect(page).toHaveURL(/\/settings/)
 })
+
+// The owner asked (2026-11-18) that nothing technical shows under Log in. Even when the
+// server can't be reached or never answers, the page shows no server address, and the
+// sign-in card sits near the top instead of in a big empty area.
+for (const trouble of ["unreachable", "never answers"] as const) {
+  test(`the login page never shows the server address when the server is ${trouble}`, async ({ page }) => {
+    await page.route(`${API}/**`, (route) => (trouble === "unreachable" ? route.abort() : new Promise(() => undefined)))
+    await page.goto("/login")
+    await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible()
+    await page.waitForTimeout(1_500) // give any late banner time to show up
+    const text = await page.locator("body").innerText()
+    for (const bad of [API, new URL(API).host, "localhost:", "127.0.0.1", "onrender", "http"]) {
+      expect(text, `login page shows "${bad}"`).not.toContain(bad)
+    }
+    const top = await page.locator(".auth-card").evaluate((el) => el.getBoundingClientRect().top / window.innerHeight)
+    expect(top, "empty space above the sign-in card").toBeLessThan(0.25)
+  })
+}

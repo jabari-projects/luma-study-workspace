@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from luma_backup import manifest as mf  # noqa: E402
 from luma_backup import restore_test, secrets_store  # noqa: E402
-from luma_backup.common import close_logging, drive_present, run_lock, setup_logging  # noqa: E402
+from luma_backup.common import clear_leftover_work, close_logging, drive_present, run_lock, setup_logging  # noqa: E402
 from luma_backup.config import (STAMP_RE, UnsafePath, add_path_args, check_paths, iso, make_stamp,  # noqa: E402
                                 paths_from_args, utc_now)
 from luma_backup.crypto import Gpg  # noqa: E402
@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     error: BackupError | None = None
     try:
         with run_lock(paths, run_stamp, "restore test"):
+            clear_leftover_work(paths)  # unlocked copies a killed run left behind
             set_dir = find_set(paths.backup_root, args.stamp)
             try:
                 manifest = mf.validate(mf.read_json(set_dir / "manifest.json"))

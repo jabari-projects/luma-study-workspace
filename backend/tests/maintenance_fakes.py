@@ -20,10 +20,10 @@ TABLE_COLUMNS = {
     **{name: set(cols) for name, cols in maintenance.REQUIRED_SCHEMA.items()},
     "users": {"id", "email", "role"},
     "profiles": {"user_id", "username"},
-    "notes": {"id", "user_id", "title"},
-    "summaries": {"id", "user_id"},
-    "flashcards": {"id", "user_id"},
-    "study_sessions": {"id", "user_id"},
+    "notes": {"id", "user_id", "title", "version", "create_key"},
+    "summaries": {"id", "user_id", "version", "create_key"},
+    "flashcards": {"id", "user_id", "version", "create_key", "progress_rev"},
+    "study_sessions": {"id", "user_id", "version", "create_key"},
 }
 
 

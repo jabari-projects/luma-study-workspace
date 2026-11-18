@@ -56,7 +56,7 @@ from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
 from .transcripts import router as transcripts_router
-from .maintenance import MaintenanceMiddleware, maintenance_router, admin_maintenance_router
+from .maintenance import MaintenanceMiddleware, maintenance_router, admin_maintenance_router, writes_paused
 
 # Deployment notes:
 # - Backend platforms like Render, Railway, and Fly.io should set
@@ -868,7 +868,7 @@ def verify_user(email: str, password: str):
 
     Looks the user up by email only (the database is never filtered by
     password). Legacy plaintext passwords and outdated hashes are upgraded to a
-    fresh argon2id hash on a successful login (best effort).
+    fresh argon2id hash on a successful login (best effort, and not during a break).
     """
     user_row = find_user_by_email(email)
     stored = user_row.get("password") if isinstance(user_row, dict) else None
@@ -881,7 +881,9 @@ def verify_user(email: str, password: str):
     if not ok:
         return None
 
-    if needs_rehash:
+    # Log in stays open during a break, but the database must not change then: the upgrade
+    # waits for the next log in after Luma reopens.
+    if needs_rehash and not writes_paused():
         try:
             update_user(user_row["id"], {"password": hash_password(password)})
         except Exception as exc:

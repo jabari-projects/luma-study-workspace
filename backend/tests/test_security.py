@@ -901,3 +901,23 @@ def test_limiter_prunes_expired_keys_globally():
     now[0] = 100.0
     limiter.record("fresh")
     assert list(limiter._events) == ["fresh"]
+
+
+@pytest.mark.parametrize("phase, rewritten", [("active", False), ("checking", False), ("draining", True), ("none", True)])
+def test_login_during_a_break_does_not_rewrite_the_password(api, db, phase, rewritten):
+    """Log in stays open during a break, but must not write to users then."""
+    from app import maintenance
+    from tests.maintenance_fakes import FakeClock, FakeMaintenanceDB, make_runtime
+
+    mdb = FakeMaintenanceDB()
+    mdb.state["phase"] = phase
+    maintenance.set_runtime(make_runtime(mdb, FakeClock(), "instance-login"))
+    try:
+        db.user(password="short1")  # an old plaintext password that would be upgraded
+        response = login(api, password="short1")
+        assert response.status_code == 200
+        updates = [c for c in db.calls if c[0] == "users" and c[1] == "update"]
+        assert bool(updates) is rewritten
+        assert db.users()[0]["password"].startswith("$argon2id$") is rewritten
+    finally:
+        maintenance.set_runtime(None)

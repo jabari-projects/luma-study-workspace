@@ -49,7 +49,10 @@ Plain rule: updates add things. They never delete student work.
    it. Then runs the file's VERIFY part and checks the numbers.
 
 7. **Update the backend first** (Render), **then the website** (Vercel). The new backend works
-   with both the old and the new website, so the order is safe.
+   with both the old and the new website, so the order is safe. The database change (step 6)
+   must come before the backend: a new server that can't read the break settings (tables
+   missing, or the database slow) keeps reading open but refuses saves with "try again in a
+   minute" until it can, so it never lets work through during a break by mistake.
 
 8. **Run the checks.** Reopen only if they all pass. Then in Stripe (Developers > Webhooks),
    check that any events that got "try again later" during the break were sent again and
