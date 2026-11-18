@@ -144,6 +144,9 @@ insert into public.ai_usage (id, user_id, feature, tokens_used) values
 
 SEEDED_COUNTS = {"users": 5, "profiles": 5, "notes": 6, "flashcards": 4, "summaries": 2, "study_sessions": 2,
                  "transcripts": 1, "notifications": 3, "ai_usage": 2}
+# Rows the migrations themselves create (not seeded by this module). The maintenance migration
+# adds its one settings row; a backup must keep it like any other row.
+MIGRATION_ROWS = {"maintenance_state": 1}
 LEGACY_PLAINTEXT_ROWS = 3
 
 

@@ -52,8 +52,10 @@ test.describe("sidebar and icon rail (desktop and tablet)", () => {
   test("has Home, Study, Notes, Search and Settings, and none of the old entries", async ({ page }) => {
     const nav = sidebar(page)
     await expect(nav).toBeVisible()
-    // The brand, the four places and Settings. Nothing else is a link.
-    await expect(nav.getByRole("link")).toHaveCount(6)
+    // The brand, the four places and Settings, plus Maintenance because the fake demo account
+    // is an admin (students never see it; maintenance.spec.ts checks that). Nothing else is a link.
+    await expect(nav.getByRole("link")).toHaveCount(7)
+    await expect(nav.getByRole("link", { name: "Maintenance", exact: true })).toHaveAttribute("href", "/admin/maintenance")
     await expect(nav.getByRole("link", { name: "Luma home" })).toHaveAttribute("href", "/dashboard")
     for (const [name, href] of [...PLACES, ["Settings", "/settings"] as const]) {
       await expect(nav.getByRole("link", { name, exact: true })).toHaveAttribute("href", href)

@@ -43,6 +43,9 @@ import { SettingsPage } from "./account/SettingsPage"
 import { DiscoverPage } from "./discover/DiscoverPage"
 import { DISCOVER, DISCOVER_REDIRECTS } from "./discover/discover"
 import { ImportPage } from "./capture/ImportPage"
+import { MaintenanceNotice } from "./maintenance/MaintenanceNotice"
+import { StatusPage } from "./maintenance/StatusPage"
+import { AdminMaintenancePage } from "./maintenance/AdminMaintenancePage"
 
 type HealthState = {
   status: "checking" | "online" | "offline"
@@ -249,6 +252,7 @@ function AppLayout() {
       <MobileTopBar initials={initials} />
       <main className="content">
         <VerifyEmailBanner />
+        <MaintenanceNotice />
         <Routes>
           <Route path="/dashboard" element={<TodayPage />} />
           <Route path={DISCOVER} element={<DiscoverPage />} />
@@ -284,6 +288,7 @@ function AppLayout() {
           <Route path="/subscribe" element={<Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin/reports" element={<AdminReportsPage />} />
+          <Route path="/admin/maintenance" element={<AdminMaintenancePage />} />
           <Route path="/profile" element={<Navigate to="/settings" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
@@ -325,6 +330,7 @@ function RootRoutes() {
       <Route path="/account-deleted" element={<AccountDeletedPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/status" element={<StatusPage />} />
       {/* Keyed by account: switching starts the app fresh, so no page shows one account's data under another. */}
       <Route path="/*" element={<ProtectedRoute><AppLayout key={activeAccountId ?? "none"} /></ProtectedRoute>} />
     </Routes>

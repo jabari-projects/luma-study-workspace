@@ -1,0 +1,254 @@
+/* Maintenance notice, break cover, status page and admin page.
+   Uses the color tokens from styles.css, so light and dark themes both work. */
+
+/* ------------------------------------------------------------ app notice */
+
+.maint-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 18px;
+  border: 2px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.maint-notice > div,
+.maint-notice > p {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.maint-notice p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.maint-notice .maint-work-line {
+  margin-top: 4px;
+}
+
+.maint-notice-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.maint-notice.good {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: var(--success-soft);
+}
+
+.maint-notice.warn,
+.maint-notice.strong {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-soft);
+}
+
+.maint-notice.strong {
+  border-width: 3px;
+}
+
+.maint-close {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -6px -8px auto;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+
+.maint-close:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.maint-close:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------- the break cover (content only) */
+
+/* While the cover shows, the page under it is hidden but stays mounted (nothing is lost).
+   The navigation stays, because it is outside .content. */
+.content:has(> .maint-cover) > :not(.maint-cover) {
+  display: none !important;
+}
+
+.maint-cover {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  max-width: 560px;
+  padding: clamp(8px, 4vh, 40px) 0;
+}
+
+.maint-cover h1 {
+  margin: 0;
+}
+
+.maint-cover p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.maint-cover-mark {
+  width: 56px;
+  height: 56px;
+}
+
+.maint-cover-why {
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ status page */
+
+.maint-status-screen {
+  min-height: 100dvh;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  padding: clamp(24px, 8vh, 72px) var(--gutter) 32px;
+  background: var(--paper);
+}
+
+.maint-status {
+  width: min(560px, 100%);
+}
+
+.maint-status h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 5vw, 2.3rem);
+}
+
+.maint-status p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.maint-status-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.maint-status-brand img {
+  width: 32px;
+  height: 32px;
+}
+
+.maint-status-note {
+  border-left: 3px solid var(--line-strong);
+  padding-left: 12px;
+}
+
+.maint-status-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 4px;
+}
+
+.maint-status-foot button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.maint-status-home {
+  justify-self: start;
+  min-height: 44px;
+}
+
+/* ------------------------------------------------------------- admin page */
+
+.maint-admin {
+  display: grid;
+  gap: 24px;
+  max-width: 720px;
+}
+
+.maint-admin-form {
+  display: grid;
+  gap: 14px;
+}
+
+.maint-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 20px;
+  margin: 0;
+}
+
+.maint-facts dt {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.maint-facts dd {
+  margin: 2px 0 0;
+  font-weight: 650;
+}
+
+.maint-counts,
+.maint-reasons,
+.maint-check-list,
+.maint-log,
+.maint-not-safe ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.maint-check-list .passed strong {
+  color: var(--success);
+}
+
+.maint-check-list .failed strong {
+  color: var(--danger);
+}
+
+.maint-not-safe {
+  display: grid;
+  gap: 8px;
+}
+
+.maint-not-safe p {
+  margin: 0;
+}
+
+.maint-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 650;
+}
+
+.maint-check input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+@media (max-width: 560px) {
+  .maint-admin .button-row > button {
+    flex: 1 1 100%;
+  }
+}

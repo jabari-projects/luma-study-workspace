@@ -112,9 +112,10 @@ def test_backup_verified_end_to_end(good, source):
     # Restore report: passed, and the true counts inside the backup equal what was seeded.
     report = json.loads((set_dir / "restore-report.json").read_text(encoding="utf-8"))
     assert report["result"] == "passed", report
-    for table, n in synthetic.SEEDED_COUNTS.items():
+    expected_rows = {**synthetic.SEEDED_COUNTS, **synthetic.MIGRATION_ROWS}
+    for table, n in expected_rows.items():
         assert report["rows_restored"][table] == n, table
-    assert all(n == 0 for t, n in report["rows_restored"].items() if t not in synthetic.SEEDED_COUNTS)
+    assert all(n == 0 for t, n in report["rows_restored"].items() if t not in expected_rows)
     assert report["storage"] == expected_summary()
     assert "@" not in json.dumps(report)
 

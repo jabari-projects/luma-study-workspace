@@ -506,7 +506,9 @@ test.describe("Sharing permissions", () => {
     await expect(titleField).toHaveValue(title)
     await titleField.fill("Hijacked title")
     await otherPage.getByRole("button", { name: /save/i }).click()
-    await expect(otherPage.getByText(/not found|could not save|can't|cannot|not allowed/i).first()).toBeVisible()
+    // The save is refused with 404 item_gone, so the editor shows its "deleted" choices (B.8).
+    // Only the FAKE API serves this page to a non-owner; the real backend 404s the page itself.
+    await expect(otherPage.getByText(/not found|could not save|can't|cannot|not allowed|was deleted somewhere else/i).first()).toBeVisible()
 
     // Stop sharing / delete directly through the API are refused as well.
     const auth = { authorization: `Bearer ${other.token}` }
