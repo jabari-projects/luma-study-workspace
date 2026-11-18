@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { ArrowLeft, Cards, Check, Lightbulb, MagicWand, PencilSimple, Trash, X } from "@phosphor-icons/react"
+import { ArrowLeft, Cards, Check, Lightbulb, MagicWand, PencilSimple, TextAlignLeft, Trash, X } from "@phosphor-icons/react"
 
 import { api, getErrorMessage, getTabAccountId } from "../api"
-import { CaptureError, makeNotes } from "../capture/capture-api"
+import { CaptureError, makeNotes, makeSummary } from "../capture/capture-api"
 import { newCardId } from "../study/deck"
 import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner, PageHeader } from "../ui/common"
@@ -33,11 +33,23 @@ function friendlyDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
 }
 
+type MadeSummary = { title: string; summary: string }
+
+type NotePageProps = { endpoint: string; studyType: StudyType; backTo: string; kindLabel: string }
+
 /**
  * A saved note (or summary) shown as a clean page, with one-tap flashcards made from it.
  * `backTo` is the Notes hub (its Summaries tab for a summary).
+ *
+ * Each note gets a fresh page: going from a note to its new summary (or any other item)
+ * starts with no open box, no notice and no extra AI cards left over from before.
  */
-export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint: string; studyType: StudyType; backTo: string; kindLabel: string }) {
+export function NotePage(props: NotePageProps) {
+  const { itemId } = useParams()
+  return <NoteView key={`${props.endpoint}/${itemId ?? ""}`} {...props} />
+}
+
+function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
   const { itemId } = useParams()
   const navigate = useNavigate()
   const [state, setState] = useState<{ id?: string; item: NoteItem | null; error: string | null }>({ item: null, error: null })
@@ -48,7 +60,27 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
   const [saving, setSaving] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmingSummary, setConfirmingSummary] = useState(false)
+  const [summarizing, setSummarizing] = useState(false)
+  // What happened with "Make a summary", shown right under its button (it can sit far down the page).
+  const [summaryNotice, setSummaryNotice] = useState<Notice | null>(null)
+  // A summary the AI made but we couldn't save. The next tap only tries saving again, so no new AI turn.
+  const [unsavedSummary, setUnsavedSummary] = useState<MadeSummary | null>(null)
+  const summaryNoticeRef = useRef<HTMLDivElement>(null)
+  // False once the student leaves this note, so a slow AI answer doesn't pull them back here.
+  const onThisNote = useRef(true)
   const shareName = useShareName()
+
+  useEffect(() => {
+    onThisNote.current = true
+    return () => {
+      onThisNote.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (summaryNotice) summaryNoticeRef.current?.scrollIntoView?.({ block: "nearest" })
+  }, [summaryNotice])
 
   useEffect(() => {
     if (!itemId) return
@@ -115,6 +147,68 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
       setNotice({ type: "error", text: getErrorMessage(error, "We couldn't make the deck. Your note is safe.") })
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Make a summary (notes only): the student says yes first, because it uses 1 AI notes turn.
+  // The summary is saved to their summaries, so it shows in the Notes hub's Summaries tab.
+  // If the AI made it but saving failed, the next tap only tries saving again (no new AI turn).
+  const makeSummaryOfNote = async () => {
+    if (!content.trim() || summarizing) return
+    setSummarizing(true)
+    setSummaryNotice(null)
+    // Save it in the account that showed this note, even if the tab switches meanwhile.
+    const accountId = getTabAccountId() ?? undefined
+    let made = unsavedSummary
+    if (!made) {
+      try {
+        made = await makeSummary(content)
+      } catch (error: unknown) {
+        // The student left this note: nothing was saved, so there is nothing to tell them.
+        if (!onThisNote.current) return
+        setSummarizing(false)
+        setConfirmingSummary(false)
+        if (error instanceof CaptureError && error.limitReached) {
+          setSummaryNotice({ type: "info", text: error.message })
+        } else {
+          setSummaryNotice({ type: "error", text: error instanceof Error ? error.message : "We couldn't make a summary right now." })
+        }
+        return
+      }
+    }
+    try {
+      const response = await api.post<{ id: string }>(
+        "/summaries",
+        {
+          title: (made.title || `Summary of ${title}`).slice(0, 200),
+          content: made.summary,
+          tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
+        },
+        { lumaAccountId: accountId },
+      )
+      const summaryPath = `/summaries/${response.data.id}`
+      if (!onThisNote.current) {
+        // They moved on while Luma was working: don't pull them back. Let them open it if they want.
+        if ((getTabAccountId() ?? undefined) === accountId) {
+          toast.success("Your summary is ready!", { action: { label: "Open it", onClick: () => navigate(summaryPath) } })
+        }
+        return
+      }
+      setUnsavedSummary(null)
+      setConfirmingSummary(false)
+      if ((getTabAccountId() ?? undefined) !== accountId) return
+      toast.success("Your summary is ready!")
+      navigate(summaryPath)
+    } catch (error: unknown) {
+      if (!onThisNote.current) {
+        toast.error(getErrorMessage(error, "We made your summary but couldn't save it. Your note is safe."))
+        return
+      }
+      setUnsavedSummary(made)
+      setConfirmingSummary(false)
+      setSummaryNotice({ type: "error", text: "We made it but couldn't save it. Tap to try saving again." })
+    } finally {
+      if (onThisNote.current) setSummarizing(false)
     }
   }
 
@@ -259,8 +353,45 @@ export function NotePage({ endpoint, studyType, backTo, kindLabel }: { endpoint:
           {content.trim().length >= 20 ? (
             <p className="muted small-text ai-note">AI cards use one of your free AI turns for today. Always check them.</p>
           ) : null}
+          {studyType === "note" && content.trim().length >= 20 ? (
+            <div className="note-summary-tool">
+              <h3>Short on time?</h3>
+              <p className="small-text muted">Luma can write a short summary of this note for you.</p>
+              {/* Not "disabled" while saving, so focus stays on it; a second tap does nothing. */}
+              <button
+                type="button"
+                className="secondary-button wide"
+                aria-disabled={summarizing || undefined}
+                onClick={() => {
+                  if (summarizing) return
+                  if (unsavedSummary) void makeSummaryOfNote()
+                  else setConfirmingSummary(true)
+                }}
+              >
+                <TextAlignLeft weight="bold" aria-hidden="true" />{" "}
+                {unsavedSummary ? (summarizing ? "Saving..." : "Try saving again") : "Make a summary"}
+              </button>
+              <div ref={summaryNoticeRef}>
+                <NoticeBanner notice={summaryNotice} />
+              </div>
+            </div>
+          ) : null}
         </aside>
       </div>
+
+      {confirmingSummary ? (
+        <ConfirmDialog
+          tone="primary"
+          title="Make a summary?"
+          body="Luma will write a short summary. This uses 1 of your AI notes for today."
+          confirmLabel="Make summary"
+          busyLabel="Making..."
+          cancelLabel="Not now"
+          busy={summarizing}
+          onConfirm={() => void makeSummaryOfNote()}
+          onCancel={() => setConfirmingSummary(false)}
+        />
+      ) : null}
 
       {confirmingDelete ? (
         <ConfirmDialog

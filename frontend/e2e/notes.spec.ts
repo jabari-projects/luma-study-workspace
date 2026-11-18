@@ -1,10 +1,11 @@
 // Notes: the Notes hub (/notes) with its start links, tabs, "Find in my notes" and row
 // menus; writing and changing a note; deleting with "are you sure?"; making notes from
 // pasted text, Voice to notes (a fake sound file, no microphone) and Image to notes (a
-// made-up picture onto the same workbench, plus the deck);
-// saved notes at /notes/:id; summaries; old addresses that redirect; the draft kept on
-// this device; and the phone "Create something" (+) sheet. Everything runs against the
-// FAKE API. The seeded demo account is read; new notes always get a unique made-up title.
+// made-up picture onto the same workbench, plus the deck); saved notes at /notes/:id;
+// making a summary from a note (fake AI); summaries; old addresses that redirect; the
+// draft kept on this device; and the phone "Create something" (+) sheet. Everything
+// runs against the FAKE API. The seeded demo account is read; new notes always get a
+// unique made-up title.
 import { expect, test } from "@playwright/test"
 import type { Page } from "@playwright/test"
 
@@ -544,6 +545,154 @@ test.describe("making notes", () => {
     await expect(hubRow(page, myTitle)).toHaveCount(0)
     await page.goto(`/notes/${id}`)
     await expect(pageTitle(page)).toHaveText("Note not found")
+  })
+
+  test("make a summary: asks first, then saves it and it shows in the hub's Summaries tab", async ({ page }, info) => {
+    const myTitle = uniqueTitle("Summary from", info)
+    const id = await makeItem(page, "notes", myTitle, LESSON)
+    const asked: string[] = []
+    page.on("request", (r) => {
+      if (r.url() === `${API}/api/summarize` && r.method() === "POST") asked.push(r.url())
+    })
+    await page.goto(`/notes/${id}`)
+    await expect(pageTitle(page)).toHaveText(myTitle)
+
+    // It asks first, and says it uses 1 of today's AI notes. "Not now" sends nothing.
+    const open = page.getByRole("button", { name: "Make a summary" })
+    await open.click()
+    const dialog = page.getByRole("dialog", { name: "Make a summary?" })
+    await expect(dialog).toContainText("Luma will write a short summary. This uses 1 of your AI notes for today.")
+    await expect(dialog.getByRole("button", { name: "Not now" })).toBeFocused()
+    await expect(dialog.getByRole("button", { name: "Make summary" })).toBeVisible()
+    await expectNoSeriousA11yIssues(page, "summary-confirm", info)
+    await dialog.getByRole("button", { name: "Not now" }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(open).toBeFocused()
+    expect(asked).toEqual([])
+
+    // Yes: the note's words go to the (fake) AI, then the summary is saved to summaries.
+    await open.click()
+    const summarize = page.waitForRequest((r) => r.url() === `${API}/api/summarize` && r.method() === "POST")
+    const saved = page.waitForRequest((r) => r.url() === `${API}/summaries` && r.method() === "POST")
+    await dialog.getByRole("button", { name: "Make summary" }).click()
+    expect((await summarize).postDataJSON()).toEqual({ text: LESSON })
+    expect((await saved).postDataJSON()).toMatchObject({
+      title: "Plants in short",
+      content: expect.stringContaining("Plants make their own food"),
+    })
+    await expect(page).toHaveURL(/\/summaries\/[0-9a-f-]{36}$/)
+    const summaryId = page.url().split("/").pop()!
+    await expect(page.getByText("Your summary is ready!")).toBeVisible()
+    await expect(pageTitle(page)).toHaveText("Plants in short")
+    // The "Make a summary?" box is gone on the new summary's page.
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByText("This happens in the leaves.")).toBeVisible()
+    expect(asked).toHaveLength(1)
+    // A summary doesn't offer to summarize itself.
+    await expect(page.getByRole("button", { name: "Make a summary" })).toHaveCount(0)
+
+    // The hub's Summaries tab has the new row.
+    await page.goto("/notes?show=summaries")
+    await expect(page.getByRole("tab", { name: /^Summaries/ })).toHaveAttribute("aria-selected", "true")
+    const row = page.locator("li.note-row", { has: page.locator(`a.row-link[href="/summaries/${summaryId}"]`) })
+    await expect(row).toHaveCount(1)
+    await expect(row.getByRole("link", { name: "Plants in short", exact: true })).toBeVisible()
+    await expect(row).toContainText("Summary")
+  })
+
+  test("make a summary: the daily limit says so kindly and saves nothing", async ({ page }, info) => {
+    const id = await makeItem(page, "notes", uniqueTitle("Limit summary", info), LESSON)
+    await page.route(`${API}/api/summarize`, (route) =>
+      route.fulfill({ status: 403, json: { error: "You made all your free notes for today. Come back tomorrow." } }),
+    )
+    const savedSummaries: string[] = []
+    page.on("request", (r) => {
+      if (r.url() === `${API}/summaries` && r.method() === "POST") savedSummaries.push(r.url())
+    })
+    await page.goto(`/notes/${id}`)
+    await page.getByRole("button", { name: "Make a summary" }).click()
+    const dialog = page.getByRole("dialog", { name: "Make a summary?" })
+    await dialog.getByRole("button", { name: "Make summary" }).click()
+    await expect(dialog).toHaveCount(0)
+    // The message shows right under the button (in view), not up at the top of the page.
+    const tool = page.locator(".note-summary-tool")
+    const limit = tool.getByRole("status").filter({ hasText: "You made all your free notes for today. Come back tomorrow." })
+    await expect(limit).toBeVisible()
+    await expect(limit).toBeInViewport()
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
+    expect(savedSummaries).toEqual([])
+  })
+
+  test("make a summary: if saving fails, the next tap only saves again (no new AI turn)", async ({ page }, info) => {
+    const id = await makeItem(page, "notes", uniqueTitle("Save again", info), LESSON)
+    const asked: string[] = []
+    page.on("request", (r) => {
+      if (r.url() === `${API}/api/summarize` && r.method() === "POST") asked.push(r.url())
+    })
+    let failSave = true
+    await page.route(`${API}/summaries`, (route) => {
+      if (route.request().method() === "POST" && failSave) {
+        failSave = false
+        return route.fulfill({ status: 500, json: { error: "Something went wrong." } })
+      }
+      return route.fallback()
+    })
+    await page.goto(`/notes/${id}`)
+    await page.getByRole("button", { name: "Make a summary" }).click()
+    const dialog = page.getByRole("dialog", { name: "Make a summary?" })
+    await dialog.getByRole("button", { name: "Make summary" }).click()
+    await expect(dialog).toHaveCount(0)
+
+    const tool = page.locator(".note-summary-tool")
+    const problem = tool.getByRole("alert")
+    await expect(problem).toHaveText("We made it but couldn't save it. Tap to try saving again.")
+    await expect(problem).toBeInViewport()
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
+    expect(asked).toHaveLength(1)
+
+    // No "are you sure?" this time: it only saves what Luma already made.
+    const saved = page.waitForRequest((r) => r.url() === `${API}/summaries` && r.method() === "POST")
+    await tool.getByRole("button", { name: "Try saving again" }).click()
+    expect((await saved).postDataJSON()).toMatchObject({ title: "Plants in short" })
+    await expect(page).toHaveURL(/\/summaries\/[0-9a-f-]{36}$/)
+    await expect(pageTitle(page)).toHaveText("Plants in short")
+    expect(asked).toHaveLength(1)
+  })
+
+  test("make a summary: leaving the note while Luma works doesn't pull the student back", async ({ page }, info) => {
+    const myTitle = uniqueTitle("Leave early", info)
+    const id = await makeItem(page, "notes", myTitle, LESSON)
+    // A slow (fake) AI, like a real one can be.
+    await page.route(`${API}/api/summarize`, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await route.fallback()
+    })
+    // Open the note from the hub, so the browser's Back stays inside Luma.
+    await page.goto("/notes")
+    await hubRow(page, myTitle).getByRole("link", { name: myTitle, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
+    await page.getByRole("button", { name: "Make a summary" }).click()
+    const dialog = page.getByRole("dialog", { name: "Make a summary?" })
+    const saved = page.waitForResponse((r) => r.url() === `${API}/summaries` && r.request().method() === "POST")
+    await dialog.getByRole("button", { name: "Make summary" }).click()
+    await expect(dialog.getByRole("button", { name: "Making..." })).toBeVisible()
+
+    // The student goes back while it's still making the summary.
+    await page.goBack()
+    await expect(page).toHaveURL(/\/notes$/)
+    const leftTo = page.url()
+
+    // The summary is still saved (the AI turn is already used), but the page stays put.
+    const summaryId = ((await (await saved).json()) as { id: string }).id
+    const ready = page.locator("[data-sonner-toast]").filter({ hasText: "Your summary is ready!" })
+    await expect(ready).toBeVisible()
+    await page.waitForTimeout(500)
+    expect(page.url()).toBe(leftTo)
+
+    // "Open it" takes them there when they want.
+    await ready.getByRole("button", { name: "Open it" }).click()
+    await expect(page).toHaveURL(new RegExp(`/summaries/${summaryId}$`))
+    await expect(pageTitle(page)).toHaveText("Plants in short")
   })
 
   test("hub tabs and 'Find in my notes' narrow the list", async ({ page }, info) => {

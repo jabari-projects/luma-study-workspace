@@ -306,7 +306,7 @@ http
     }
 
     // --- capture endpoints (fake AI) ---
-    if (["/api/transcribe", "/api/notes-from-text", "/api/generate-notes"].includes(url.pathname)) {
+    if (["/api/transcribe", "/api/notes-from-text", "/api/generate-notes", "/api/summarize"].includes(url.pathname)) {
       const blocked = aiGate(req)
       if (blocked) return send(res, blocked[0], blocked[1])
     }
@@ -352,6 +352,17 @@ http
           { front: "Where does photosynthesis happen?", back: "In the chloroplasts" },
         ],
         truncated: false,
+      })
+    }
+    if (url.pathname === "/api/summarize") {
+      // Like the backend: {text} in, exactly {title, summary} out, 1 notes turn. Nothing is saved
+      // here; the page saves it with POST /summaries.
+      await new Promise((r) => setTimeout(r, 600))
+      if (String(body.text || "").trim().length < 20) return send(res, 400, { error: "We need a few more words to make a summary." })
+      if (process.env.LIMIT === "1") return send(res, 403, { error: "You made all your free notes for today. Come back tomorrow." })
+      return send(res, 200, {
+        title: "Plants in short",
+        summary: "Plants make their own food from sunlight, water and air. This happens in the leaves. They give off oxygen that we breathe.",
       })
     }
     if (url.pathname === "/api/import/link") {

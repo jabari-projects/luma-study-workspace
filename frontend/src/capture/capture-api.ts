@@ -73,6 +73,24 @@ export async function makeNotesFromImage(image: string, label: string): Promise<
   }
 }
 
+export type NoteSummary = { title: string; summary: string }
+
+/**
+ * Make a summary of a note: text in, `{title, summary}` out. It uses 1 notes turn and
+ * saves nothing; the caller saves it with POST /summaries.
+ */
+export async function makeSummary(text: string): Promise<NoteSummary> {
+  try {
+    const response = await api.post<NoteSummary>("/api/summarize", { text: text.slice(0, MAX_TEXT_CHARS) }, { timeout: 120000 })
+    const title = typeof response.data?.title === "string" ? response.data.title.trim() : ""
+    const summary = typeof response.data?.summary === "string" ? response.data.summary.trim() : ""
+    if (!summary) throw new CaptureError("We couldn't make a summary this time. Try again.")
+    return { title, summary }
+  } catch (error: unknown) {
+    throw toCaptureError(error, "We couldn't make a summary right now.")
+  }
+}
+
 export async function importLink(url: string): Promise<LinkImport> {
   try {
     const response = await api.post<LinkImport>("/api/import/link", { url: url.trim() }, { timeout: 30000 })

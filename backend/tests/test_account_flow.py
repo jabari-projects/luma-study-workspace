@@ -415,7 +415,7 @@ def test_existing_verified_user_logs_in_normally(web, db):
     assert r.status_code == 200 and r.json()["user"]["email_verified"] is True
 
 
-@pytest.mark.parametrize("route", ["notes-from-text", "generate-notes", "transcribe"])
+@pytest.mark.parametrize("route", ["notes-from-text", "summarize", "generate-notes", "transcribe"])
 def test_legacy_unverified_user_logs_in_but_every_ai_route_is_locked(web, db, monkeypatch, route):
     legacy_unverified(db)
     r = web.post("/login", json={"email": "old@example.com", "password": "legacy-plain"})
@@ -426,12 +426,15 @@ def test_legacy_unverified_user_logs_in_but_every_ai_route_is_locked(web, db, mo
         raise AssertionError("AI was called")
 
     monkeypatch.setattr("app.capture.generate_study_notes", must_not_run)
+    monkeypatch.setattr("app.capture.generate_summary", must_not_run)
     monkeypatch.setattr(main, "generate_notes_with_ai", must_not_run)
     monkeypatch.setattr(main, "transcribe_audio_bytes", must_not_run)
     headers = bearer(r.json()["access_token"])
     if route == "notes-from-text":
         blocked = web.post("/api/notes-from-text", headers=headers,
                            json={"text": "Plants make food from light. " * 10, "source_kind": "paste"})
+    elif route == "summarize":
+        blocked = web.post("/api/summarize", headers=headers, json={"text": "Plants make food from light. " * 10})
     elif route == "generate-notes":
         blocked = web.post("/api/generate-notes", headers=headers, json={"image": "data:image/png;base64,AAAA"})
     else:
