@@ -522,7 +522,7 @@ function TotalsSection({ pollId, closed }: { pollId: string; closed: boolean }) 
     }
   }, [pollId, reloadKey])
 
-  const final = closed && totals?.final !== false
+  const final = closed && totals?.final === true
   return (
     <section className="feedback-admin-section" aria-labelledby="totals">
       <h2 id="totals">{closed ? "Final totals" : "Live totals"}</h2>

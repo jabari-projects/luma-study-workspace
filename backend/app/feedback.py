@@ -187,19 +187,18 @@ def _voter_key_secret() -> bytes:
     account's email no longer matches its ballot, so a re-made account could vote again
     in a poll that is open at the time. Rotate the JWT secret only between polls.
     """
-    jwt_secret = get_jwt_secret_key() or ""
-    if not jwt_secret:
-        return b""
-    return hmac.new(jwt_secret.encode("utf-8"), VOTER_KEY_LABEL, hashlib.sha256).digest()
+    return hmac.new(get_jwt_secret_key().encode("utf-8"), VOTER_KEY_LABEL, hashlib.sha256).digest()
 
 
 def voter_key(email: Any) -> Optional[str]:
-    """Keyed one-way hash of the normalized email (never the email itself)."""
+    """Keyed one-way hash of the normalized email (never the email itself).
+
+    The key is the address at voting time. Changing the account's email later doesn't
+    move it, so one-vote-per-email follows the address the ballot was sent with."""
     normalized = normalize_email(email)
-    secret = _voter_key_secret()
-    if normalized is None or not secret:
+    if normalized is None:
         return None
-    return hmac.new(secret, normalized.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(_voter_key_secret(), normalized.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 # A deleted account's ballot keeps its voter_key only while that poll is open (to stop a
@@ -299,11 +298,11 @@ def _participants(poll_id: str) -> int:
 
 
 def _user(user_id: str) -> dict:
-    try:
-        response = get_supabase().table("users").select("email, email_verified").eq("id", user_id).maybe_single().execute()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Feedback user read failed (%s)", type(exc).__name__)
-        return {}
+    """The caller's email and email_verified ({} when there is no users row).
+
+    A read error raises, so the routes answer 503 try_again: a verified student must
+    never be told to verify their email because the database hiccuped."""
+    response = get_supabase().table("users").select("email, email_verified").eq("id", user_id).maybe_single().execute()
     data = getattr(response, "data", None) if response is not None else None
     return data if isinstance(data, dict) else {}
 
@@ -451,9 +450,9 @@ def _empty_current(now: datetime) -> dict:
 
 def _my_response(ballot: dict) -> dict:
     if not ballot.get("own"):
-        # A ballot from an earlier, deleted account with the same email: it stays
-        # anonymous, so only "already answered" is shown.
-        return {"submitted_at": _iso(_ts(ballot.get("submitted_at"))), "answers": [], "comment": None}
+        # A ballot sent with this email by another (or a deleted) account: it stays
+        # anonymous, so only "already answered" is shown, never when it was sent.
+        return {"submitted_at": None, "answers": [], "comment": None}
     db = get_supabase()
     rows = _select_all(lambda: db.table(ANSWERS).select("question_id, wants_change").eq("response_id", ballot["id"]))
     answers = [
@@ -519,9 +518,12 @@ def feedback_current(user_id: str = Depends(get_current_user_id)):
 
 
 def _ballot_done(ballot: dict, status: int = 200) -> JSONResponse:
+    """Already answered. The send time is shown only for the caller's own ballot: one
+    found by email key alone belongs to another (or a deleted) account."""
+    submitted_at = _iso(_ts(ballot.get("submitted_at"))) if ballot.get("own") is True else None
     return JSONResponse(
         status_code=status,
-        content={"status": "already_received", "message": MSG_ALREADY, "submitted_at": _iso(_ts(ballot.get("submitted_at")))},
+        content={"status": "already_received", "message": MSG_ALREADY, "submitted_at": submitted_at},
     )
 
 
@@ -605,7 +607,14 @@ def feedback_submit(poll_id: str, payload: BallotIn, user_id: str = Depends(requ
     created = row.get("created") is True
     logger.info("Feedback ballot created=%s answers=%d has_comment=%s flags=%d", created, len(answers), comment is not None, len(flags))
     if not created:
-        return _ballot_done({"submitted_at": row.get("received_at")})
+        # A send running at the same time won. The function doesn't say whose ballot it
+        # found, so look again to show the send time only for the caller's own.
+        try:
+            ballot = _find_ballot(poll_id, user_id, key)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Feedback ballot re-read failed (%s)", type(exc).__name__)
+            ballot = None
+        return _ballot_done(ballot or {})
     return JSONResponse(
         status_code=201,
         content={"status": "received", "message": MSG_RECEIVED, "submitted_at": _iso(_ts(row.get("received_at")))},

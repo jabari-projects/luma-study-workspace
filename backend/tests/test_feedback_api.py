@@ -174,6 +174,7 @@ def test_vote_once_then_retry_is_acknowledged(env, student, open_poll):
     again = vote(c, poll_id, [(qids[0], "no")])
     assert again.status_code == 200 and again.json()["status"] == "already_received"
     assert again.json()["message"] == "We already have your answers for this poll. Thanks!"
+    assert again.json()["submitted_at"] == first.json()["submitted_at"]  # their own ballot: the time is theirs
     assert len(env.db.rows("feedback_responses")) == 1
     answers = {a["question_id"]: a["wants_change"] for a in env.db.rows("feedback_answers")}
     assert answers == {qids[0]: True, qids[1]: False}
@@ -221,9 +222,71 @@ def test_same_email_on_a_new_account_cannot_vote_twice(env, student, open_poll):
     c = client_for(reborn["id"])
     r = vote(c, poll_id, [(qids[0], "no")])
     assert r.status_code == 200 and r.json()["status"] == "already_received"
+    assert r.json()["submitted_at"] is None  # not their ballot: never when it was sent
     assert len(env.db.rows("feedback_responses")) == 1
     current = c.get("/feedback/current").json()
     assert current["can_vote"] is False and current["my_response"]["answers"] == []
+    assert current["my_response"]["submitted_at"] is None
+
+
+def test_new_owner_of_an_email_sees_already_answered_without_the_time(env, student, open_poll):
+    """The key is the address at voting time: an email change doesn't move it."""
+    poll_id, qids = open_poll
+    assert vote(client_for(student["id"]), poll_id, [(qids[0], "yes")]).status_code == 201
+    student["email"] = "sam.new@example.com"  # the voter moves to another address
+    newcomer = env.db.user(email="Sam.Student+poll@gmail.com")
+    c = client_for(newcomer["id"])
+    r = vote(c, poll_id, [(qids[0], "no")])
+    assert r.status_code == 200 and r.json() == {
+        "status": "already_received", "message": "We already have your answers for this poll. Thanks!", "submitted_at": None,
+    }
+    current = c.get("/feedback/current").json()
+    assert current["my_response"] == {"submitted_at": None, "answers": [], "comment": None}
+    assert len(env.db.rows("feedback_responses")) == 1
+    # The voter's own view still has its time and answers.
+    mine = client_for(student["id"]).get("/feedback/current").json()["my_response"]
+    assert mine["submitted_at"] is not None and mine["answers"] == [{"question_id": qids[0], "choice": "yes"}]
+
+
+def test_a_race_won_by_another_account_with_the_email_hides_the_time(env, student, open_poll):
+    poll_id, qids = open_poll
+    other_account = str(uuid.uuid4())
+
+    def other_wins(name, params):
+        if name == "feedback_submit":
+            env.db.rows("feedback_responses").append(
+                {"id": str(uuid.uuid4()), "poll_id": poll_id, "user_id": other_account, "voter_key": params["p_voter_key"],
+                 "comment": None, "urgent_flags": [], "urgent_set_by_admin": False, "submitted_at": iso(NOW)}
+            )
+            env.db.rpc_hook = None
+
+    env.db.rpc_hook = other_wins
+    r = vote(client_for(student["id"]), poll_id, [(qids[0], "yes")])
+    assert r.status_code == 200 and r.json()["status"] == "already_received" and r.json()["submitted_at"] is None
+
+
+def test_a_users_read_error_after_the_verified_check_is_try_again(env, student, open_poll):
+    """require_verified_user passed; the email read for the voter key then fails."""
+    poll_id, qids = open_poll
+    main.app.dependency_overrides[auth.require_verified_user] = lambda: student["id"]
+    try:
+        env.db.fail_on.add(("users", "select"))
+        r = vote(client_for(student["id"]), poll_id, [(qids[0], "yes")])
+    finally:
+        main.app.dependency_overrides.pop(auth.require_verified_user, None)
+    assert r.status_code == 503
+    assert r.json() == {"detail": "Something went wrong. Your answers are still here. Try again.", "error_code": "try_again"}
+    assert env.db.rows("feedback_responses") == []
+
+
+def test_a_users_read_error_on_current_is_try_again_not_unverified(env, student, open_poll):
+    env.db.fail_on.add(("users", "select"))
+    r = client_for(student["id"]).get("/feedback/current")
+    assert r.status_code == 503
+    assert r.json() == {"detail": "The monthly poll isn't available right now.", "error_code": "try_again"}
+    env.db.fail_on.clear()
+    body = client_for(student["id"]).get("/feedback/current").json()
+    assert body["can_vote"] is True and body["blocked_reason"] is None
 
 
 def test_unique_violation_from_the_database_is_reread(env, student, open_poll):

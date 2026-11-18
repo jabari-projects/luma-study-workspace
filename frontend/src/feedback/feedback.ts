@@ -41,7 +41,7 @@ export type OpenPoll = {
   comment_max: number
   questions: Question[]
 }
-export type MyResponse = { submitted_at: string; answers: { question_id: string; choice: Choice }[]; comment: string | null }
+export type MyResponse = { submitted_at: string | null; answers: { question_id: string; choice: Choice }[]; comment: string | null }
 export type CurrentFeedback = {
   server_now: string
   schedule_tz: string
@@ -95,7 +95,7 @@ export type AdminPoll = AdminPollRow & {
 }
 export type AdminResultRow = StudentResultRow & { yes: number; no: number; answered: number; skipped: number }
 /** While the poll is open, `final` is false and `questions` is empty: admins see only how many answered. */
-export type AdminTotals = { participants: number; no_votes: boolean; as_of: string; final?: boolean; questions: AdminResultRow[] }
+export type AdminTotals = { participants: number; no_votes: boolean; as_of: string; final: boolean; questions: AdminResultRow[] }
 export type UrgentFlag = "security" | "accessibility" | "privacy"
 export type AdminComment = {
   response_ref: string
