@@ -119,3 +119,32 @@ export async function expectFocusRing(locator: Locator, maxTabs = 80) {
   // The ring is the ink color (about 15:1 on paper), not the pale yellow it used to be.
   expect(ring.color, JSON.stringify(ring)).toBe(ring.ink)
 }
+
+/** Longest animation/transition duration (in ms) among visible elements and the scribble paths. */
+export async function longestMotion(page: Page) {
+  return page.evaluate(() => {
+    const toMs = (value: string) =>
+      Math.max(0, ...value.split(",").map((v) => (v.trim().endsWith("ms") ? parseFloat(v) : parseFloat(v) * 1000) || 0))
+    let animation = 0
+    let transition = 0
+    let worst = ""
+    for (const el of Array.from(document.querySelectorAll<Element>("body *"))) {
+      const s = getComputedStyle(el)
+      const a = s.animationName !== "none" ? toMs(s.animationDuration) : 0
+      const t = toMs(s.transitionDuration)
+      if (a > animation) {
+        animation = a
+        worst = `${el.tagName}.${el.getAttribute("class")} animation ${s.animationDuration}`
+      }
+      if (t > transition) {
+        transition = t
+        if (t > animation) worst = `${el.tagName}.${el.getAttribute("class")} transition ${s.transitionDuration}`
+      }
+    }
+    const paths = Array.from(document.querySelectorAll("svg.rough-annotation path")).map((p) => {
+      const s = getComputedStyle(p)
+      return { name: s.animationName, duration: s.animationDuration }
+    })
+    return { animation, transition, worst, paths }
+  })
+}

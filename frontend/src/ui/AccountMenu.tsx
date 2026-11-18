@@ -306,7 +306,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
         <>
           <motion.div
             key="account-backdrop"
-            className="sheet-backdrop"
+            className="sheet-backdrop account-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

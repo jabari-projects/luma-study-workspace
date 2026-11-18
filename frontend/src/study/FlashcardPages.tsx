@@ -1095,8 +1095,7 @@ function StudySession({
         setNextDueAt(upcoming ?? null)
         setFinished(true)
         recordStudy(getTabAccountId(), reviewCount + 1)
-        const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
-        celebrate(accent || undefined)
+        celebrate()
       }
     },
     [cards, current, queue, results, reviewCount, saveProgress],

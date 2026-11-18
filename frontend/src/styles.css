@@ -45,18 +45,23 @@
   --card-2: var(--card);
   --ink: #1f1c18;
   --muted: #675f52;
-  --line: #e7dcc7;
-  --line-strong: #cbbda3;
+  /* Lines, rules and outlines are a plain grey, so they never fight the student's color. */
+  --line: #dcdbd8;
+  --line-strong: #bebdba;
   /* Borders of things you type in or tick: 3:1 or more on paper, paper-2 and card. */
-  --field-border: #867a62;
-  /* The brand yellow. Marks and underlines only, never text. */
-  --scribble: #f2b33d;
-  /* Yellow-family text, like "Saved" or "Ready". */
+  --field-border: #7c7b78;
+  /* The soft halo around the ink focus ring, and the margin line on note sheets. Grey too. */
+  --focus-halo: #d6d5d1;
+  --margin-rule: #d2d1cd;
+  /* The student's color for hand-drawn marks: page-title underlines, link underlines, the open
+     tab. A touch of ink keeps the lightest color (Yellow) at 3:1 on the cream paper. */
+  --scribble: color-mix(in srgb, var(--accent) 85%, var(--ink));
+  /* A soft wash of the student's color behind text (highlights, the open nav item). */
+  --highlight: color-mix(in srgb, var(--accent) 16%, var(--paper));
+  /* The brand star yellow: the star logo and its glow, the week stars, warnings. */
+  --star: #f2b33d;
+  /* Yellow-family status text, like a report being reviewed or the limit nudge. */
   --star-ink: #8a5a00;
-  /* Dark text that sits on a --scribble fill, in both themes. */
-  --on-scribble: #1f1c18;
-  --highlight: color-mix(in srgb, #f2b33d 38%, var(--paper));
-  --margin-rule: color-mix(in srgb, #d9534f 35%, var(--paper));
   --scrim: color-mix(in srgb, #1f1c18 50%, transparent);
 
   --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
@@ -82,7 +87,7 @@
   --lift: 0 18px 40px -18px color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
-/* "Lamplight": warm graphite, cream text, a little yellow lamp glow. No purple. */
+/* "Lamplight": warm graphite, cream text, a little lamp glow in the student's color. The paper itself is never tinted. */
 [data-theme="dark"] {
   color-scheme: dark;
   --paper: #15140f;
@@ -91,13 +96,16 @@
   --card-2: #2a2720;
   --ink: #f3ecdd;
   --muted: #b2a993;
-  --line: #2e2b23;
-  --line-strong: #4a4539;
-  --field-border: #7f7865;
-  --scribble: #f7c35c;
+  --line: #2d2d2c;
+  --line-strong: #484847;
+  --field-border: #7c7c7a;
+  --focus-halo: #3b3b39;
+  --margin-rule: #3a3a38;
+  /* Lifted toward white so the marks stand out on the dark paper. */
+  --scribble: color-mix(in srgb, var(--accent) 80%, white);
+  --highlight: color-mix(in srgb, var(--accent) 24%, var(--paper));
+  --star: #f7c35c;
   --star-ink: #f7c35c;
-  --highlight: color-mix(in srgb, #f7c35c 22%, var(--paper));
-  --margin-rule: color-mix(in srgb, #e0736b 40%, var(--paper));
   --scrim: color-mix(in srgb, #0b0a07 62%, transparent);
   --accent-strong: color-mix(in srgb, var(--accent) 70%, white);
   --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--card));
@@ -131,14 +139,14 @@ body {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
 }
 
-/* Lamplight: a soft yellow lamp glow in the corner, three faint stars and a little paper grain.
-   No accent wash, so a purple accent never turns the whole page purple. */
+/* Lamplight: a faint glow of the student's color in the corner, three faint stars and a little
+   paper grain. Kept at 9% and in one corner, so a purple pick never turns the whole page purple. */
 [data-theme="dark"] body {
   background-image:
     radial-gradient(1.5px 1.5px at 12% 18%, rgba(243, 236, 221, 0.35), transparent 60%),
     radial-gradient(1px 1px at 72% 12%, rgba(243, 236, 221, 0.35), transparent 60%),
     radial-gradient(1.5px 1.5px at 32% 82%, rgba(243, 236, 221, 0.35), transparent 60%),
-    radial-gradient(800px 480px at 88% -12%, color-mix(in srgb, var(--scribble) 9%, transparent), transparent 70%),
+    radial-gradient(800px 480px at 88% -12%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
   background-attachment: fixed;
 }
@@ -208,11 +216,11 @@ kbd {
 }
 
 :focus-visible {
-  /* Ink ring (about 15:1 in both themes) with a soft yellow halo for the brand look. */
+  /* Ink ring (about 15:1 in both themes) with a soft grey halo. */
   outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 6px;
-  box-shadow: 0 0 0 6px var(--highlight);
+  box-shadow: 0 0 0 6px var(--focus-halo);
 }
 
 .sr-only {
@@ -331,9 +339,9 @@ kbd {
   color: #1a1209;
 }
 
-/* Keep the stamp shadow and add the same yellow halo every other control gets. */
+/* Keep the stamp shadow and add the same grey halo every other control gets. */
 .primary-button:focus-visible {
-  box-shadow: var(--print), 0 0 0 6px var(--highlight);
+  box-shadow: var(--print), 0 0 0 6px var(--focus-halo);
 }
 
 .primary-button:hover {
@@ -458,7 +466,7 @@ select:focus {
   border-color: var(--accent);
   outline: 2px solid var(--ink);
   outline-offset: 2px;
-  box-shadow: 0 0 0 6px var(--highlight);
+  box-shadow: 0 0 0 6px var(--focus-halo);
 }
 
 input::placeholder,
@@ -606,7 +614,7 @@ input[type="radio"] {
   width: 34px;
   height: 34px;
   object-fit: contain;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--scribble) 70%, transparent));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--star) 70%, transparent));
   transition: transform 0.5s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
@@ -764,9 +772,9 @@ input[type="radio"] {
   height: 40px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  /* Dark letter on the yellow in both themes (cream on yellow is unreadable in dark). */
-  color: var(--on-scribble);
-  background: var(--scribble);
+  /* The student's color, with the same readable letter color as accent buttons. */
+  color: var(--on-accent);
+  background: var(--accent);
   font-family: var(--font-display);
   font-weight: 800;
   text-decoration: none;
@@ -814,7 +822,7 @@ input[type="radio"] {
 
 .kicker {
   margin: 0 0 10px;
-  color: var(--star-ink);
+  color: var(--accent-ink);
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -1039,7 +1047,7 @@ input[type="radio"] {
   transform: rotate(1.5deg) translate(3px, 7px);
 }
 
-/* Tabs: an underlined strip. The current tab gets a yellow underline and bold ink. */
+/* Tabs: an underlined strip. The current tab gets an underline in your color and bold ink. */
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1079,7 +1087,7 @@ input[type="radio"] {
 .tabs .tab[aria-selected="true"]:focus-visible,
 .tabs .tab[aria-pressed="true"]:focus-visible,
 .tabs .tab[aria-current="page"]:focus-visible {
-  box-shadow: inset 0 -3px var(--scribble), 0 0 0 6px var(--highlight);
+  box-shadow: inset 0 -3px var(--scribble), 0 0 0 6px var(--focus-halo);
 }
 
 /* Toggle chips: an outline pill; pressed is filled with ink. */
@@ -1125,7 +1133,7 @@ input[type="radio"] {
   border-radius: var(--radius-lg);
   padding: clamp(20px, 4vw, 36px);
   background:
-    radial-gradient(circle at 92% 20%, color-mix(in srgb, var(--scribble) 30%, transparent), transparent 40%),
+    radial-gradient(circle at 92% 20%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 40%),
     var(--accent-soft);
   box-shadow: var(--print);
 }
@@ -1187,7 +1195,7 @@ input[type="radio"] {
 
 .paper-card.three img {
   width: 64px;
-  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--scribble) 80%, transparent));
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--star) 80%, transparent));
 }
 
 @keyframes bob {
@@ -1231,8 +1239,8 @@ input[type="radio"] {
 }
 
 .week-dots li.lit .week-star {
-  background: var(--scribble);
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--scribble) 80%, transparent));
+  background: var(--star);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--star) 80%, transparent));
 }
 
 .week-dots li.today small {
@@ -1695,8 +1703,8 @@ input[type="radio"] {
   margin-top: 6px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  background: var(--scribble);
-  color: var(--on-scribble);
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 800;
   font-size: 0.85rem;
 }
@@ -1840,7 +1848,7 @@ input[type="radio"] {
   /* Mirrored because the face is turned around. */
   box-shadow: -6px 6px 0 var(--ink);
   background:
-    radial-gradient(circle at 85% 15%, color-mix(in srgb, var(--scribble) 28%, transparent), transparent 45%),
+    radial-gradient(circle at 85% 15%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 45%),
     var(--accent-soft);
 }
 
@@ -2037,8 +2045,8 @@ input[type="radio"] {
   border: 2px solid var(--ink);
   border-radius: 999px;
   padding: 0 10px;
-  background: var(--scribble);
-  color: var(--on-scribble);
+  background: var(--accent);
+  color: var(--on-accent);
   font-family: var(--font-ui);
   font-size: 0.8rem;
   font-weight: 800;
@@ -2480,91 +2488,364 @@ input[type="radio"] {
 .auth-screen,
 .center-screen {
   min-height: 100vh;
+  min-height: 100svh;
   display: grid;
   place-items: center;
   padding: 32px var(--gutter);
 }
 
-.auth-screen > section {
+/*
+ * The start page and the account pages are a notebook page, edge to edge:
+ * faint ruled lines and the red margin line, so no part of the screen is left blank.
+ */
+.landing,
+.auth-screen {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 39px,
+    color-mix(in srgb, var(--accent) 9%, transparent) 39px 40px
+  );
+}
+
+.landing::before,
+.auth-screen::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: max(6px, calc(var(--gutter) / 2));
+  z-index: -1;
+  width: 2px;
+  background: var(--margin-rule);
+}
+
+.auth-screen > .auth-layout {
   width: min(460px, 100%);
 }
 
-.hero {
-  width: min(1040px, 100%);
+.landing-inner {
   display: grid;
-  gap: 24px;
+  justify-items: center;
+  gap: clamp(28px, 5vw, 56px);
+  width: min(1480px, 100%);
+  text-align: center;
 }
 
-.hero-copy {
-  position: relative;
+.landing-copy {
   display: grid;
-  justify-items: start;
-  gap: 4px;
-  max-width: 640px;
+  justify-items: center;
+  max-width: 40rem;
 }
 
-.hero-copy h1 {
-  font-size: clamp(3.4rem, 2rem + 7vw, 6.5rem);
-  font-weight: 700;
-  line-height: 0.95;
-}
-
-.hero-copy > p:not(.eyebrow) {
-  max-width: 34ch;
-  color: var(--ink);
-  font-size: clamp(1.1rem, 1rem + 0.6vw, 1.4rem);
-}
-
-.hero-mark {
-  width: 72px;
-  margin-bottom: 8px;
-  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--scribble) 80%, transparent));
+.landing-star {
+  width: clamp(64px, 2.5rem + 4vw, 128px);
+  height: auto;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--star) 80%, transparent));
   animation: bob 5s ease-in-out infinite;
 }
 
-.hero-actions {
+.landing-copy h1 {
+  margin: 0;
+  font-size: clamp(4rem, 2.4rem + 8vw, 11rem);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
+.landing-lede {
+  max-width: 30ch;
+  margin: 16px 0 0;
+  color: var(--ink);
+  font-size: clamp(1.15rem, 0.9rem + 0.85vw, 1.9rem);
+  line-height: 1.45;
+  text-wrap: balance;
+}
+
+.landing-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: clamp(22px, 1rem + 1vw, 40px);
 }
 
-.backend-banner {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 4px 10px;
-  margin-bottom: 16px;
-  border: 2px dashed var(--line-strong);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  background: var(--card);
+.landing-actions a {
+  min-height: clamp(52px, 2.6rem + 1vw, 64px);
+  padding: 0 clamp(26px, 1rem + 0.6vw, 36px);
+  font-size: clamp(1.05rem, 0.85rem + 0.4vw, 1.25rem);
 }
 
-.backend-banner p,
-.backend-banner small {
-  grid-column: 2;
+.landing-free.hand-note {
+  margin: 14px 0 0;
+  font-size: clamp(1.35rem, 1rem + 0.5vw, 1.75rem);
+  transform: rotate(-2deg);
+  transform-origin: center;
+}
+
+.landing-preview {
+  width: min(520px, 100%);
+}
+
+@media (min-width: 960px) {
+  .landing-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    justify-items: stretch;
+    gap: clamp(48px, 6vw, 112px);
+    text-align: left;
+  }
+
+  .landing-copy {
+    justify-items: start;
+  }
+
+  .landing-actions {
+    justify-content: flex-start;
+  }
+
+  .landing-free.hand-note {
+    transform-origin: left;
+  }
+
+  /* As big as the column allows, but never taller than the screen. */
+  .landing-preview {
+    justify-self: center;
+    width: min(760px, 100%, calc((100svh - 96px) * 1.2));
+  }
+}
+
+/* The account pages: the form, and the same little picture as the start page when there is room. */
+.auth-side {
+  display: none;
+}
+
+.auth-side .hand-note {
+  margin: 0;
+  text-align: center;
+  transform-origin: center;
+}
+
+/*
+ * Phones and tablets with room to spare: the form at the top, and the picture fills the rest of
+ * the screen under it (never wider than the form, never taller than 360px).
+ */
+@media (max-width: 959px) and (min-height: 720px) {
+  .auth-screen > .auth-layout {
+    display: grid;
+    grid-template-rows: auto minmax(160px, 1fr);
+    align-self: stretch;
+  }
+
+  .auth-side {
+    display: grid;
+    place-items: center;
+    container-type: inline-size;
+    margin-top: 28px;
+  }
+
+  .auth-side .note-preview {
+    width: auto;
+    height: min(100%, 360px, 83cqi);
+  }
+
+  .auth-side .hand-note {
+    display: none;
+  }
+}
+
+@media (min-width: 700px) and (max-width: 959px) {
+  .auth-screen > .auth-layout {
+    width: min(520px, 100%);
+  }
+
+  .auth-layout > .auth-card {
+    width: 100%;
+  }
+}
+
+@media (min-width: 960px) {
+  .auth-screen > .auth-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+    align-items: center;
+    gap: clamp(48px, 6vw, 112px);
+    width: min(1360px, 100%);
+  }
+
+  .auth-side {
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+    order: -1;
+  }
+
+  .auth-side .note-preview {
+    width: min(100%, 720px, 48vw, calc((100svh - 200px) * 1.2));
+  }
+
+  .auth-side .hand-note {
+    font-size: 1.5rem;
+  }
+}
+
+/* Very big screens: show the whole page a bit bigger, so it doesn't float in the middle. */
+@media (min-width: 2200px) and (min-height: 1250px) {
+  .landing-inner,
+  .auth-screen > .auth-layout {
+    zoom: 1.4;
+  }
+}
+
+/*
+ * What Luma does: a note turns into a flashcard. Only a picture (aria-hidden).
+ * Everything inside is sized from the picture's own width (cqi), so it scales like an image.
+ */
+.note-preview {
+  position: relative;
+  isolation: isolate;
+  container-type: inline-size;
+  aspect-ratio: 6 / 5;
+  text-align: left;
+}
+
+.note-preview p {
   margin: 0;
 }
 
-.backend-banner small {
+.note-preview-note {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 64%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1cqi 1cqi 2.8cqi 1cqi;
+  padding: 0.75em 0.8em 0 2.3em;
+  color: var(--ink);
+  background:
+    linear-gradient(to right, transparent 1.5em, var(--margin-rule) 1.5em calc(1.5em + 2px), transparent calc(1.5em + 2px)),
+    repeating-linear-gradient(
+        to bottom,
+        transparent 0 calc(1.7em - 1px),
+        color-mix(in srgb, var(--accent) 16%, transparent) calc(1.7em - 1px) 1.7em
+      )
+      0 0.75em,
+    var(--card);
+  box-shadow: var(--shadow-sheet);
+  font-size: 3.2cqi;
+  line-height: 1.7em;
+  white-space: nowrap;
+  transform: rotate(-3deg);
+}
+
+.note-preview-note p {
+  color: var(--ink);
+  line-height: inherit;
+}
+
+.note-preview .note-preview-title {
+  font-family: var(--font-display);
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
+/* Starts just right of the note and curls down to the cards. */
+.note-preview-arrow {
+  position: absolute;
+  top: 31%;
+  left: 67%;
+  width: 22%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.note-preview .note-preview-label {
+  position: absolute;
+  top: 17%;
+  left: 66%;
+  color: var(--accent-ink);
+  font-family: var(--font-hand);
+  font-size: 4cqi;
+  line-height: 1.1;
+  white-space: nowrap;
+  transform: rotate(4deg);
+}
+
+/* The deck sits bottom right. Two more cards peek out behind the front one. */
+.note-preview-deck {
+  position: absolute;
+  right: 2%;
+  bottom: 4%;
+  width: 60%;
+  aspect-ratio: 5 / 3;
+}
+
+.note-preview-deck::before,
+.note-preview-deck::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--line);
+  border-radius: 2.4cqi;
+  background: var(--card);
+  box-shadow: var(--shadow-sheet);
+}
+
+.note-preview-deck::before {
+  transform: rotate(-3deg) translate(-1.4cqi, 1cqi);
+}
+
+.note-preview-deck::after {
+  transform: rotate(6deg) translate(1cqi, 0.7cqi);
+}
+
+.note-preview-card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 1.4cqi;
+  border: 1px solid var(--line);
+  border-top: 1.4cqi solid var(--accent);
+  border-radius: 2.4cqi;
+  padding: 2.8cqi;
+  text-align: center;
+  background: var(--card);
+  box-shadow: var(--print-soft);
+  transform: rotate(2deg);
+  animation: note-preview-in 700ms 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.note-preview .note-preview-card p {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 4cqi;
+  font-weight: 650;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.note-preview-count {
   color: var(--muted);
-  overflow-wrap: anywhere;
+  font-size: 2.2cqi;
+  font-weight: 700;
 }
 
-.health-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--glow-shaky);
-}
-
-.health-dot.offline {
-  background: var(--danger);
-}
-
-.health-dot.online {
-  background: var(--success);
+@keyframes note-preview-in {
+  from {
+    opacity: 0;
+    transform: rotate(6deg) translateY(16px);
+  }
 }
 
 /* ===================================================== tablet: icon rail */
@@ -3023,7 +3304,7 @@ input[type="radio"] {
 .auth-brand img {
   width: 40px;
   height: 40px;
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--scribble) 70%, transparent));
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--star) 70%, transparent));
 }
 
 .auth-card > h1 {
@@ -3032,13 +3313,11 @@ input[type="radio"] {
   line-height: 1.05;
 }
 
-.auth-card > h1:focus {
-  outline: none;
-}
-
+/* The page moves focus to its title for screen readers. It isn't a control, so no ring. */
+.auth-card > h1:focus,
 .auth-card > h1:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 4px;
+  outline: none;
+  box-shadow: none;
 }
 
 .auth-intro {
@@ -3047,6 +3326,7 @@ input[type="radio"] {
   color: var(--ink);
   font-size: 1.05rem;
   line-height: 1.5;
+  text-wrap: pretty;
 }
 
 /* A long email address wraps instead of widening the page (code pages and Settings). */
@@ -3099,6 +3379,7 @@ input[type="radio"] {
   color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.4;
+  text-wrap: pretty;
 }
 
 input[aria-invalid="true"] {
@@ -3235,8 +3516,7 @@ input[aria-invalid="true"] {
 
 @media (max-width: 420px) {
   .auth-screen {
-    place-items: start center;
-    padding-top: 20px;
+    padding-block: 20px;
   }
 
   .auth-form.sheet {
@@ -3503,7 +3783,7 @@ button.account-row:hover {
   justify-content: flex-start;
   min-height: 44px;
   padding: 0 12px;
-  /* Menu rows, so no yellow underline. */
+  /* Menu rows, so no underline. */
   text-decoration-line: none;
 }
 
@@ -3568,6 +3848,16 @@ button.account-row:hover {
 @media (max-width: 719px) {
   .account-sheet .account-list {
     padding-bottom: 4px;
+  }
+
+  /* The accounts sheet is a dialog: it and its dim backdrop cover the tab bar
+     (the + sheet stays under the tab bar so its + can turn into a close button). */
+  .account-backdrop {
+    z-index: 38;
+  }
+
+  .account-sheet {
+    z-index: 39;
   }
 }
 
@@ -3870,7 +4160,7 @@ button.account-row:hover {
 
 .result-kind {
   margin: 0;
-  color: var(--star-ink);
+  color: var(--accent-ink);
   font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.1em;

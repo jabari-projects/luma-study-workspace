@@ -5,7 +5,7 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
-import { SEEDED, expectNoSeriousA11yIssues, loginAndWait, setThemeMode } from "./helpers"
+import { SEEDED, expectNoSeriousA11yIssues, loginAndWait, longestMotion, setThemeMode } from "./helpers"
 import { APP_PAGES, PUBLIC_PAGES } from "./pages"
 
 /** Waits until the page has its heading and any loading spinners are gone, so axe sees the real page. */
@@ -165,6 +165,13 @@ test("Tab on login reaches every control in order, each with a visible focus rin
   ]
   await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeFocused()
 
+  // The title isn't a control, so it gets focus without a ring or yellow halo around it.
+  const titleLook = await page.getByRole("heading", { level: 1, name: "Log in" }).evaluate((el) => {
+    const s = getComputedStyle(el)
+    return { outline: s.outlineStyle, boxShadow: s.boxShadow }
+  })
+  expect(titleLook).toEqual({ outline: "none", boxShadow: "none" })
+
   const ringOf = () =>
     page.evaluate(() => {
       const el = document.activeElement as HTMLElement
@@ -245,35 +252,6 @@ test("a wrong password shows an error that is linked to the fields and announced
 })
 
 // ------------------------------------------------------------- reduced motion
-/** Longest animation/transition duration (in ms) among visible elements and the scribble paths. */
-async function longestMotion(page: Page) {
-  return page.evaluate(() => {
-    const toMs = (value: string) =>
-      Math.max(0, ...value.split(",").map((v) => (v.trim().endsWith("ms") ? parseFloat(v) : parseFloat(v) * 1000) || 0))
-    let animation = 0
-    let transition = 0
-    let worst = ""
-    for (const el of Array.from(document.querySelectorAll<Element>("body *"))) {
-      const s = getComputedStyle(el)
-      const a = s.animationName !== "none" ? toMs(s.animationDuration) : 0
-      const t = toMs(s.transitionDuration)
-      if (a > animation) {
-        animation = a
-        worst = `${el.tagName}.${el.getAttribute("class")} animation ${s.animationDuration}`
-      }
-      if (t > transition) {
-        transition = t
-        if (t > animation) worst = `${el.tagName}.${el.getAttribute("class")} transition ${s.transitionDuration}`
-      }
-    }
-    const paths = Array.from(document.querySelectorAll("svg.rough-annotation path")).map((p) => {
-      const s = getComputedStyle(p)
-      return { name: s.animationName, duration: s.animationDuration }
-    })
-    return { animation, transition, worst, paths }
-  })
-}
-
 test("with reduced motion, animations and transitions are effectively off", async ({ page }) => {
   // Baseline without reduced motion, so we know the page really animates.
   await loginAndWait(page, SEEDED.demo.email)

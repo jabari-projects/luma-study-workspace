@@ -256,17 +256,24 @@ export function useResolvedTheme({
   return { mode, resolved: mode === "auto" ? shownClockTheme : mode, accent }
 }
 
-function subscribeToDocumentTheme(onChange: () => void): () => void {
+function subscribeToDocumentColors(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange)
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
+  // data-theme says light or dark; the style attribute carries --accent, the student's color.
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] })
   return () => observer.disconnect()
 }
 
-/** The theme on <html> right now ("light" when none is set), kept up to date. */
-export function useDocumentTheme(): ResolvedTheme {
+/**
+ * The theme and the student's color on <html> right now, as one string ("dark #16a34a"),
+ * kept up to date. It changes when either changes, so a drawing can redraw in the new color.
+ */
+export function useDocumentColors(): string {
   return useSyncExternalStore(
-    subscribeToDocumentTheme,
-    () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"),
+    subscribeToDocumentColors,
+    () => {
+      const root = document.documentElement
+      return `${root.dataset.theme === "dark" ? "dark" : "light"} ${root.style.getPropertyValue("--accent").trim()}`
+    },
     () => "light",
   )
 }

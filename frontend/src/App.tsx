@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { Toaster, toast } from "sonner"
 import {
@@ -10,10 +10,10 @@ import {
 } from "react-router-dom"
 
 import { useAuth, useProfile } from "./auth"
-import { API_BASE_URL, checkBackendHealth, getErrorMessage } from "./api"
 import { MobileTabBar, MobileTopBar, SideNav } from "./ui/Nav"
 import { SignedOutElsewhere } from "./ui/AccountMenu"
 import { Scribble } from "./ui/Scribble"
+import { NotePreview } from "./ui/NotePreview"
 import { isBusyPath } from "./ui/accountActions"
 import { applyTheme, clearTheme, readThemeCache, useResolvedTheme } from "./ui/theme"
 import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
@@ -47,58 +47,6 @@ import { MaintenanceNotice } from "./maintenance/MaintenanceNotice"
 import { StatusPage } from "./maintenance/StatusPage"
 import { AdminMaintenancePage } from "./maintenance/AdminMaintenancePage"
 
-type HealthState = {
-  status: "checking" | "online" | "offline"
-  detail: string | null
-}
-
-const initialHealthState: HealthState = {
-  status: "checking",
-  detail: "Checking Luma...",
-}
-
-function useBackendHealth() {
-  const [health, setHealth] = useState<HealthState>(initialHealthState)
-
-  const refreshBackendHealth = useCallback(async () => {
-    setHealth(initialHealthState)
-
-    try {
-      await checkBackendHealth()
-      setHealth({ status: "online", detail: null })
-      return true
-    } catch (error: unknown) {
-      setHealth({ status: "offline", detail: getErrorMessage(error) })
-      return false
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
-
-    async function checkHealth() {
-      try {
-        await checkBackendHealth()
-        if (active) {
-          setHealth({ status: "online", detail: null })
-        }
-      } catch (error: unknown) {
-        if (active) {
-          setHealth({ status: "offline", detail: getErrorMessage(error) })
-        }
-      }
-    }
-
-    void checkHealth()
-
-    return () => {
-      active = false
-    }
-  }, [])
-
-  return { health, refreshBackendHealth }
-}
-
 function LoadingScreen({ message }: { message: string }) {
   return (
     <main className="center-screen">
@@ -107,21 +55,6 @@ function LoadingScreen({ message }: { message: string }) {
         <p>{message}</p>
       </section>
     </main>
-  )
-}
-
-function BackendConnectionBanner({ health }: { health: HealthState }) {
-  if (health.status === "online") {
-    return null
-  }
-
-  return (
-    <div className="backend-banner" role="status" aria-live="polite">
-      <span className={`health-dot ${health.status}`} />
-      <strong>{health.status === "checking" ? "Checking Luma" : "Luma is having trouble connecting"}</strong>
-      <p>{health.detail ?? "We are checking the connection."}</p>
-      <small>{API_BASE_URL}</small>
-    </div>
   )
 }
 
@@ -339,31 +272,34 @@ function RootRoutes() {
 
 function LandingPage() {
   const { isAuthenticated } = useAuth()
-  const { health } = useBackendHealth()
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />
   }
 
+  // A page from a notebook: the brand and the two ways in on one side,
+  // a note turning into a flashcard (what Luma does) on the other.
   return (
     <main className="landing">
-      <section className="hero">
-        <div className="hero-copy">
-          <img className="hero-mark" src="/luma-star.png" alt="" />
-          <p className="eyebrow">Study workspace</p>
-          <h1>Luma</h1>
-          <p>Keep your notes, cards, study time, and lessons in one easy place.</p>
-          <div className="hero-actions">
+      <div className="landing-inner">
+        <section className="landing-copy" aria-labelledby="landing-title">
+          <img className="landing-star" src="/luma-star.png" alt="" width={88} height={88} />
+          <h1 id="landing-title">Luma</h1>
+          <p className="landing-lede">
+            Keep your notes in one easy place. Luma turns them into flashcards and quizzes.
+          </p>
+          <div className="landing-actions">
             <Link className="primary-button" to="/login">
-              Login
+              Log in
             </Link>
             <Link className="secondary-button" to="/signup">
-              Create account
+              Make an account
             </Link>
           </div>
-        </div>
-        <BackendConnectionBanner health={health} />
-      </section>
+          <p className="landing-free hand-note">It's free to start!</p>
+        </section>
+        <NotePreview className="landing-preview" />
+      </div>
     </main>
   )
 }

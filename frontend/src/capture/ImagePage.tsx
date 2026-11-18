@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { ArrowLeft, Image as ImageIcon, MagicWand } from "@phosphor-icons/react"
 
+import { getErrorMessage } from "../api"
 import { NoticeBanner } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import { NOTES_HUB } from "../notes/paths"
@@ -82,7 +83,7 @@ export function ImagePage() {
       if (pick !== pickRef.current) return
       setStage("pick")
       if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
-      else setError(err instanceof Error ? err.message : "Something went wrong. Your image is still here.")
+      else setError(getErrorMessage(err, "Something went wrong. Your image is still here."))
     } finally {
       timers.forEach((timer) => window.clearTimeout(timer))
     }

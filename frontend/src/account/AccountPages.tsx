@@ -9,6 +9,7 @@ import { FIRST_TIME_LANDING } from "../discover/discover"
 import { api, getErrorCode, getErrorMessage, getRetryAfter, getStoredAccessToken, readBook } from "../api"
 import { CODE_ERRORS, CODE_LENGTH, cleanCode, useCountdown } from "./codes"
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PasswordField } from "./PasswordField"
+import { NotePreview } from "../ui/NotePreview"
 
 const PASSWORD_RULE = `Use ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
 const SIGNUP_TICKET_KEY = "luma.signupTicket"
@@ -67,18 +68,25 @@ function AuthShell({
 
   return (
     <main className="auth-screen">
-      <section className="auth-card" aria-labelledby="auth-title">
-        <Link to="/" className="auth-brand">
-          <img src="/luma-star.png" alt="" width={40} height={40} />
-          <span>Luma</span>
-        </Link>
-        <h1 id="auth-title" ref={headingRef} tabIndex={-1}>
-          {title}
-        </h1>
-        {intro ? <p className="auth-intro">{intro}</p> : null}
-        {children}
-        {footer ? <div className="auth-footer">{footer}</div> : null}
-      </section>
+      <div className="auth-layout">
+        <section className="auth-card" aria-labelledby="auth-title">
+          <Link to="/" className="auth-brand">
+            <img src="/luma-star.png" alt="" width={40} height={40} />
+            <span>Luma</span>
+          </Link>
+          <h1 id="auth-title" ref={headingRef} tabIndex={-1}>
+            {title}
+          </h1>
+          {intro ? <p className="auth-intro">{intro}</p> : null}
+          {children}
+          {footer ? <div className="auth-footer">{footer}</div> : null}
+        </section>
+        {/* The same picture as the start page, beside the form on wide screens and under it when there is room. */}
+        <div className="auth-side" aria-hidden="true">
+          <NotePreview />
+          <p className="hand-note">Your notes, cards and quizzes in one place.</p>
+        </div>
+      </div>
     </main>
   )
 }
@@ -426,7 +434,7 @@ export function SignupPage() {
           invalid={isInvalid("password")}
         />
         <button className="primary-button wide" type="submit" disabled={submitting}>
-          {submitting ? "Making your account..." : "Make account"}
+          {submitting ? "Making your account..." : "Make an account"}
         </button>
       </form>
     </AuthShell>

@@ -14,7 +14,7 @@ async function signUp(page: Page, email: string, username: string, adding = fals
   await page.getByLabel("Email").fill(email)
   await page.getByLabel("Username").fill(username)
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD)
-  await page.getByRole("button", { name: /^make account$/i }).click()
+  await page.getByRole("button", { name: /^make an account$/i }).click()
   await expect(page).toHaveURL(/\/verify-email/)
   const { code } = await latestMail(page, email, "code")
   await page.getByLabel(/code/i).fill(code!)

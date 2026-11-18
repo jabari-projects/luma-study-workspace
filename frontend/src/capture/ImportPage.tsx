@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom"
 import { ArrowLeft, FileText, Globe, TextAa, Tray, YoutubeLogo } from "@phosphor-icons/react"
 import type { Icon } from "@phosphor-icons/react"
 
+import { getErrorMessage } from "../api"
 import { NoticeBanner, PageHeader } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import { CaptureError, importLink, makeNotes } from "./capture-api"
@@ -83,7 +84,7 @@ export function ImportPage() {
           : undefined
       setSource({ text: result.text, label: result.label, kind: "file", detail })
     } catch (err: unknown) {
-      if (isCurrent(id)) setError(err instanceof Error ? err.message : "We couldn't open that file.")
+      if (isCurrent(id)) setError(getErrorMessage(err, "We couldn't open that file."))
     } finally {
       if (isCurrent(id)) setBusy(null)
     }
@@ -124,7 +125,7 @@ export function ImportPage() {
         chooseTab("youtube")
         return
       }
-      setError(err instanceof Error ? err.message : "We couldn't open that link.")
+      setError(getErrorMessage(err, "We couldn't open that link."))
     } finally {
       if (isCurrent(id)) setBusy(null)
     }
@@ -170,7 +171,7 @@ export function ImportPage() {
     } catch (err: unknown) {
       setStage("source")
       if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
-      else setError(err instanceof Error ? err.message : "Something went wrong. Your text is still here.")
+      else setError(getErrorMessage(err, "Something went wrong. Your text is still here."))
     } finally {
       window.clearTimeout(timer)
     }

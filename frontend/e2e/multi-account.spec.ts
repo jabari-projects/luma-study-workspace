@@ -268,6 +268,20 @@ test("Escape closes the account menu and puts focus back on its button", async (
   void info
 })
 
+test("on a phone the accounts sheet covers the tab bar, so the + button can't sit on its options", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "the bottom tab bar is phone-only")
+  await loginAndWait(page, SEEDED.demo.email)
+  await openAccountMenu(page)
+  const covered = await page.evaluate(() => {
+    const bar = document.querySelector(".tab-bar")
+    if (!bar) return "no tab bar"
+    const r = bar.getBoundingClientRect()
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+    return hit && !bar.contains(hit) ? "covered" : "tab bar on top"
+  })
+  expect(covered).toBe("covered")
+})
+
 test("the account menu with two accounts has no serious accessibility problems", async ({ page }, info) => {
   await loginAndWait(page, SEEDED.demo.email)
   await addAccountFromMenu(page, SEEDED.sam.email, SEEDED.sam.username)

@@ -1,5 +1,5 @@
 // Theme checks against the FAKE API (dev/mock-api.mjs): every accent color is
-// readable in light and dark, the dark page is not tinted by the accent, focus
+// readable in light and dark, the dark page only gets a faint accent glow, focus
 // rings are solid ink, a profile with no saved color shows Teal, and Light / Dark /
 // Automatic works (Settings radios, no flash on load, the 7 am / 7 pm clock, other
 // tabs following, and sign-out clearing the copy kept on this device).
@@ -73,7 +73,7 @@ for (const theme of ["light", "dark"] as const) {
   })
 }
 
-test("the dark page background is not tinted by the accent color (Purple)", async ({ page }) => {
+test("the dark page keeps its plain paper, with only a faint corner glow in the accent (Purple)", async ({ page }) => {
   const purple = themeColors.find((swatch) => swatch.name === "Purple")!.value
   try {
     await setProfileTheme(page, SEEDED.demo.email, { theme_mode: "dark", theme_color: purple })
@@ -81,14 +81,15 @@ test("the dark page background is not tinted by the accent color (Purple)", asyn
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
     await expect.poll(() => accentOf(page)).toBe(purple)
 
-    const background = await page.evaluate(() => getComputedStyle(document.body).backgroundImage)
-    expect(background).not.toBe("none")
-    // #7c3aed is rgb(124, 58, 237). Look for it (or anything close) in any color form.
-    const nearPurple = colorsIn(background).filter(
-      ([r, g, b]) => Math.abs(r - 124) <= 3 && Math.abs(g - 58) <= 3 && Math.abs(b - 237) <= 3,
-    )
-    expect(nearPurple, background).toEqual([])
-    expect(background).not.toContain("rgb(124, 58, 237)")
+    const { color, image } = await page.evaluate(() => ({
+      color: getComputedStyle(document.body).backgroundColor,
+      image: getComputedStyle(document.body).backgroundImage,
+    }))
+    // The page itself is the dark paper (#15140f), not purple.
+    expect(colorsIn(color)[0]?.map(Math.round), color).toEqual([21, 20, 15])
+    // #7c3aed is rgb(124, 58, 237). It shows up once, as the lamp glow, and only faintly (9%).
+    const glows = [...image.matchAll(/(?:rgba\(\s*124,\s*58,\s*237,\s*|color\(srgb\s+0\.48\d*\s+0\.22\d*\s+0\.92\d*\s*\/\s*)([\d.]+)/g)]
+    expect(glows.map((m) => Number(m[1])), image).toEqual([0.09])
   } finally {
     await setProfileTheme(page, SEEDED.demo.email, { theme_mode: "light", theme_color: DEFAULT_ACCENT })
   }
@@ -100,7 +101,7 @@ test("the Log in button has a solid ink focus ring", async ({ page }) => {
   await expectFocusRing(page.getByRole("button", { name: /^log in$/i }))
 })
 
-test("a focused stamped button keeps its stamp shadow and gets the yellow halo too", async ({ page }) => {
+test("a focused stamped button keeps its stamp shadow and gets the grey halo too", async ({ page }) => {
   await page.goto("/login")
   await settle(page)
   const button = page.getByRole("button", { name: /^log in$/i })
@@ -582,5 +583,85 @@ test("signing out removes the saved theme from this device, and the public pages
   } finally {
     await setThemeMode(page, SEEDED.demo.email, "light")
     await setThemeMode(page, SEEDED.sam.email, "light")
+  }
+})
+
+/** The 0-255 channels of color-mix(in srgb, a share, b) for two #rrggbb colors. */
+function mix(a: string, share: number, b: string): number[] {
+  const rgb = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16))
+  const [x, y] = [rgb(a), rgb(b)]
+  return x.map((value, i) => value * share + y[i] * (1 - share))
+}
+
+/** True when a computed color is within 2 of the expected channels. */
+function near(value: string, expected: number[]): boolean {
+  const [found] = colorsIn(value)
+  return Boolean(found) && found.every((channel, i) => Math.abs(channel - expected[i]) <= 2)
+}
+
+/** True when a computed color is a plain grey (channels within 6 of each other). */
+function isGrey(value: string): boolean {
+  const [found] = colorsIn(value)
+  return Boolean(found) && Math.max(...found) - Math.min(...found) <= 6
+}
+
+test("picking Green turns the avatar, the title underlines and the date green, and Settings lines stay grey", async ({ page }) => {
+  const green = themeColors.find((swatch) => swatch.name === "Green")!.value
+  try {
+    await setProfileTheme(page, SEEDED.demo.email, { theme_mode: "dark", theme_color: DEFAULT_ACCENT })
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/settings")
+    await settle(page)
+    const underline = page.locator("h1 svg.rough-annotation path").first()
+    await expect(underline).toBeAttached()
+
+    // Pick Green and save, with no reload.
+    await page.getByRole("button", { name: "Green", exact: true }).click()
+    await page.getByRole("button", { name: "Save theme" }).click()
+    await expect(page.getByText("Theme saved.")).toBeVisible()
+    await expect.poll(() => accentOf(page)).toBe(green)
+
+    // Dark --scribble is the accent lifted 20% toward white; the underline redraws in it.
+    const scribble = mix(green, 0.8, "#ffffff")
+    await expect
+      .poll(async () => near((await underline.getAttribute("stroke")) ?? "", scribble), {
+        message: "the Settings underline is green",
+      })
+      .toBe(true)
+
+    // The avatar is filled with the accent, with the accent's readable letter color (dark on Green).
+    const avatar = page.locator(".avatar").filter({ visible: true }).first()
+    const avatarColors = await avatar.evaluate((el) => ({
+      fill: getComputedStyle(el).backgroundColor,
+      letter: getComputedStyle(el).color,
+    }))
+    expect(near(avatarColors.fill, mix(green, 1, green)), JSON.stringify(avatarColors)).toBe(true)
+    expect(near(avatarColors.letter, mix("#15140f", 1, "#15140f")), JSON.stringify(avatarColors)).toBe(true)
+
+    // Settings rules and outlines are grey, not the old warm brown.
+    const outlines = await page.evaluate(() => {
+      const css = (selector: string, property: string) =>
+        getComputedStyle(document.querySelector(selector)!).getPropertyValue(property)
+      return [
+        css(".settings-section", "border-bottom-color"),
+        css(".color-button:not(.active)", "border-top-color"),
+        css(".color-preview-bar", "border-top-color"),
+        css("#settings-username", "border-top-color"),
+      ]
+    })
+    for (const value of outlines) expect(isGrey(value), JSON.stringify(outlines)).toBe(true)
+    // The Delete account line stays the warning color.
+    const dangerLine = await page.locator(".danger-zone").evaluate((el) => getComputedStyle(el).borderLeftColor)
+    expect(isGrey(dangerLine), dangerLine).toBe(false)
+
+    // Home: the date above the greeting is in the accent's text color, the name underline is green.
+    await page.goto("/dashboard")
+    await settle(page)
+    const date = await page.locator(".kicker").first().evaluate((el) => getComputedStyle(el).color)
+    expect(near(date, mix(green, 0.55, "#ffffff")), date).toBe(true)
+    const nameUnderline = page.locator("h1 svg.rough-annotation path").first()
+    await expect.poll(async () => near((await nameUnderline.getAttribute("stroke")) ?? "", scribble)).toBe(true)
+  } finally {
+    await setProfileTheme(page, SEEDED.demo.email, { theme_mode: "light", theme_color: DEFAULT_ACCENT })
   }
 })
