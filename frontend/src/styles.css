@@ -3849,6 +3849,16 @@ button.account-row:hover {
   .account-sheet .account-list {
     padding-bottom: 4px;
   }
+
+  /* The accounts sheet is a dialog: it and its dim backdrop cover the tab bar
+     (the + sheet stays under the tab bar so its + can turn into a close button). */
+  .account-backdrop {
+    z-index: 38;
+  }
+
+  .account-sheet {
+    z-index: 39;
+  }
 }
 
 /* =======================================================================
