@@ -1,0 +1,2 @@
+# Empty on purpose: the backup tools use the Python standard library only.
+# pytest for the tests comes from the backend test venv.
