@@ -1,16 +1,26 @@
-from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user_id
+from .edit_versions import (
+    IDEMPOTENCY_HEADER,
+    cas_update,
+    fields_match,
+    idempotent_insert,
+    parse_idempotency_key,
+    row_version,
+    work_route,
+)
 from .publishing import apply_update_publish_rules, build_create_publish_fields, require_title_text
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 TABLE_NAME = "notes"
 STUDY_TYPE = "note"
+# What a student edits. A retried save whose first copy landed already matches on these.
+EDIT_FIELDS = ("title", "content", "tags", "is_public")
 
 
 class NoteCreateRequest(BaseModel):
@@ -35,6 +45,8 @@ class NoteUpdateRequest(BaseModel):
     published_by: Optional[str] = None
     study_type: Optional[str] = None
     updated_at: Optional[str] = None
+    # The version the editor loaded. Missing only from browsers still on the old frontend.
+    expected_version: Optional[int] = Field(default=None, ge=1)
 
 
 class NoteResponse(BaseModel):
@@ -49,6 +61,7 @@ class NoteResponse(BaseModel):
     study_type: str = "note"
     created_at: str
     updated_at: Optional[str] = None
+    version: int = 1
 
 
 class NoteDeleteResponse(BaseModel):
@@ -68,6 +81,7 @@ def _normalize_note_row(row: dict) -> dict:
         "study_type": row.get("study_type") or "note",
         "created_at": row["created_at"],
         "updated_at": row.get("updated_at"),
+        "version": row_version(row),
     }
 
 
@@ -88,26 +102,29 @@ def _get_note_or_404(user_id: str, note_id: str) -> dict:
 
 
 @router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
-def create_note(payload: NoteCreateRequest, user_id: str = Depends(get_current_user_id)):
+@work_route
+def create_note(
+    payload: NoteCreateRequest,
+    response: Response,
+    user_id: str = Depends(get_current_user_id),
+    idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
+):
     require_title_text(payload.title)
-    response = (
-        get_supabase()
-        .table(TABLE_NAME)
-        .insert(
-            {
-                "user_id": user_id,
-                "title": payload.title,
-                "content": payload.content,
-                "tags": payload.tags,
-                **build_create_publish_fields(STUDY_TYPE),
-            }
-        )
-        .execute()
+    row = idempotent_insert(
+        get_supabase(),
+        TABLE_NAME,
+        user_id,
+        {
+            "title": payload.title,
+            "content": payload.content,
+            "tags": payload.tags,
+            **build_create_publish_fields(STUDY_TYPE),
+        },
+        parse_idempotency_key(idempotency_key),
+        response,
+        "Failed to create note",
     )
-    rows = response.data or []
-    if not rows:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create note")
-    return _normalize_note_row(rows[0])
+    return _normalize_note_row(row)
 
 
 @router.get("", response_model=list[NoteResponse])
@@ -129,19 +146,29 @@ def get_note(note_id: str, user_id: str = Depends(get_current_user_id)):
 
 
 @router.put("/{note_id}", response_model=NoteResponse)
+@work_route
 def update_note(note_id: str, payload: NoteUpdateRequest, user_id: str = Depends(get_current_user_id)):
-    existing_row = _get_note_or_404(user_id, note_id)
-
     updates = payload.model_dump(exclude_unset=True)
+    expected_version = updates.pop("expected_version", None)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
     require_title_text(updates.get("title"))
-    updates = apply_update_publish_rules(existing_row, updates, user_id=user_id, study_type=STUDY_TYPE)
 
-    updates["updated_at"] = datetime.utcnow().isoformat()
-    get_supabase().table(TABLE_NAME).update(updates).eq("id", note_id).eq("user_id", user_id).execute()
-    updated_row = _get_note_or_404(user_id, note_id)
-    return _normalize_note_row(updated_row)
+    def prepare(row: dict) -> dict:
+        return apply_update_publish_rules(row, dict(updates), user_id=user_id, study_type=STUDY_TYPE)
+
+    row = cas_update(
+        get_supabase(),
+        table=TABLE_NAME,
+        user_id=user_id,
+        item_id=note_id,
+        expected_version=expected_version,
+        prepare=prepare,
+        already_applied=lambda row: fields_match(row, updates, EDIT_FIELDS),
+        normalize=_normalize_note_row,
+        missing_detail="Note not found",
+    )
+    return _normalize_note_row(row)
 
 
 @router.delete("/{note_id}", response_model=NoteDeleteResponse)

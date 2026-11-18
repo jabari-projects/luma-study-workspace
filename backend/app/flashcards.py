@@ -1,17 +1,33 @@
-from datetime import datetime
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .auth import get_current_user_id
+from .edit_versions import (
+    IDEMPOTENCY_HEADER,
+    MAX_CAS_ROUNDS,
+    PROGRESS_BUSY_DETAIL,
+    cas_update,
+    fields_match,
+    gone,
+    idempotent_insert,
+    load_row,
+    parse_idempotency_key,
+    row_version,
+    work_route,
+)
 from .publishing import apply_update_publish_rules, build_create_publish_fields
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/flashcards", tags=["flashcards"])
 TABLE_NAME = "flashcards"
 STUDY_TYPE = "flashcards"
+# What a student edits besides the cards. A retried save whose first copy landed already
+# matches on these (and on the cards' words).
+EDIT_FIELDS = ("title", "tags", "is_public")
 
 
 MAX_CARDS_PER_DECK = 500
@@ -70,6 +86,8 @@ class FlashcardUpdateRequest(BaseModel):
     published_by: Optional[str] = None
     study_type: Optional[str] = None
     updated_at: Optional[str] = None
+    # The version the editor loaded. Missing only from browsers still on the old frontend.
+    expected_version: Optional[int] = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _check_cards(self) -> "FlashcardUpdateRequest":
@@ -94,10 +112,33 @@ class FlashcardResponse(BaseModel):
     study_type: str = "flashcards"
     created_at: str
     updated_at: Optional[str] = None
+    version: int = 1
 
 
 class FlashcardDeleteResponse(BaseModel):
     message: str
+
+
+class FlashcardProgressRequest(BaseModel):
+    """Review progress for some cards of one deck: card id -> review state (or null to start over)."""
+
+    reviews: dict[str, Optional[dict[str, Any]]]
+
+    @field_validator("reviews")
+    @classmethod
+    def _check_reviews(cls, reviews: dict[str, Optional[dict[str, Any]]]) -> dict[str, Optional[dict[str, Any]]]:
+        if not reviews:
+            raise ValueError("Send at least one card's progress.")
+        if len(reviews) > MAX_CARDS_PER_DECK:
+            raise ValueError(f"A deck can have up to {MAX_CARDS_PER_DECK} cards.")
+        if any(not key or len(key) > 64 for key in reviews):
+            raise ValueError("A card id is missing or too long.")
+        return reviews
+
+
+class FlashcardProgressResponse(BaseModel):
+    version: int
+    progress_rev: int
 
 
 def _row_cards(row: dict) -> list[dict]:
@@ -112,8 +153,27 @@ def _row_cards(row: dict) -> list[dict]:
 
 def _cards_payload(cards: list[FlashcardCard]) -> dict:
     """Store the deck plus mirror the first card into the legacy front/back columns."""
-    dumped = [card.model_dump() for card in cards]
-    return {"cards": dumped, "front": dumped[0]["front"], "back": dumped[0]["back"]}
+    return _cards_columns([card.model_dump() for card in cards])
+
+
+def _cards_columns(cards: list[dict]) -> dict:
+    return {"cards": cards, "front": cards[0]["front"], "back": cards[0]["back"]}
+
+
+def _progress_rev(row: dict) -> int:
+    value = row.get("progress_rev")
+    return int(value) if value is not None else 0
+
+
+def _card_words(cards: list[dict]) -> list[dict]:
+    """A deck's cards without review progress, to tell whether a save is already stored."""
+    return [{"id": card.get("id"), "front": card.get("front"), "back": card.get("back")} for card in cards]
+
+
+def _with_stored_reviews(sent: list[dict], stored: list[dict]) -> list[dict]:
+    """The editor's cards, each keeping the progress stored for its id. New ids start fresh."""
+    reviews = {card.get("id"): card.get("review") for card in stored}
+    return [{**card, "review": reviews.get(card["id"])} for card in sent]
 
 
 def _normalize_flashcard_row(row: dict) -> dict:
@@ -131,6 +191,7 @@ def _normalize_flashcard_row(row: dict) -> dict:
         "study_type": row.get("study_type") or "flashcards",
         "created_at": row["created_at"],
         "updated_at": row.get("updated_at"),
+        "version": row_version(row),
     }
 
 
@@ -151,28 +212,28 @@ def _get_flashcard_or_404(user_id: str, flashcard_id: str) -> dict:
 
 
 @router.post("", response_model=FlashcardResponse, status_code=status.HTTP_201_CREATED)
-def create_flashcard(payload: FlashcardCreateRequest, user_id: str = Depends(get_current_user_id)):
-    response = (
-        get_supabase()
-        .table(TABLE_NAME)
-        .insert(
-            {
-                "user_id": user_id,
-                "title": payload.title,
-                **_cards_payload(payload.cards or []),
-                "tags": payload.tags,
-                **build_create_publish_fields(STUDY_TYPE),
-            }
-        )
-        .execute()
+@work_route
+def create_flashcard(
+    payload: FlashcardCreateRequest,
+    response: Response,
+    user_id: str = Depends(get_current_user_id),
+    idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
+):
+    row = idempotent_insert(
+        get_supabase(),
+        TABLE_NAME,
+        user_id,
+        {
+            "title": payload.title,
+            **_cards_payload(payload.cards or []),
+            "tags": payload.tags,
+            **build_create_publish_fields(STUDY_TYPE),
+        },
+        parse_idempotency_key(idempotency_key),
+        response,
+        "Failed to create flashcard",
     )
-    rows = response.data or []
-    if not rows:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create flashcard",
-        )
-    return _normalize_flashcard_row(rows[0])
+    return _normalize_flashcard_row(row)
 
 
 @router.get("", response_model=list[FlashcardResponse])
@@ -194,24 +255,95 @@ def get_flashcard(flashcard_id: str, user_id: str = Depends(get_current_user_id)
 
 
 @router.put("/{flashcard_id}", response_model=FlashcardResponse)
+@work_route
 def update_flashcard(
     flashcard_id: str,
     payload: FlashcardUpdateRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    existing_row = _get_flashcard_or_404(user_id, flashcard_id)
-
     updates = payload.model_dump(exclude_unset=True)
-    if "cards" in updates:
-        updates.update(_cards_payload(payload.cards or []))
-    if not updates:
+    expected_version = updates.pop("expected_version", None)
+    sent_cards = [card.model_dump() for card in payload.cards or []] if "cards" in updates else None
+    updates.pop("cards", None)
+    if not updates and sent_cards is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
-    updates = apply_update_publish_rules(existing_row, updates, user_id=user_id, study_type=STUDY_TYPE)
 
-    updates["updated_at"] = datetime.utcnow().isoformat()
-    get_supabase().table(TABLE_NAME).update(updates).eq("id", flashcard_id).eq("user_id", user_id).execute()
-    updated_row = _get_flashcard_or_404(user_id, flashcard_id)
-    return _normalize_flashcard_row(updated_row)
+    def prepare(row: dict) -> dict:
+        changes = dict(updates)
+        if sent_cards is not None:
+            if expected_version is None:
+                # OVERLAP(remove after the frontend with expected_version is live): the old
+                # study page saves progress by sending the whole deck, review included.
+                cards = sent_cards
+            else:
+                # The editor never sends progress: keep what studying stored for each card.
+                cards = _with_stored_reviews(sent_cards, _row_cards(row))
+            changes.update(_cards_columns(cards))
+        return apply_update_publish_rules(row, changes, user_id=user_id, study_type=STUDY_TYPE)
+
+    def already_applied(row: dict) -> bool:
+        if sent_cards is not None and _card_words(_row_cards(row)) != _card_words(sent_cards):
+            return False
+        sent_fields = [field for field in EDIT_FIELDS if field in updates]
+        return (sent_cards is not None or bool(sent_fields)) and (
+            not sent_fields or fields_match(row, updates, EDIT_FIELDS)
+        )
+
+    row = cas_update(
+        get_supabase(),
+        table=TABLE_NAME,
+        user_id=user_id,
+        item_id=flashcard_id,
+        expected_version=expected_version,
+        prepare=prepare,
+        already_applied=already_applied,
+        normalize=_normalize_flashcard_row,
+        missing_detail="Flashcard not found",
+        # Studying in another tab moves progress_rev. Then this save reads the deck again
+        # and merges the newest progress in (at most MAX_CAS_ROUNDS times).
+        extra_match=lambda row: {"progress_rev": _progress_rev(row)},
+    )
+    return _normalize_flashcard_row(row)
+
+
+@router.patch("/{flashcard_id}/progress", response_model=FlashcardProgressResponse)
+@work_route
+def save_flashcard_progress(
+    flashcard_id: str,
+    payload: FlashcardProgressRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Merge review progress into the deck's cards. It never changes card words or `version`,
+    so studying never conflicts with an open deck editor. Unknown card ids are ignored."""
+    for _ in range(MAX_CAS_ROUNDS):
+        row = load_row(get_supabase(), TABLE_NAME, user_id, flashcard_id)
+        if row is None:
+            raise gone("Flashcard not found")
+        rev = _progress_rev(row)
+        cards = [
+            {**card, "review": payload.reviews[card["id"]]} if card.get("id") in payload.reviews else card
+            for card in _row_cards(row)
+        ]
+        changes: dict[str, Any] = {"progress_rev": rev + 1}
+        if cards:
+            changes.update(_cards_columns(cards))
+        rows = (
+            get_supabase()
+            .table(TABLE_NAME)
+            .update(changes)
+            .eq("id", flashcard_id)
+            .eq("user_id", user_id)
+            .eq("progress_rev", rev)
+            .execute()
+            .data
+            or []
+        )
+        if rows:
+            return {"version": row_version(rows[0]), "progress_rev": _progress_rev(rows[0])}
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": PROGRESS_BUSY_DETAIL, "error_code": "progress_busy"},
+    )
 
 
 @router.delete("/{flashcard_id}", response_model=FlashcardDeleteResponse)

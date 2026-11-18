@@ -23,6 +23,14 @@ OWNER_ID = "owner-1"
 
 # ---------- Fake Supabase ----------
 
+# Column defaults the real tables have (2026_11_19_student_work_versions.sql).
+TABLE_DEFAULTS = {
+    "notes": {"version": 1},
+    "summaries": {"version": 1},
+    "flashcards": {"version": 1, "progress_rev": 0},
+    "study_sessions": {"version": 1},
+}
+
 
 class FakeQuery:
     def __init__(self, db: "FakeSupabase", table: str):
@@ -153,7 +161,12 @@ class FakeQuery:
             raise RuntimeError("simulated database failure")
         rows = self.db.tables.setdefault(self.table_name, [])
         if self.op == "insert":
-            row = {"id": str(uuid.uuid4()), "created_at": "2026-01-01T00:00:00", **self.payload}
+            row = {
+                "id": str(uuid.uuid4()),
+                "created_at": "2026-01-01T00:00:00",
+                **TABLE_DEFAULTS.get(self.table_name, {}),
+                **self.payload,
+            }
             rows.append(row)
             return SimpleNamespace(data=[copy.deepcopy(row)])
         matched = [row for row in rows if self._matches(row)]

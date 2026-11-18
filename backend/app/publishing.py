@@ -22,7 +22,17 @@ from .supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
 
-CLIENT_CONTROLLED_PUBLISH_FIELDS = ("published_by", "published_at", "study_type", "updated_at")
+# The client may send these, but the server always decides them. version, create_key and
+# progress_rev belong to safe saving (edit_versions.py) and are never taken from a request body.
+CLIENT_CONTROLLED_PUBLISH_FIELDS = (
+    "published_by",
+    "published_at",
+    "study_type",
+    "updated_at",
+    "version",
+    "create_key",
+    "progress_rev",
+)
 PUBLISH_TITLE_REQUIRED_MESSAGE = "Please give this study set a title before publishing."
 DEFAULT_PUBLISHER_NAME = "Student"
 

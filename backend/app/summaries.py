@@ -1,16 +1,26 @@
-from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user_id
+from .edit_versions import (
+    IDEMPOTENCY_HEADER,
+    cas_update,
+    fields_match,
+    idempotent_insert,
+    parse_idempotency_key,
+    row_version,
+    work_route,
+)
 from .publishing import apply_update_publish_rules, build_create_publish_fields
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/summaries", tags=["summaries"])
 TABLE_NAME = "summaries"
 STUDY_TYPE = "summary"
+# What a student edits. A retried save whose first copy landed already matches on these.
+EDIT_FIELDS = ("title", "content", "tags", "is_public")
 
 
 class SummaryCreateRequest(BaseModel):
@@ -35,6 +45,8 @@ class SummaryUpdateRequest(BaseModel):
     published_by: Optional[str] = None
     study_type: Optional[str] = None
     updated_at: Optional[str] = None
+    # The version the editor loaded. Missing only from browsers still on the old frontend.
+    expected_version: Optional[int] = Field(default=None, ge=1)
 
 
 class SummaryResponse(BaseModel):
@@ -49,6 +61,7 @@ class SummaryResponse(BaseModel):
     study_type: str = "summary"
     created_at: str
     updated_at: Optional[str] = None
+    version: int = 1
 
 
 class SummaryDeleteResponse(BaseModel):
@@ -68,6 +81,7 @@ def _normalize_summary_row(row: dict) -> dict:
         "study_type": row.get("study_type") or "summary",
         "created_at": row["created_at"],
         "updated_at": row.get("updated_at"),
+        "version": row_version(row),
     }
 
 
@@ -88,28 +102,28 @@ def _get_summary_or_404(user_id: str, summary_id: str) -> dict:
 
 
 @router.post("", response_model=SummaryResponse, status_code=status.HTTP_201_CREATED)
-def create_summary(payload: SummaryCreateRequest, user_id: str = Depends(get_current_user_id)):
-    response = (
-        get_supabase()
-        .table(TABLE_NAME)
-        .insert(
-            {
-                "user_id": user_id,
-                "title": payload.title,
-                "content": payload.content,
-                "tags": payload.tags,
-                **build_create_publish_fields(STUDY_TYPE),
-            }
-        )
-        .execute()
+@work_route
+def create_summary(
+    payload: SummaryCreateRequest,
+    response: Response,
+    user_id: str = Depends(get_current_user_id),
+    idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
+):
+    row = idempotent_insert(
+        get_supabase(),
+        TABLE_NAME,
+        user_id,
+        {
+            "title": payload.title,
+            "content": payload.content,
+            "tags": payload.tags,
+            **build_create_publish_fields(STUDY_TYPE),
+        },
+        parse_idempotency_key(idempotency_key),
+        response,
+        "Failed to create summary",
     )
-    rows = response.data or []
-    if not rows:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create summary",
-        )
-    return _normalize_summary_row(rows[0])
+    return _normalize_summary_row(row)
 
 
 @router.get("", response_model=list[SummaryResponse])
@@ -131,18 +145,28 @@ def get_summary(summary_id: str, user_id: str = Depends(get_current_user_id)):
 
 
 @router.put("/{summary_id}", response_model=SummaryResponse)
+@work_route
 def update_summary(summary_id: str, payload: SummaryUpdateRequest, user_id: str = Depends(get_current_user_id)):
-    existing_row = _get_summary_or_404(user_id, summary_id)
-
     updates = payload.model_dump(exclude_unset=True)
+    expected_version = updates.pop("expected_version", None)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
-    updates = apply_update_publish_rules(existing_row, updates, user_id=user_id, study_type=STUDY_TYPE)
 
-    updates["updated_at"] = datetime.utcnow().isoformat()
-    get_supabase().table(TABLE_NAME).update(updates).eq("id", summary_id).eq("user_id", user_id).execute()
-    updated_row = _get_summary_or_404(user_id, summary_id)
-    return _normalize_summary_row(updated_row)
+    def prepare(row: dict) -> dict:
+        return apply_update_publish_rules(row, dict(updates), user_id=user_id, study_type=STUDY_TYPE)
+
+    row = cas_update(
+        get_supabase(),
+        table=TABLE_NAME,
+        user_id=user_id,
+        item_id=summary_id,
+        expected_version=expected_version,
+        prepare=prepare,
+        already_applied=lambda row: fields_match(row, updates, EDIT_FIELDS),
+        normalize=_normalize_summary_row,
+        missing_detail="Summary not found",
+    )
+    return _normalize_summary_row(row)
 
 
 @router.delete("/{summary_id}", response_model=SummaryDeleteResponse)
