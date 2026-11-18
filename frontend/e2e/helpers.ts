@@ -20,8 +20,8 @@ export function fakeEmail(label: string, info: TestInfo): string {
   return `${label}-${info.project.name}-${Date.now().toString(36)}-${counter}@example.test`
 }
 
-/** Newest fake email of a kind for an address (codes and reset links). */
-export async function latestMail(page: Page, email: string, kind: "code" | "reset") {
+/** Newest fake email of a kind for an address (codes, reset links, email-changed notices). */
+export async function latestMail(page: Page, email: string, kind: "code" | "reset" | "email_changed") {
   let found: { code?: string; link?: string } | undefined
   await expect
     .poll(async () => {

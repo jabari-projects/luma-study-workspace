@@ -47,13 +47,12 @@ For a fresh checkout, copy `backend/.env.example` to `backend/.env` and fill in 
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 JWT_SECRET_KEY=
-API_BASE_URL=http://127.0.0.1:8000
 FRONTEND_ORIGIN=http://localhost:5173
 ```
 
-Use a private, randomly generated `JWT_SECRET_KEY` that stays the same between server restarts. For example, generate one locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in the backend environment only. Do not rely on the development fallback for a deployed app.
+Use a private, randomly generated `JWT_SECRET_KEY` that stays the same between server restarts. For example, generate one locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in the backend environment only. The server will not start without `JWT_SECRET_KEY`, or with one shorter than 32 characters.
 
-`SUPABASE_KEY` is accepted as an alternative to `SUPABASE_SERVICE_ROLE_KEY`. `FRONTEND_ORIGINS` accepts a comma-separated list or JSON array of allowed origins; `PUBLIC_APP_URL` is also recognized for the frontend origin. `APP_ENV` (or `ENV`) and `LOG_LEVEL` are optional deployment settings.
+`SUPABASE_KEY` is accepted as an alternative to `SUPABASE_SERVICE_ROLE_KEY`. `FRONTEND_ORIGINS` accepts a comma-separated list or JSON array of allowed origins; `PUBLIC_APP_URL` is also recognized for the frontend origin. `APP_ENV` and `LOG_LEVEL` are optional deployment settings.
 
 Configure only the integrations you plan to use:
 
@@ -70,9 +69,6 @@ DEEPGRAM_API_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_ID=
-
-# Internal Supabase webhook endpoints
-WEBHOOK_SECRET=
 
 # Email-related flows when configured
 RESEND_API_KEY=
@@ -99,4 +95,4 @@ Apply the SQL files in `backend/app/schemas/` to the Supabase project as appropr
 
 Never commit actual service keys, webhook secrets, or populated environment files. The checked-in `.env.example` files contain placeholders only. All `VITE_*` values are included in the public browser bundle, so keep Supabase service-role, OpenAI, Deepgram, Stripe, JWT, email, and webhook secrets on the backend/deployment platform.
 
-For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY`, the public `API_BASE_URL`, and your frontend origin settings explicitly. `render.yaml`, `backend/railway.json`, `frontend/vercel.json`, and `frontend/netlify.toml` are included as deployment integration files. Changing these repository files does not configure credentials in a hosting account.
+For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY` (at least 32 characters), and your frontend origin settings explicitly. `render.yaml`, `backend/railway.json`, `frontend/vercel.json`, and `frontend/netlify.toml` are included as deployment integration files. Changing these repository files does not configure credentials in a hosting account.

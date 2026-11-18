@@ -198,14 +198,10 @@ class FakeDB:
             },
         }
         self.storage_api = SimpleNamespace(from_=lambda name: Bucket(self, name))
-        self.auth = SimpleNamespace(get_user=self._auth_get_user)
 
     @property
     def storage_ns(self):
         return self.storage_api
-
-    def _auth_get_user(self, _token):
-        raise RuntimeError("no supabase auth in tests")
 
     def fail(self, op, target, times=1):
         self.failures[(op, target)] = times
@@ -230,7 +226,6 @@ class DBWrapper:
     def __init__(self, fake: FakeDB):
         self.fake = fake
         self.storage = fake.storage_api
-        self.auth = fake.auth
 
     def table(self, name):
         return self.fake.table(name)
@@ -474,12 +469,17 @@ def auth_header(uid=USER):
     return {"Authorization": f"Bearer {create_access_token({'sub': uid})}"}
 
 
+def delete_account(client, headers, password=SYNTHETIC_HASH):
+    """DELETE /me/account with the current password (the fake users store it as plaintext)."""
+    return client.request("DELETE", "/me/account", json={"current_password": password}, headers=headers)
+
+
 def test_route_success_response_and_token_rejected_afterwards(route_env):
     headers = auth_header()
     main.ai_rate_limit_windows[(USER, "transcribe")] = [1.0]
     main.ai_rate_limit_windows[(OTHER, "transcribe")] = [1.0]
 
-    response = route_env.client.delete("/me/account", headers=headers)
+    response = delete_account(route_env.client, headers)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["success"] is True
@@ -492,7 +492,7 @@ def test_route_success_response_and_token_rejected_afterwards(route_env):
 
     # Same token no longer works anywhere.
     assert route_env.client.get("/notifications", headers=headers).status_code == 401
-    assert route_env.client.delete("/me/account", headers=headers).status_code == 401
+    assert delete_account(route_env.client, headers).status_code == 401
     # The other student's session is unaffected.
     assert route_env.client.get("/notifications", headers=auth_header(OTHER)).status_code == 200
 
@@ -501,7 +501,7 @@ def test_route_partial_failure_returns_500_then_retry_succeeds(route_env):
     headers = auth_header()
     route_env.fake.fail("delete", "flashcards")
     route_env.fake.fail("storage_list", "themes")
-    response = route_env.client.delete("/me/account", headers=headers)
+    response = delete_account(route_env.client, headers)
     assert response.status_code == 500
     body = response.json()
     assert body["detail"] == ad.FAILURE_DETAIL
@@ -510,7 +510,7 @@ def test_route_partial_failure_returns_500_then_retry_succeeds(route_env):
         assert leak not in response.text
 
     # Still signed in: the same token can retry and finish.
-    retry = route_env.client.delete("/me/account", headers=headers)
+    retry = delete_account(route_env.client, headers)
     assert retry.status_code == 200, retry.text
     assert not any(route_env.fake.user_rows(USER).values())
     assert route_env.fake.storage["themes"] == {f"themes/{OTHER}/keep.png"}

@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 from dataclasses import dataclass
 from typing import Any
 
-DEFAULT_DEV_JWT_SECRET = "luma-development-jwt-secret-key-2026"
-DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_FRONTEND_APP_ORIGIN = "http://localhost:5173"
 DEFAULT_FRONTEND_ORIGINS = [
     "http://localhost:5173",
@@ -16,7 +13,23 @@ DEFAULT_FRONTEND_ORIGINS = [
     "https://luma-frontend-dxgnch0h1-jabarimckinney213-7284s-projects.vercel.app",
 ]
 
-_PRODUCTION_FALLBACK_JWT_SECRET = secrets.token_urlsafe(64)
+MIN_JWT_SECRET_LENGTH = 32
+# The old built-in dev secret. It is in git history, so anyone could sign tokens with it.
+KNOWN_LEAKED_JWT_SECRET = "luma-development-jwt-secret-key-2026"
+
+
+def check_jwt_secret_key(value: str | None) -> None:
+    """Refuse to run without a real JWT secret (it signs every session)."""
+    if not value or len(value) < MIN_JWT_SECRET_LENGTH:
+        raise RuntimeError(
+            f"JWT_SECRET_KEY must be set to at least {MIN_JWT_SECRET_LENGTH} characters. "
+            "The server will not start without it."
+        )
+    if value == KNOWN_LEAKED_JWT_SECRET:
+        raise RuntimeError(
+            "JWT_SECRET_KEY is the old public dev secret. Set a new random value. "
+            "The server will not start with it."
+        )
 
 
 def normalize_origin(value: str | None) -> str | None:
@@ -154,8 +167,8 @@ def _read_env(
 
 @dataclass(frozen=True)
 class AppSettings:
+    # Only shown in the startup log line. It changes no behaviour.
     APP_ENV: str = "development"
-    API_BASE_URL: str | None = None
     FRONTEND_ORIGINS_RAW: str | None = None
     FRONTEND_ORIGIN: str | None = None
     PUBLIC_APP_URL: str | None = None
@@ -172,7 +185,6 @@ class AppSettings:
     STRIPE_SECRET_KEY: str | None = None
     STRIPE_WEBHOOK_SECRET: str | None = None
     STRIPE_PRICE_ID: str | None = None
-    WEBHOOK_SECRET: str | None = None
     FREE_AI_DAILY_LIMIT: int = 3
     AI_RATE_LIMIT_WINDOW_SECONDS: int = 60
     RESEND_API_KEY: str | None = None
@@ -200,28 +212,6 @@ class AppSettings:
         return merged
 
     @property
-    def effective_jwt_secret_key(self) -> str:
-        if self.JWT_SECRET_KEY:
-            return self.JWT_SECRET_KEY
-
-        if self.APP_ENV == "production":
-            return _PRODUCTION_FALLBACK_JWT_SECRET
-
-        return DEFAULT_DEV_JWT_SECRET
-
-    @property
-    def using_fallback_jwt_secret(self) -> bool:
-        return not bool(self.JWT_SECRET_KEY)
-
-    @property
-    def using_production_fallback_jwt_secret(self) -> bool:
-        return self.APP_ENV == "production" and not bool(self.JWT_SECRET_KEY)
-
-    @property
-    def resolved_api_base_url(self) -> str:
-        return normalize_origin(self.API_BASE_URL) or DEFAULT_API_BASE_URL
-
-    @property
     def frontend_app_origin(self) -> str:
         for value in (self.FRONTEND_ORIGIN, self.PUBLIC_APP_URL):
             normalized = normalize_origin(value)
@@ -239,8 +229,7 @@ def load_settings() -> AppSettings:
     env_lookup = _build_env_lookup()
 
     return AppSettings(
-        APP_ENV=_normalize_app_env(_read_env(env_lookup, "APP_ENV", "ENV")),
-        API_BASE_URL=normalize_origin(_read_env(env_lookup, "API_BASE_URL")),
+        APP_ENV=_normalize_app_env(_read_env(env_lookup, "APP_ENV")),
         FRONTEND_ORIGINS_RAW=_read_env(env_lookup, "FRONTEND_ORIGINS"),
         FRONTEND_ORIGIN=normalize_origin(_read_env(env_lookup, "FRONTEND_ORIGIN")),
         PUBLIC_APP_URL=normalize_origin(_read_env(env_lookup, "PUBLIC_APP_URL")),
@@ -267,7 +256,6 @@ def load_settings() -> AppSettings:
         STRIPE_SECRET_KEY=_read_env(env_lookup, "STRIPE_SECRET_KEY"),
         STRIPE_WEBHOOK_SECRET=_read_env(env_lookup, "STRIPE_WEBHOOK_SECRET"),
         STRIPE_PRICE_ID=_read_env(env_lookup, "STRIPE_PRICE_ID"),
-        WEBHOOK_SECRET=_read_env(env_lookup, "WEBHOOK_SECRET"),
         FREE_AI_DAILY_LIMIT=_normalize_int(
             _read_env(env_lookup, "FREE_AI_DAILY_LIMIT"),
             default=3,

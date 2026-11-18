@@ -384,16 +384,20 @@ def test_logged_in_account_verifies_with_code_and_token(web, db, sent_emails, cl
     assert db.users()[0]["email_verified"] is True
 
 
-def test_old_code_cannot_verify_a_new_email(web, db, sent_emails, clock):
+def test_old_code_cannot_confirm_a_new_email(web, db, sent_emails, clock):
     row = legacy_unverified(db)
     token = create_access_token({"sub": row["id"]})
     web.post("/auth/send-verification", headers=bearer(token))
     code_for_old_inbox = code_from_email(sent_emails[0]["html"])
-    # Change the address inside the 60 s cooldown (no new code can be sent yet).
-    assert web.put("/me/email", json={"new_email": "victim@example.com"}, headers=bearer(token)).status_code == 200
-    r = web.post("/auth/verify-email", json={"code": code_for_old_inbox}, headers=bearer(token))
+    # Start a change inside the 60 s cooldown: no new code can be sent yet, and it says so.
+    r = web.put("/me/email", json={"new_email": "victim@example.com", "current_password": "legacy-plain"},
+                headers=bearer(token))
+    assert r.status_code == 429 and r.json()["error_code"] == "resend_cooldown"
+    r = web.post("/me/email/confirm", json={"new_email": "victim@example.com", "code": code_for_old_inbox},
+                 headers=bearer(token))
     assert r.status_code == 400 and r.json()["error_code"] == "code_incorrect"
-    assert db.users()[0]["email_verified"] is False
+    assert db.users()[0]["email"] == "old@example.com"
+    assert not db.users()[0]["email_verified"]
 
 
 def test_logged_in_resend_cooldown_is_specific(web, db, sent_emails, clock):

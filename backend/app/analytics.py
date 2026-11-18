@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
-from .auth import _get_user_from_custom_jwt
+from .auth import validate_access_token
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -69,25 +69,11 @@ def get_optional_user_id(
     if credentials is None:
         return None
 
-    token = credentials.credentials
     try:
-        custom_user_id = _get_user_from_custom_jwt(token)
+        return validate_access_token(credentials.credentials)["id"]
     except HTTPException:
-        # Stale or uncheckable session: record the event anonymously.
+        # Bad, stale or uncheckable session: record the event anonymously.
         return None
-    if custom_user_id:
-        return custom_user_id
-
-    try:
-        auth_response = get_supabase().auth.get_user(token)
-        user = getattr(auth_response, "user", None)
-        user_id = getattr(user, "id", None)
-        if isinstance(user_id, str) and user_id:
-            return user_id
-    except Exception:
-        return None
-
-    return None
 
 
 def _normalize_timestamp(value: datetime | None):

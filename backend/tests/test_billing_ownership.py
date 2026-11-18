@@ -23,7 +23,9 @@ from app import auth as auth_module
 from app import billing, main
 from app.auth import create_access_token
 
-from tests.test_account_deletion import OTHER, USER, USER_EMAIL, DBWrapper, FakeDB, outcomes
+from tests.test_account_deletion import (
+    OTHER, USER, USER_EMAIL, DBWrapper, FakeDB, delete_account, outcomes,
+)
 
 NEW = "33333333-3333-4333-8333-333333333333"
 NEW_EMAIL = "new.student@example.test"
@@ -444,11 +446,10 @@ def test_event_for_linked_subscription_with_different_customer_is_refused(env):
 
 
 def test_email_changed_after_paying_deletion_still_cancels_by_id(env):
-    response = env.client.put("/me/email", json={"new_email": "renamed.student@luma-tests.com"}, headers=auth_header(USER))
-    assert response.status_code == 200, response.text
-    assert next(r for r in env.fake.tables["users"] if r["id"] == USER)["email"] == "renamed.student@luma-tests.com"
+    # The email change itself (code flow) is tested in test_security_gaps.py.
+    next(r for r in env.fake.tables["users"] if r["id"] == USER)["email"] = "renamed.student@luma-tests.com"
 
-    response = env.client.delete("/me/account", headers=auth_header(USER))
+    response = delete_account(env.client, auth_header(USER))
     assert response.status_code == 200, response.text
     assert env.world.calls == [("cancel", "sub_mine")]
     assert env.world.subs["sub_other"]["status"] == "active"
@@ -498,7 +499,7 @@ def test_cancellation_failure_keeps_login_and_retry_completes(env):
     assert any(r["id"] == USER for r in env.fake.tables["users"])
     assert any(r["user_id"] == USER for r in env.fake.tables["billing_subscriptions"])
     # The login still works and retrying through the route finishes the job.
-    response = env.client.delete("/me/account", headers=auth_header(USER))
+    response = delete_account(env.client, auth_header(USER))
     assert response.status_code == 200, response.text
     assert w.subs["sub_mine"]["status"] == w.subs["sub_trial"]["status"] == "canceled"
     assert sorted(sub for _, sub in w.calls) == ["sub_mine", "sub_trial"]  # each canceled once
@@ -531,7 +532,7 @@ def test_legacy_premium_without_link_needs_review_and_keeps_account(env):
     assert profile_status(env.fake, USER) == "premium"
     assert [r for r in env.fake.tables["notes"] if r["user_id"] == USER] == notes_before
 
-    response = env.client.delete("/me/account", headers=auth_header(USER))
+    response = delete_account(env.client, auth_header(USER))
     assert response.status_code == 500
     assert response.json()["detail"] == (
         "We need to finish canceling your subscription by hand. Please contact support; your account is safe.")

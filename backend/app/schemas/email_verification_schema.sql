@@ -1,5 +1,9 @@
 -- Luma email verification schema for the existing Supabase-backed FastAPI app.
 -- Apply this in Supabase SQL editor or your preferred deployment flow.
+--
+-- email_verification_token and email_verification_sent_at are unused since
+-- link verification was removed (codes live in email_codes now). Old hashed
+-- tokens stay here until an owner-approved migration nulls and drops them.
 
 alter table if exists public.users
     add column if not exists email_verified boolean not null default false,

@@ -14,7 +14,7 @@ import pytest
 from app import account_deletion as ad
 from app import billing
 
-from tests.test_account_deletion import OTHER, USER, USER_EMAIL, outcomes
+from tests.test_account_deletion import OTHER, USER, USER_EMAIL, delete_account, outcomes
 from tests.test_billing_ownership import (  # noqa: F401 - env is a fixture
     KEY,
     NEW,
@@ -291,7 +291,7 @@ def test_legacy_premium_never_calls_stripe_or_guesses_by_email(env):
 
 def test_legacy_route_message(env):
     add_new_user(env.fake, status="active")
-    r = env.client.delete("/me/account", headers=auth_header(NEW))
+    r = delete_account(env.client, auth_header(NEW), "x")
     assert r.status_code == 500
     assert r.json()["detail"] == ad.BILLING_REVIEW_DETAIL
     assert any(row["id"] == NEW for row in env.fake.tables["users"])

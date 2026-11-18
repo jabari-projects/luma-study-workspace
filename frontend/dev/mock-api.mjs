@@ -13,10 +13,11 @@
 // Test helpers (local only):
 //   POST /__test/expire {"email": "..."}   ends that account's sign-ins, like a password reset elsewhere
 //   TOKEN_TTL_SECONDS=60 npm run mock-api  sign-ins stop working after 60 seconds
-//   GET  /__test/outbox?email=...          the newest fake emails for that address (codes, reset links)
+//   GET  /__test/outbox?email=...          the newest fake emails for that address (codes, reset links, email-changed notices)
 //   POST /__test/profile {"email": "...", "fields": {...}}  writes saved profile fields as-is, null
 //                                          included (an old profile with no color, say); the real
 //                                          PUT /me/profile cannot clear a field, so neither can ours
+//   POST /__test/skip-code-wait {"email": "..."}  ends that account's 60 s wait between codes
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
 import { randomInt, randomUUID } from "node:crypto"
@@ -63,14 +64,21 @@ function accountFor(req) {
   const a = s && byId(s.id)
   return a && a.version === s.version ? a : null
 }
-function sendCode(account) {
-  const now = Date.now()
-  if (now - account.lastSent < 60_000) return false
-  account.lastSent = now
-  account.code = { value: String(randomInt(0, 1_000_000)).padStart(6, "0"), expires: now + 600_000, attempts: 0, used: false }
-  console.log(`[FAKE EMAIL] code for ${account.email}: ${account.code.value}`)
-  deliver(account.email, { kind: "code", code: account.code.value })
+// A code is for one address: the account's own, or the new one during an email change.
+// quiet: save the code but send nothing (a new email that already has an account).
+function sendCode(account, to = account.email, { quiet = false } = {}) {
+  if (codeWait(account)) return false
+  const sentAt = (account.lastSent = Date.now())
+  account.code = { value: String(randomInt(0, 1_000_000)).padStart(6, "0"), email: to, expires: sentAt + 600_000, attempts: 0, used: false }
+  if (quiet) return true
+  console.log(`[FAKE EMAIL] code for ${to}: ${account.code.value}`)
+  deliver(to, { kind: "code", code: account.code.value })
   return true
+}
+/** Seconds until this account (or pending signup) may get another code; 0 when it may now. */
+function codeWait(account) {
+  const left = 60_000 - (Date.now() - (account.lastSent || 0))
+  return left > 0 ? Math.ceil(left / 1000) : 0
 }
 const err = (detail, error_code, extra = {}) => ({ detail, error_code, ...extra })
 // Shared-item previews read as plain words, like _clip in backend/app/public_search.py:
@@ -88,6 +96,40 @@ function clipPreview(value, limit = 220) {
     .join(" ")
   return plain.length <= limit ? plain : `${plain.slice(0, limit - 3).trimEnd()}...`
 }
+const COOLDOWN = (wait) => err("Wait a moment before asking for another code.", "resend_cooldown", { retry_after: wait })
+const CHANGE_STARTED = { status: "code_sent_if_possible", resend_after_seconds: 60, code_expires_in_seconds: 600 }
+const CODE_INCORRECT = err("That code doesn't match. Check your newest email.", "code_incorrect")
+const CODE_LOCKED = err("Too many tries. Send a new code.", "code_locked")
+/** Uses up a right code; else the error body, like the real code check. */
+function checkCode(c, raw) {
+  const code = String(raw || "").replace(/\D/g, "")
+  if (Date.now() > c.expires) return err("That code is too old. Send a new one.", "code_expired")
+  if (c.attempts >= 5) return CODE_LOCKED
+  if (code !== c.value) {
+    c.attempts += 1
+    return c.attempts >= 5 ? CODE_LOCKED : CODE_INCORRECT
+  }
+  c.used = true
+  return null
+}
+const TOO_MANY = "Too many tries. Wait a little and try again."
+/** Like check_current_password: 5 tries per 15 minutes (a right one clears them) and 10 per day. */
+function checkPassword(a, candidate) {
+  const now = Date.now()
+  a.pwTries = (a.pwTries || []).filter((t) => now - t < 15 * 60_000)
+  a.pwDay = (a.pwDay || []).filter((t) => now - t < 86_400_000)
+  if (a.pwTries.length >= 5) return [429, err(TOO_MANY, "rate_limited", { retry_after: 15 * 60 })]
+  a.pwTries.push(now)
+  if (a.pwDay.length >= 10) return [429, err(TOO_MANY, "rate_limited", { retry_after: 86_400 })]
+  a.pwDay.push(now)
+  if (candidate !== a.password) return [400, err("That password is wrong.", "wrong_password")]
+  a.pwTries = []
+  return null
+}
+/** The password field is required (min 1 character), so leaving it out is a plain 422. */
+const needsPassword = (body) => typeof body.current_password !== "string" || !body.current_password
+const MISSING_PASSWORD = { detail: [{ loc: ["body", "current_password"], msg: "Field required", type: "missing" }] }
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 const aiGate = (req) => {
   const a = accountFor(req)
   if (!a) return [401, { error: "Please log in again." }]
@@ -176,6 +218,13 @@ http
       return send(res, 200, { success: true })
     }
 
+    if (url.pathname === "/__test/skip-code-wait" && req.method === "POST") {
+      const a = accounts.get(String(body.email || "").trim().toLowerCase())
+      if (!a) return send(res, 404, { detail: "No fake account with that email." })
+      a.lastSent = 0
+      return send(res, 200, { success: true })
+    }
+
     if (url.pathname === "/__test/outbox" && req.method === "GET") {
       return send(res, 200, { messages: outbox.get(String(url.searchParams.get("email") || "").trim().toLowerCase()) || [] })
     }
@@ -199,21 +248,14 @@ http
       return send(res, 202, { status: "check_email", email, ticket, resend_after_seconds: 60, code_expires_in_seconds: 600 })
     }
     if (url.pathname === "/auth/verify-email" && req.method === "POST") {
-      const code = String(body.code || "").replace(/\D/g, "")
       const loggedIn = body.ticket ? null : accountFor(req)
       const p = body.ticket ? pending.get(body.ticket) : null
       const a = loggedIn || (p && p.email === String(body.email || "").trim().toLowerCase() ? p : null)
       const c = a?.code
-      if (!a || !c || c.used) return send(res, 400, err("That code doesn't match. Check your newest email.", "code_incorrect"))
-      if (Date.now() > c.expires) return send(res, 400, err("That code is too old. Send a new one.", "code_expired"))
-      if (c.attempts >= 5) return send(res, 400, err("Too many tries. Send a new code.", "code_locked"))
-      if (code !== c.value) {
-        c.attempts += 1
-        return c.attempts >= 5
-          ? send(res, 400, err("Too many tries. Send a new code.", "code_locked"))
-          : send(res, 400, err("That code doesn't match. Check your newest email.", "code_incorrect"))
-      }
-      c.used = true
+      // A code sent for an email change can't check the current address.
+      if (!a || !c || c.used || c.email !== a.email) return send(res, 400, CODE_INCORRECT)
+      const wrong = checkCode(c, body.code)
+      if (wrong) return send(res, 400, wrong)
       if (loggedIn) {
         loggedIn.email_verified = true
         return send(res, 200, newSession(loggedIn))
@@ -231,10 +273,9 @@ http
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
       if (a.email_verified) return send(res, 200, { success: true, message: "Your email is already checked." })
-      if (!sendCode(a)) {
-        const wait = Math.ceil((60_000 - (Date.now() - a.lastSent)) / 1000)
-        return send(res, 429, err("Wait a moment before asking for another code.", "resend_cooldown", { retry_after: wait }))
-      }
+      const wait = codeWait(a)
+      if (wait) return send(res, 429, COOLDOWN(wait))
+      sendCode(a)
       return send(res, 200, { success: true, message: "We sent a new code.", resend_after_seconds: 60 })
     }
     if (url.pathname === "/login" && req.method === "POST") {
@@ -295,6 +336,9 @@ http
     if (url.pathname === "/me/account" && req.method === "DELETE") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
+      if (needsPassword(body)) return send(res, 422, MISSING_PASSWORD)
+      const refused = checkPassword(a, body.current_password)
+      if (refused) return send(res, ...refused)
       accounts.delete(a.email)
       return send(res, 200, { success: true, message: "Your account and study data were deleted.", retained: [
         "If you paid for Premium, payment records stay with Stripe because tax law requires them",
@@ -446,6 +490,62 @@ http
     }
 
     if (url.pathname === "/health") return send(res, 200, { status: "ok" })
+    // Change email, step 1: the current password, then a code to the NEW address.
+    // The answer is the same when that address already has an account, but then
+    // the code is saved and never sent (like the real server), so guesses just fail.
+    if (url.pathname === "/me/email" && req.method === "PUT") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
+      const next = String(body.new_email || "").trim().toLowerCase()
+      if (!EMAIL_RE.test(next)) return send(res, 422, { detail: [{ loc: ["body", "new_email"], msg: "value is not a valid email address" }] })
+      if (needsPassword(body)) return send(res, 422, MISSING_PASSWORD)
+      if (a.id === "u1") return send(res, 403, err("The admin email can't be changed here.", "admin_email_locked"))
+      // The code cooldown is told before the password is checked, so it uses no password try.
+      const wait = codeWait(a)
+      if (wait) return send(res, 429, COOLDOWN(wait))
+      const refused = checkPassword(a, body.current_password)
+      if (refused) return send(res, ...refused)
+      if (next === a.email) return send(res, 400, err("That's already your email.", "same_email"))
+      sendCode(a, next, { quiet: accounts.has(next) })
+      return send(res, 202, CHANGE_STARTED)
+    }
+    // A new code for the change already started: no password, only the pending address.
+    if (url.pathname === "/me/email/resend" && req.method === "POST") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
+      const next = String(body.new_email || "").trim().toLowerCase()
+      if (!EMAIL_RE.test(next)) return send(res, 422, { detail: [{ loc: ["body", "new_email"], msg: "value is not a valid email address" }] })
+      const c = a.code
+      if (next === a.email || !c || c.used || c.email !== next) {
+        return send(res, 400, err("Start again: type your new email and your password.", "no_pending_change"))
+      }
+      const wait = codeWait(a)
+      if (wait) return send(res, 429, COOLDOWN(wait))
+      sendCode(a, next, { quiet: accounts.has(next) })
+      return send(res, 202, CHANGE_STARTED)
+    }
+    // Change email, step 2: the code from the new address. The old address is told.
+    if (url.pathname === "/me/email/confirm" && req.method === "POST") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
+      const next = String(body.new_email || "").trim().toLowerCase()
+      if (!EMAIL_RE.test(next) || typeof body.code !== "string" || !body.code) {
+        return send(res, 422, { detail: [{ loc: ["body"], msg: "Type your new email and the code." }] })
+      }
+      const c = a.code
+      if (next === a.email || !c || c.used || c.email !== next) return send(res, 400, CODE_INCORRECT)
+      const wrong = checkCode(c, body.code)
+      if (wrong) return send(res, 400, wrong)
+      if (accounts.has(next)) return send(res, 400, err("That email already has a Luma account.", "email_taken"))
+      const old = a.email
+      accounts.delete(old)
+      a.email = next
+      a.email_verified = true
+      accounts.set(next, a)
+      console.log(`[FAKE EMAIL] notice to ${old}: your email was changed`)
+      deliver(old, { kind: "email_changed" })
+      return send(res, 200, { ...profiles.get(a.id), ...publicUser(a), subscription_status: "free", is_admin: a.id === "u1" })
+    }
     if (url.pathname === "/me/profile") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
