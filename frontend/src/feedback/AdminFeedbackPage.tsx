@@ -18,7 +18,6 @@ import {
   formatCentral,
   formatCentralTime,
   monthLabel,
-  normalizeAdminPoll,
   pollStatusLabel,
   questionLint,
   studentsLine,
@@ -135,7 +134,7 @@ export function AdminPollPage() {
     api
       .get<AdminPoll>(`/admin/feedback/polls/${encodeURIComponent(pollId)}`)
       .then((response) => {
-        if (active) setData(normalizeAdminPoll(response.data))
+        if (active) setData(response.data)
       })
       .catch((error: unknown) => {
         if (!active) return
@@ -947,7 +946,7 @@ function UpdateFields(props: {
       <textarea id={`${props.base}-note`} value={props.note} maxLength={600} rows={2} onChange={(event) => props.setNote(event.target.value)} />
       <label className="check-row">
         <input type="checkbox" checked={props.published} onChange={(event) => props.setPublished(event.target.checked)} />
-        Published
+        Show to students
       </label>
     </div>
   )
@@ -1001,7 +1000,7 @@ function UpdatesSection({ pollId }: { pollId: string }) {
     <section className="feedback-admin-section" aria-labelledby="updates">
       <h2 id="updates">Update for students</h2>
       <p className="muted small-text">
-        Students see published items after the poll closes. With none, they see "We're reviewing your feedback." Nothing changes on
+        Students see the items you show them after the poll closes. With none, they see "We're reviewing your feedback." Nothing changes on
         the site by itself.
       </p>
       <NoticeBanner notice={notice} />

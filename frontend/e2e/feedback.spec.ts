@@ -100,6 +100,23 @@ test.describe("Home note", () => {
     await expect(page.getByRole("group", { name: `1. ${QUESTION_1}` })).toBeVisible()
   })
 
+  test("a Skip the server didn't save says so, keeps the note, and works on a second try", async ({ page }) => {
+    await scenario(page, "open")
+    await loginAndWait(page, SEEDED.sam.email)
+    const note = page.getByRole("complementary", { name: TITLE })
+    await page.route(`${API}/feedback/polls/*/skip`, (route) => route.fulfill({ status: 503, body: "{}" }))
+    await note.getByRole("button", { name: "Skip this poll" }).click()
+    await expect(note.getByRole("alert")).toHaveText("We couldn't skip the poll just now. Try again.")
+    await expect(note.getByRole("button", { name: "Skip this poll" })).toBeVisible()
+    await page.unroute(`${API}/feedback/polls/*/skip`)
+    await note.getByRole("button", { name: "Skip this poll" }).click()
+    await expect(note.getByRole("status")).toHaveText("Okay, we won't ask about this poll again.")
+    await page.reload()
+    await expect(page.locator(".next-step")).toBeVisible()
+    await page.waitForLoadState("networkidle")
+    await expect(page.getByRole("complementary", { name: TITLE })).toHaveCount(0)
+  })
+
   test("no note and no error when the poll can't load", async ({ page }) => {
     await scenario(page, "open")
     await page.route(`${API}/feedback/current`, (route) => route.fulfill({ status: 500, body: "{}" }))
@@ -340,7 +357,8 @@ test.describe("answering the poll", () => {
     })
     expect(first.status()).toBe(201)
 
-    const deleted = await page.request.delete(`${API}/me/account`, { headers })
+    const deleted = await page.request.delete(`${API}/me/account`, { headers, data: { current_password: PASSWORD } })
+    expect(deleted.status()).toBe(200)
     const { retained } = (await deleted.json()) as { retained: string[] }
     expect(retained).toContain("Your answers to monthly feedback polls stay in the totals, without your name. Your poll comments are deleted.")
     expect(await counts(page, poll.id)).toEqual({ responses: 1, answers: 1 })

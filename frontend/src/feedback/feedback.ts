@@ -46,10 +46,10 @@ export type CurrentFeedback = {
   server_now: string
   schedule_tz: string
   poll: OpenPoll | null
+  /** Set (answers may be empty) when this account, or a deleted account with the same email, already answered. */
   my_response: MyResponse | null
-  /** True when this account (or a deleted account with the same email) already answered. */
-  already_answered?: boolean
-  skipped?: boolean
+  /** The server remembers "Skip this poll" for this account. */
+  skipped: boolean
   can_vote: boolean
   blocked_reason: "email_unverified" | null
   next_opens_at: string | null
@@ -108,14 +108,9 @@ export type AdminComment = {
 export type AdminTheme = { id: string; label: string; source: "auto" | "admin"; count: number; response_ids: string[] }
 export type AdminThemes = { urgent: AdminComment[]; themes: AdminTheme[]; other_response_ids?: string[]; other_count: number }
 
-/** Accepts the flat poll the server sends (and an older nested { poll: {...} } shape). */
-export function normalizeAdminPoll(raw: AdminPoll | (Omit<AdminPoll, keyof AdminPollRow | "approved_at"> & { poll: AdminPoll })): AdminPoll {
-  return "poll" in raw && raw.poll ? { ...raw.poll, ...raw, question_count: raw.questions.length } as AdminPoll : (raw as AdminPoll)
-}
-
 /** Has this account already answered? (my_response is also set, with no answers, for a ballot from a deleted account with the same email.) */
-export function hasAnswered(data: Pick<CurrentFeedback, "my_response" | "already_answered">): boolean {
-  return Boolean(data.my_response) || Boolean(data.already_answered)
+export function hasAnswered(data: Pick<CurrentFeedback, "my_response">): boolean {
+  return Boolean(data.my_response)
 }
 export type AdminUpdate = {
   id: string
@@ -350,9 +345,6 @@ export function clearDrafts(storage: Pick<Storage, "length" | "key" | "removeIte
   }
   keys.forEach((key) => storage.removeItem(key))
 }
-/** "Skip" also remembered on this device, in case the server can't be reached. */
-export const SKIP_PREFIX = "luma.feedbackSkip:"
-export const skipKey = (accountId: string, pollId: string) => `${SKIP_PREFIX}${accountId}:${pollId}`
 /** "Poll results are in" on Home: hidden once seen or dismissed, per poll. */
 export const RESULTS_SEEN_PREFIX = "luma.feedbackResultsSeen:"
 export const resultsSeenKey = (accountId: string, pollId: string) => `${RESULTS_SEEN_PREFIX}${accountId}:${pollId}`

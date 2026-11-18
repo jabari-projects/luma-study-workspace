@@ -84,6 +84,12 @@
   color: var(--muted);
 }
 
+.feedback-skip .feedback-skip-error,
+.feedback-note .feedback-note-error {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
 .feedback-form {
   display: grid;
   gap: 22px;

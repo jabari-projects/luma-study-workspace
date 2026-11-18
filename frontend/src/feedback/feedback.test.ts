@@ -27,7 +27,6 @@ import {
   formatCentral,
   formatCentralTime,
   hasAnswered,
-  normalizeAdminPoll,
   hasSomething,
   lastSunday,
   monthLabel,
@@ -36,7 +35,6 @@ import {
   pollStatusLabel,
   questionLint,
   reviewSummary,
-  skipKey,
   studentResultLine,
   studentsLine,
   updateStatusLabel,
@@ -229,10 +227,10 @@ describe("the review step", () => {
     assert.equal(parseDraft(null, questions), null)
   })
 
-  it("keeps drafts and skips per account and poll", () => {
+  it("keeps drafts and seen results per account and poll", () => {
     assert.equal(draftKey("u1", "p1"), "luma.feedbackDraft:u1:p1")
-    assert.notEqual(skipKey("u1", "p1"), skipKey("u2", "p1"))
-    assert.notEqual(resultsSeenKey("u1", "p1"), skipKey("u1", "p1"))
+    assert.notEqual(resultsSeenKey("u1", "p1"), resultsSeenKey("u2", "p1"))
+    assert.notEqual(resultsSeenKey("u1", "p1"), draftKey("u1", "p1"))
   })
 
   it("clears every unsent poll draft on sign-out, and nothing else", () => {
@@ -315,19 +313,5 @@ describe("server shapes", () => {
   it("treats a ballot with no answers (from a deleted account with the same email) as answered", () => {
     assert.equal(hasAnswered({ my_response: null }), false)
     assert.equal(hasAnswered({ my_response: { submitted_at: "2026-11-30T00:00:00Z", answers: [], comment: null } }), true)
-    assert.equal(hasAnswered({ my_response: null, already_answered: true }), true)
-  })
-
-  it("reads the flat admin poll the server sends, and the older nested shape", () => {
-    const flat = {
-      id: "p", period_month: "2026-11-01", opens_at: "a", closes_at: "b", status: "draft" as const, question_count: 0, participants: 0,
-      approved_at: null, questions: [], can_edit_questions: true, can_edit_dates: true, lint: [],
-    }
-    assert.equal(normalizeAdminPoll(flat), flat)
-    const nested = normalizeAdminPoll({
-      poll: flat, questions: [{ id: "q", position: 1, label: "Add a thing" }], can_edit_questions: true, can_edit_dates: true, lint: [],
-    })
-    assert.equal(nested.id, "p")
-    assert.equal(nested.question_count, 1)
   })
 })

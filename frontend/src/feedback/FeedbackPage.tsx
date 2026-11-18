@@ -28,7 +28,6 @@ import {
   reviewSummary,
 } from "./feedback"
 import type { Choice, CurrentFeedback, OpenPoll } from "./feedback"
-import { readSkipped, rememberSkip } from "./skip"
 
 type Step = "form" | "review" | "sent" | "closed" | "skipped"
 
@@ -204,11 +203,11 @@ function OpenPollView({
   const max = poll.comment_max || COMMENT_MAX
   const [answers, setAnswers] = useState<Record<string, Choice>>(() => readDraft(key, poll)?.answers ?? {})
   const [comment, setComment] = useState(() => readDraft(key, poll)?.comment ?? "")
-  const skippedBefore = Boolean(data.skipped) || (accountId ? readSkipped(accountId, poll.id) : false)
-  const [step, setStep] = useState<Step>(skippedBefore ? "skipped" : "form")
+  const [step, setStep] = useState<Step>(data.skipped ? "skipped" : "form")
   const [notice, setNotice] = useState<Notice | null>(null)
   const [sending, setSending] = useState(false)
   const [skipping, setSkipping] = useState(false)
+  const [skipFailed, setSkipFailed] = useState(false)
   const sendingRef = useRef(false)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const firstStep = useRef(true)
@@ -290,22 +289,37 @@ function OpenPollView({
 
   const skip = async () => {
     setSkipping(true)
-    if (accountId) rememberSkip(accountId, poll.id)
+    setSkipFailed(false)
     try {
+      // Remembered by the server; skipping is never a vote.
       await api.post(`/feedback/polls/${poll.id}/skip`)
+      setNotice(null)
+      setStep("skipped")
     } catch {
-      // Remembered on this device anyway; skipping is never a vote.
+      setSkipFailed(true)
     } finally {
       setSkipping(false)
     }
-    setNotice(null)
-    setStep("skipped")
   }
 
   const verifyHref = email ? `/verify-email?email=${encodeURIComponent(email)}` : "/verify-email"
   const resultsLine = `Results come out ${formatCentral(poll.closes_at)} Central time.`
 
   const blocked = data.blocked_reason === "email_unverified"
+
+  const skipBlock = (
+    <div className="feedback-skip">
+      <p>Not today?</p>
+      <button type="button" className="secondary-button" disabled={skipping} onClick={() => void skip()}>
+        Skip this poll
+      </button>
+      {skipFailed && (
+        <p role="alert" className="feedback-skip-error">
+          We couldn't skip the poll just now. Try again.
+        </p>
+      )}
+    </div>
+  )
 
   // ------------------------------------------------------------- blocked: email not verified
   if (blocked && step !== "skipped") {
@@ -318,12 +332,7 @@ function OpenPollView({
             Enter code
           </Link>
         </div>
-        <div className="feedback-skip">
-          <p>Not today?</p>
-          <button type="button" className="secondary-button" disabled={skipping} onClick={() => void skip()}>
-            Skip this poll
-          </button>
-        </div>
+        {skipBlock}
       </div>
     )
   }
@@ -455,12 +464,7 @@ function OpenPollView({
         <p className="muted small-text">Yes means "I want this change." No means "Keep it as it is." You can leave any question blank.</p>
       </div>
 
-      <div className="feedback-skip">
-        <p>Not today?</p>
-        <button type="button" className="secondary-button" disabled={skipping} onClick={() => void skip()}>
-          Skip this poll
-        </button>
-      </div>
+      {skipBlock}
 
       <form className="feedback-form" onSubmit={review} noValidate>
         <ol className="feedback-questions">

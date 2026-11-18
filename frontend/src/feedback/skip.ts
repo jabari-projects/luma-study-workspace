@@ -1,7 +1,7 @@
-// "Skip this poll" is remembered on the server and, as a backup, on this device.
 // "Poll results are in" is remembered on this device once seen or dismissed.
+// ("Skip this poll" is remembered by the server only: see /feedback/current `skipped`.)
 // Every read and write is wrapped: private windows and blocked storage just forget.
-import { clearDrafts, resultsSeenKey, skipKey } from "./feedback"
+import { clearDrafts, resultsSeenKey } from "./feedback"
 
 function read(key: string): boolean {
   try {
@@ -17,15 +17,6 @@ function remember(key: string): void {
   } catch {
     // Not kept on this device.
   }
-}
-
-export function readSkipped(accountId: string, pollId: string): boolean {
-  return read(skipKey(accountId, pollId))
-}
-
-/** Not kept on this device when storage is blocked; the server still remembers the skip. */
-export function rememberSkip(accountId: string, pollId: string): void {
-  remember(skipKey(accountId, pollId))
 }
 
 export function readResultsSeen(accountId: string, pollId: string): boolean {

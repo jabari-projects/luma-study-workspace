@@ -77,7 +77,7 @@ test("only admins get the Student feedback page, and only from the account menu"
   await adminContext.close()
 })
 
-test("draft, dates, questions, approve, lock at open, live totals, then a published update students can see", async ({ page, browser }, info) => {
+test("draft, dates, questions, approve, lock at open, live totals, then an update students can see", async ({ page, browser }, info) => {
   test.setTimeout(150_000)
   await setClock(page, "2026-11-17T15:00:00Z")
   await scenario(page, "none")
@@ -179,7 +179,7 @@ test("draft, dates, questions, approve, lock at open, live totals, then a publis
   await settle(page)
   await expectNoSeriousA11yIssues(page, "admin-feedback-open", info)
 
-  // Closed: the admin writes an update and publishes it.
+  // Closed: the admin writes an update and shows it to students.
   await setClock(page, "2026-12-06T18:00:00Z")
   await page.reload()
   await expect(page.locator(".page-head .status-chip")).toHaveText("Closed")
@@ -192,7 +192,7 @@ test("draft, dates, questions, approve, lock at open, live totals, then a publis
   await add.getByLabel("What change").fill("Quiz timer")
   await add.getByLabel("Status").selectOption("planned")
   await add.getByLabel("Note for students (optional)").fill("We'll add it in January.")
-  await add.getByRole("checkbox", { name: "Published" }).check()
+  await add.getByRole("checkbox", { name: "Show to students" }).check()
   await add.getByRole("button", { name: "Add update" }).click()
   await expect(page.getByText("Update added.")).toBeVisible()
 

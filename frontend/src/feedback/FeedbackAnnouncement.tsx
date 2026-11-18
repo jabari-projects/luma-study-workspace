@@ -6,7 +6,7 @@ import { api } from "../api"
 import { useAuth } from "../auth"
 import { POLL_TITLE, formatCentral, hasAnswered } from "./feedback"
 import type { CurrentFeedback } from "./feedback"
-import { readResultsSeen, readSkipped, rememberResultsSeen, rememberSkip } from "./skip"
+import { readResultsSeen, rememberResultsSeen } from "./skip"
 
 /**
  * A small note on Home about the monthly poll. Never a pop-up: it doesn't move focus by itself,
@@ -17,6 +17,8 @@ export function FeedbackAnnouncement() {
   const [data, setData] = useState<CurrentFeedback | null>(null)
   // "skipped": the student just tapped Skip, so the note says so in one short line they can close.
   const [state, setState] = useState<"shown" | "skipped" | "hidden">("shown")
+  const [skipping, setSkipping] = useState(false)
+  const [skipFailed, setSkipFailed] = useState(false)
   const titleId = useId()
   const confirmRef = useRef<HTMLParagraphElement>(null)
 
@@ -44,19 +46,32 @@ export function FeedbackAnnouncement() {
   const poll = data.poll
 
   const skipButton = (pollId: string) => {
-    const skip = () => {
-      if (activeAccountId) rememberSkip(activeAccountId, pollId)
-      setState("skipped")
-      api.post(`/feedback/polls/${pollId}/skip`).catch(() => {
-        // Remembered on this device anyway.
-      })
+    const skip = async () => {
+      if (skipping) return
+      setSkipping(true)
+      setSkipFailed(false)
+      try {
+        // The server remembers the skip, so Home stops asking on every device.
+        await api.post(`/feedback/polls/${pollId}/skip`)
+        setState("skipped")
+      } catch {
+        setSkipFailed(true)
+      } finally {
+        setSkipping(false)
+      }
     }
     return (
-      <button type="button" className="ghost-button small" onClick={skip}>
-        Skip this poll
+      <button type="button" className="ghost-button small" onClick={skip} disabled={skipping}>
+        {skipping ? "Skipping..." : "Skip this poll"}
       </button>
     )
   }
+
+  const skipError = skipFailed ? (
+    <p role="alert" className="feedback-note-error">
+      We couldn't skip the poll just now. Try again.
+    </p>
+  ) : null
 
   let body: ReactNode = null
   if (state === "skipped") {
@@ -73,10 +88,9 @@ export function FeedbackAnnouncement() {
       </>
     )
   } else if (poll) {
-    const skipped = data.skipped || (activeAccountId ? readSkipped(activeAccountId, poll.id) : false)
     if (hasAnswered(data)) {
       body = <p>Thanks! We got your answers. Results come out {formatCentral(poll.closes_at)} Central time.</p>
-    } else if (skipped) {
+    } else if (data.skipped) {
       return null
     } else if (data.blocked_reason === "email_unverified") {
       body = (
@@ -88,6 +102,7 @@ export function FeedbackAnnouncement() {
             </Link>
             {skipButton(poll.id)}
           </div>
+          {skipError}
         </>
       )
     } else {
@@ -102,6 +117,7 @@ export function FeedbackAnnouncement() {
             </Link>
             {skipButton(poll.id)}
           </div>
+          {skipError}
         </>
       )
     }
