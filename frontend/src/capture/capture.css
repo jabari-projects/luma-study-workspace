@@ -286,11 +286,11 @@
 /* The focus ring is drawn inside the tab, so it never runs into the next row of tabs. */
 .tabs.source-tabs .tab:focus-visible {
   outline-offset: -2px;
-  box-shadow: inset 0 0 0 5px var(--highlight);
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
 .tabs.source-tabs .tab[aria-selected="true"]:focus-visible {
-  box-shadow: inset 0 -3px var(--scribble), inset 0 0 0 5px var(--highlight);
+  box-shadow: inset 0 -3px var(--scribble), inset 0 0 0 5px var(--focus-halo);
 }
 
 .source-tab svg {
@@ -432,8 +432,8 @@
   border: 2px solid var(--ink);
   border-radius: 999px;
   padding: 2px 10px;
-  background: var(--scribble);
-  color: var(--on-scribble);
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -501,7 +501,7 @@
 }
 
 .working-steps li.done .step-dot {
-  background: var(--scribble);
+  background: var(--accent);
 }
 
 .working-steps li.now .step-dot {
@@ -523,11 +523,11 @@
   align-items: center;
   gap: 8px 16px;
   margin-bottom: 18px;
-  border: 1px solid color-mix(in srgb, var(--scribble) 45%, var(--line));
-  border-left: 4px solid var(--scribble);
+  border: 1px solid color-mix(in srgb, var(--star) 45%, var(--line));
+  border-left: 4px solid var(--star);
   border-radius: var(--radius-sm);
   padding: 18px 20px;
-  background: color-mix(in srgb, var(--scribble) 22%, var(--card));
+  background: color-mix(in srgb, var(--star) 22%, var(--card));
   color: var(--ink);
 }
 
@@ -656,7 +656,7 @@
 }
 
 .tray-head svg {
-  color: var(--scribble);
+  color: var(--accent-ink);
 }
 
 .tray-count {

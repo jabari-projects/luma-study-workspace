@@ -45,18 +45,23 @@
   --card-2: var(--card);
   --ink: #1f1c18;
   --muted: #675f52;
-  --line: #e7dcc7;
-  --line-strong: #cbbda3;
+  /* Lines, rules and outlines are a plain grey, so they never fight the student's color. */
+  --line: #dcdbd8;
+  --line-strong: #bebdba;
   /* Borders of things you type in or tick: 3:1 or more on paper, paper-2 and card. */
-  --field-border: #867a62;
-  /* The brand yellow. Marks and underlines only, never text. */
-  --scribble: #f2b33d;
-  /* Yellow-family text, like "Saved" or "Ready". */
+  --field-border: #7c7b78;
+  /* The soft halo around the ink focus ring, and the margin line on note sheets. Grey too. */
+  --focus-halo: #d6d5d1;
+  --margin-rule: #d2d1cd;
+  /* The student's color for hand-drawn marks: page-title underlines, link underlines, the open
+     tab. A touch of ink keeps the lightest color (Yellow) at 3:1 on the cream paper. */
+  --scribble: color-mix(in srgb, var(--accent) 85%, var(--ink));
+  /* A soft wash of the student's color behind text (highlights, the open nav item). */
+  --highlight: color-mix(in srgb, var(--accent) 16%, var(--paper));
+  /* The brand star yellow: the star logo and its glow, the week stars, warnings. */
+  --star: #f2b33d;
+  /* Yellow-family status text, like a report being reviewed or the limit nudge. */
   --star-ink: #8a5a00;
-  /* Dark text that sits on a --scribble fill, in both themes. */
-  --on-scribble: #1f1c18;
-  --highlight: color-mix(in srgb, #f2b33d 38%, var(--paper));
-  --margin-rule: color-mix(in srgb, #d9534f 35%, var(--paper));
   --scrim: color-mix(in srgb, #1f1c18 50%, transparent);
 
   --accent-strong: color-mix(in srgb, var(--accent) 78%, black);
@@ -82,7 +87,7 @@
   --lift: 0 18px 40px -18px color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
-/* "Lamplight": warm graphite, cream text, a little yellow lamp glow. No purple. */
+/* "Lamplight": warm graphite, cream text, a little lamp glow in the student's color. The paper itself is never tinted. */
 [data-theme="dark"] {
   color-scheme: dark;
   --paper: #15140f;
@@ -91,13 +96,16 @@
   --card-2: #2a2720;
   --ink: #f3ecdd;
   --muted: #b2a993;
-  --line: #2e2b23;
-  --line-strong: #4a4539;
-  --field-border: #7f7865;
-  --scribble: #f7c35c;
+  --line: #2d2d2c;
+  --line-strong: #484847;
+  --field-border: #7c7c7a;
+  --focus-halo: #3b3b39;
+  --margin-rule: #3a3a38;
+  /* Lifted toward white so the marks stand out on the dark paper. */
+  --scribble: color-mix(in srgb, var(--accent) 80%, white);
+  --highlight: color-mix(in srgb, var(--accent) 24%, var(--paper));
+  --star: #f7c35c;
   --star-ink: #f7c35c;
-  --highlight: color-mix(in srgb, #f7c35c 22%, var(--paper));
-  --margin-rule: color-mix(in srgb, #e0736b 40%, var(--paper));
   --scrim: color-mix(in srgb, #0b0a07 62%, transparent);
   --accent-strong: color-mix(in srgb, var(--accent) 70%, white);
   --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--card));
@@ -131,14 +139,14 @@ body {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
 }
 
-/* Lamplight: a soft yellow lamp glow in the corner, three faint stars and a little paper grain.
-   No accent wash, so a purple accent never turns the whole page purple. */
+/* Lamplight: a faint glow of the student's color in the corner, three faint stars and a little
+   paper grain. Kept at 9% and in one corner, so a purple pick never turns the whole page purple. */
 [data-theme="dark"] body {
   background-image:
     radial-gradient(1.5px 1.5px at 12% 18%, rgba(243, 236, 221, 0.35), transparent 60%),
     radial-gradient(1px 1px at 72% 12%, rgba(243, 236, 221, 0.35), transparent 60%),
     radial-gradient(1.5px 1.5px at 32% 82%, rgba(243, 236, 221, 0.35), transparent 60%),
-    radial-gradient(800px 480px at 88% -12%, color-mix(in srgb, var(--scribble) 9%, transparent), transparent 70%),
+    radial-gradient(800px 480px at 88% -12%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
   background-attachment: fixed;
 }
@@ -208,11 +216,11 @@ kbd {
 }
 
 :focus-visible {
-  /* Ink ring (about 15:1 in both themes) with a soft yellow halo for the brand look. */
+  /* Ink ring (about 15:1 in both themes) with a soft grey halo. */
   outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 6px;
-  box-shadow: 0 0 0 6px var(--highlight);
+  box-shadow: 0 0 0 6px var(--focus-halo);
 }
 
 .sr-only {
@@ -331,9 +339,9 @@ kbd {
   color: #1a1209;
 }
 
-/* Keep the stamp shadow and add the same yellow halo every other control gets. */
+/* Keep the stamp shadow and add the same grey halo every other control gets. */
 .primary-button:focus-visible {
-  box-shadow: var(--print), 0 0 0 6px var(--highlight);
+  box-shadow: var(--print), 0 0 0 6px var(--focus-halo);
 }
 
 .primary-button:hover {
@@ -458,7 +466,7 @@ select:focus {
   border-color: var(--accent);
   outline: 2px solid var(--ink);
   outline-offset: 2px;
-  box-shadow: 0 0 0 6px var(--highlight);
+  box-shadow: 0 0 0 6px var(--focus-halo);
 }
 
 input::placeholder,
@@ -606,7 +614,7 @@ input[type="radio"] {
   width: 34px;
   height: 34px;
   object-fit: contain;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--scribble) 70%, transparent));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--star) 70%, transparent));
   transition: transform 0.5s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
@@ -764,9 +772,9 @@ input[type="radio"] {
   height: 40px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  /* Dark letter on the yellow in both themes (cream on yellow is unreadable in dark). */
-  color: var(--on-scribble);
-  background: var(--scribble);
+  /* The student's color, with the same readable letter color as accent buttons. */
+  color: var(--on-accent);
+  background: var(--accent);
   font-family: var(--font-display);
   font-weight: 800;
   text-decoration: none;
@@ -814,7 +822,7 @@ input[type="radio"] {
 
 .kicker {
   margin: 0 0 10px;
-  color: var(--star-ink);
+  color: var(--accent-ink);
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -1039,7 +1047,7 @@ input[type="radio"] {
   transform: rotate(1.5deg) translate(3px, 7px);
 }
 
-/* Tabs: an underlined strip. The current tab gets a yellow underline and bold ink. */
+/* Tabs: an underlined strip. The current tab gets an underline in your color and bold ink. */
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1079,7 +1087,7 @@ input[type="radio"] {
 .tabs .tab[aria-selected="true"]:focus-visible,
 .tabs .tab[aria-pressed="true"]:focus-visible,
 .tabs .tab[aria-current="page"]:focus-visible {
-  box-shadow: inset 0 -3px var(--scribble), 0 0 0 6px var(--highlight);
+  box-shadow: inset 0 -3px var(--scribble), 0 0 0 6px var(--focus-halo);
 }
 
 /* Toggle chips: an outline pill; pressed is filled with ink. */
@@ -1125,7 +1133,7 @@ input[type="radio"] {
   border-radius: var(--radius-lg);
   padding: clamp(20px, 4vw, 36px);
   background:
-    radial-gradient(circle at 92% 20%, color-mix(in srgb, var(--scribble) 30%, transparent), transparent 40%),
+    radial-gradient(circle at 92% 20%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 40%),
     var(--accent-soft);
   box-shadow: var(--print);
 }
@@ -1187,7 +1195,7 @@ input[type="radio"] {
 
 .paper-card.three img {
   width: 64px;
-  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--scribble) 80%, transparent));
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--star) 80%, transparent));
 }
 
 @keyframes bob {
@@ -1231,8 +1239,8 @@ input[type="radio"] {
 }
 
 .week-dots li.lit .week-star {
-  background: var(--scribble);
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--scribble) 80%, transparent));
+  background: var(--star);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--star) 80%, transparent));
 }
 
 .week-dots li.today small {
@@ -1695,8 +1703,8 @@ input[type="radio"] {
   margin-top: 6px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  background: var(--scribble);
-  color: var(--on-scribble);
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 800;
   font-size: 0.85rem;
 }
@@ -1840,7 +1848,7 @@ input[type="radio"] {
   /* Mirrored because the face is turned around. */
   box-shadow: -6px 6px 0 var(--ink);
   background:
-    radial-gradient(circle at 85% 15%, color-mix(in srgb, var(--scribble) 28%, transparent), transparent 45%),
+    radial-gradient(circle at 85% 15%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 45%),
     var(--accent-soft);
 }
 
@@ -2037,8 +2045,8 @@ input[type="radio"] {
   border: 2px solid var(--ink);
   border-radius: 999px;
   padding: 0 10px;
-  background: var(--scribble);
-  color: var(--on-scribble);
+  background: var(--accent);
+  color: var(--on-accent);
   font-family: var(--font-ui);
   font-size: 0.8rem;
   font-weight: 800;
@@ -2536,7 +2544,7 @@ input[type="radio"] {
   width: clamp(64px, 2.5rem + 4vw, 128px);
   height: auto;
   margin-bottom: 6px;
-  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--scribble) 80%, transparent));
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--star) 80%, transparent));
   animation: bob 5s ease-in-out infinite;
 }
 
@@ -3296,7 +3304,7 @@ input[type="radio"] {
 .auth-brand img {
   width: 40px;
   height: 40px;
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--scribble) 70%, transparent));
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--star) 70%, transparent));
 }
 
 .auth-card > h1 {
@@ -3775,7 +3783,7 @@ button.account-row:hover {
   justify-content: flex-start;
   min-height: 44px;
   padding: 0 12px;
-  /* Menu rows, so no yellow underline. */
+  /* Menu rows, so no underline. */
   text-decoration-line: none;
 }
 
@@ -4142,7 +4150,7 @@ button.account-row:hover {
 
 .result-kind {
   margin: 0;
-  color: var(--star-ink);
+  color: var(--accent-ink);
   font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.1em;

@@ -2,15 +2,18 @@ import { useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 import { annotate } from "rough-notation"
 
-import { useDocumentTheme } from "./theme"
+import { useDocumentColors } from "./theme"
 
 type ScribbleType = "underline" | "highlight" | "circle" | "box" | "bracket"
 
-/** Hand-drawn mark that sketches itself around a word once it appears. */
+/**
+ * Hand-drawn mark that sketches itself around a word once it appears, in the student's color.
+ * A highlight uses the soft wash of that color (--highlight), so the words on it stay readable.
+ */
 export function Scribble({
   children,
   type = "underline",
-  color = "var(--scribble)",
+  color = type === "highlight" ? "var(--highlight)" : "var(--scribble)",
   delay = 250,
 }: {
   children: ReactNode
@@ -19,8 +22,8 @@ export function Scribble({
   delay?: number
 }) {
   const ref = useRef<HTMLSpanElement>(null)
-  // Redraw in the new theme's yellow when the page switches between light and dark.
-  const theme = useDocumentTheme()
+  // Redraw when the page switches between light and dark, or the student picks a new color.
+  const colors = useDocumentColors()
   // After the first drawing, a redraw (new theme) shows at once instead of sketching again.
   const drawnRef = useRef(false)
 
@@ -28,9 +31,11 @@ export function Scribble({
     const element = ref.current
     if (!element) return
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    const resolved = color.startsWith("var(")
-      ? getComputedStyle(element).getPropertyValue(color.slice(4, -1)).trim() || "#f5b82e"
-      : color
+    // The browser works out the color (tokens like --scribble are mixes of --accent), so the
+    // drawing gets a plain color it can use.
+    element.style.textDecorationColor = color
+    const resolved = getComputedStyle(element).textDecorationColor
+    element.style.textDecorationColor = ""
     const draw = (animate: boolean) => {
       const mark = annotate(element, {
         type,
@@ -89,7 +94,7 @@ export function Scribble({
       window.clearTimeout(redrawTimer)
       annotation?.remove()
     }
-  }, [color, delay, type, theme])
+  }, [color, delay, type, colors])
 
   return (
     <span ref={ref} className="scribble">

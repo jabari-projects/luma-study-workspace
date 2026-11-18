@@ -62,7 +62,7 @@
 }
 
 .note-body strong {
-  background: linear-gradient(transparent 60%, color-mix(in srgb, var(--scribble) 45%, transparent) 60%);
+  background: linear-gradient(transparent 60%, var(--highlight) 60%);
 }
 
 .note-body blockquote {
@@ -192,7 +192,7 @@
 }
 
 .note-tip svg {
-  color: var(--scribble);
+  color: var(--accent-ink);
 }
 
 .note-tip p {
@@ -484,7 +484,7 @@
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 1px 9px;
-  color: var(--star-ink);
+  color: var(--accent-ink);
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -629,7 +629,7 @@
 .editor-sheet:focus-within {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
-  box-shadow: var(--shadow-sheet), 0 0 0 6px var(--highlight);
+  box-shadow: var(--shadow-sheet), 0 0 0 6px var(--focus-halo);
 }
 
 .editor-sheet textarea:focus {
@@ -648,7 +648,7 @@
 .editor-tip svg {
   flex: none;
   margin-top: 2px;
-  color: var(--star-ink);
+  color: var(--accent-ink);
   font-size: 1.25rem;
 }
 

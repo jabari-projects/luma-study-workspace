@@ -279,8 +279,7 @@ function QuizRun({
       const score = answers.filter((answer) => answer.correct).length
       recordStudy(getTabAccountId(), answers.length)
       if (score / Math.max(1, answers.length) >= 0.7) {
-        const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
-        celebrate(accent || undefined)
+        celebrate()
       }
       return
     }

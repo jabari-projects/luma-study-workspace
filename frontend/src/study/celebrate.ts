@@ -17,11 +17,13 @@ function getStarShape(): confetti.Shape {
   return starShape
 }
 
-/** One celebratory burst of stars. Used once, at the end of a session. */
-export function celebrate(accent = "#f5b82e") {
+/** One celebratory burst of stars in the student's color. Used once, at the end of a session. */
+export function celebrate() {
   if (prefersReducedMotion()) {
     return
   }
+  // --accent always has a value: styles.css gives :root the default and the theme sets the student's pick.
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
   const colors = [accent, "#ffd166", "#ffffff", "#ff8fab"]
   const base = { spread: 70, startVelocity: 38, ticks: 140, gravity: 0.9, scalar: 1.1, colors, shapes: [getStarShape()] }
   void confetti({ ...base, particleCount: 40, origin: { x: 0.2, y: 0.7 }, angle: 60 })
