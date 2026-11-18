@@ -15,9 +15,11 @@ import {
   Notebook,
   PencilSimpleLine,
   Plus,
+  Wrench,
   X,
 } from "@phosphor-icons/react"
 
+import { useProfile } from "../auth"
 import { AccountMenuPopover, AccountSheet } from "./AccountMenu"
 import { accountMenuPosition } from "./accountActions"
 import { IMAGE_NOTES, IMPORT_NOTES, NEW_NOTE, VOICE_NOTES } from "../notes/paths"
@@ -43,6 +45,8 @@ const NOTES: NavItem = {
 // The label stays "Search" (the owner's word for the bottom button); the page itself is Discover.
 const SEARCH: NavItem = { to: DISCOVER, label: "Search", icon: MagnifyingGlass, match: [DISCOVER, "/search", "/saved"] }
 const SETTINGS: NavItem = { to: "/settings", label: "Settings", icon: GearSix, match: ["/settings"] }
+// Admins only (the page and the server check too).
+const adminMaintenance: NavItem = { to: "/admin/maintenance", label: "Maintenance", icon: Wrench }
 
 /**
  * Sidebar (desktop), icon rail (tablet) and phone bottom bar. Settings sits apart: at the
@@ -238,6 +242,7 @@ export function SideNav({ username, plan, initials }: { username: string; plan: 
   const identityRef = useRef<HTMLButtonElement>(null)
   const [menuPosition, setMenuPosition] = useState<CSSProperties | null>(null)
   const closeMenu = useCallback(() => setMenuPosition(null), [])
+  const isAdmin = useProfile()?.is_admin === true
   return (
     <aside className="sidebar" aria-label="Main navigation">
       <Link className="brand" to="/dashboard" aria-label="Luma home">
@@ -251,6 +256,7 @@ export function SideNav({ username, plan, initials }: { username: string; plan: 
         ))}
       </nav>
       <div className="sidebar-footer">
+        {isAdmin ? <SideLink item={adminMaintenance} pathname={pathname} /> : null}
         <SideLink item={SETTINGS} pathname={pathname} />
         <button
           ref={identityRef}

@@ -17,6 +17,7 @@ from typing import Any, Literal, Optional, List, Union
 import httpx
 import stripe
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect, status, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -55,6 +56,7 @@ from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
 from .transcripts import router as transcripts_router
+from .maintenance import MaintenanceMiddleware, maintenance_router, admin_maintenance_router
 
 # Deployment notes:
 # - Backend platforms like Render, Railway, and Fly.io should set
@@ -404,6 +406,7 @@ class RequestBodyLimitMiddleware:
 
 
 app.add_middleware(RequestBodyLimitMiddleware)
+app.add_middleware(MaintenanceMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -412,6 +415,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Luma-Maintenance", "X-Luma-Maintenance-Rev", "Retry-After", "X-Request-ID"],
 )
 
 app.include_router(notes_router)
@@ -423,6 +427,8 @@ app.include_router(analytics_router)
 app.include_router(public_search_router)
 app.include_router(reports_router)
 app.include_router(capture_router)
+app.include_router(maintenance_router)
+app.include_router(admin_maintenance_router)
 
 
 class ConnectionManager:
@@ -2098,7 +2104,7 @@ async def stripe_webhook(request: Request):
         return JSONResponse(status_code=500, content={"error": "Stripe webhook failed"})
 
     try:
-        outcome = billing.handle_event(event, supabase, stripe, settings.STRIPE_SECRET_KEY)
+        outcome = await run_in_threadpool(billing.handle_event, event, supabase, stripe, settings.STRIPE_SECRET_KEY)
     except Exception as exc:
         # Database or Stripe failure: answer 500 so Stripe retries. Exception
         # type only, because messages can carry ids or emails.

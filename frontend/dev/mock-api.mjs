@@ -18,6 +18,8 @@
 //                                          included (an old profile with no color, say); the real
 //                                          PUT /me/profile cannot clear a field, so neither can ours
 //   POST /__test/skip-code-wait {"email": "..."}  ends that account's 60 s wait between codes
+//   POST /__test/maintenance, /__test/maintenance/jobs  set the fake maintenance break (see "maintenance (fake)")
+// Fake admin for maintenance: admin@example.test / demo-password (demo@luma.test is a fake admin too).
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
 import { randomInt, randomUUID } from "node:crypto"
@@ -174,16 +176,131 @@ const summaries = [
 // Study plans (/study-sessions). Like the backend, time is kept in seconds.
 const studyPlans = []
 
+// --- maintenance (fake) helpers: the same rules as backend/app/maintenance.py, in memory ---
+// Fake admins for the maintenance routes: admin@example.test, plus the demo account, which
+// is already the fake admin for reports (the real server checks the admin role, not an email).
+const MAINT_ADMIN = addAccount("admin@example.test", "luma_admin", "demo-password", true, "uadmin", "#2563eb")
+const isFakeAdmin = (a) => Boolean(a && (a.id === "u1" || a.id === MAINT_ADMIN.id))
+const MAINT_FIELDS = { start_at: null, estimated_end_at: null, drain_started_at: null, grace_ends_at: null, activated_at: null, backup_ref: null, counts_at_activation: null, checks: null, checks_passed_at: null }
+const maint = { phase: "none", rev: 1, reason: "", note: "", reopened_at: null, ...MAINT_FIELDS, jobs: 0, failChecks: [] }
+const maintLog = []
+const editSessions = new Map() // fake edit-session token -> issued (ms)
+const MAINT_ACTIVE = "Luma is taking a short break. Your saved work is safe. Please try again after the break."
+const MAINT_DRAINING = "Luma is getting ready for a short break, so new work can't start right now. Work you already started can still be saved for a few minutes."
+const isoZ = (ms) => (ms == null ? null : new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z"))
+const msOf = (iso) => (iso ? Date.parse(iso) : null)
+function maintStatus() {
+  const reopened = msOf(maint.reopened_at)
+  return {
+    phase: maint.phase, rev: maint.rev, reason: maint.reason, note: maint.note,
+    start_at: maint.start_at, estimated_end_at: maint.estimated_end_at,
+    drain_started_at: maint.drain_started_at, grace_ends_at: maint.grace_ends_at,
+    recently_reopened: maint.phase === "none" && reopened !== null && Date.now() - reopened < 30 * 60_000,
+    server_time: isoZ(Date.now()),
+  }
+}
+function maintRetryAfter() {
+  const end = msOf(maint.estimated_end_at)
+  return end === null ? 900 : Math.min(3600, Math.max(60, Math.ceil((end - Date.now()) / 1000)))
+}
+const MAINT_AI = ["/api/generate-notes", "/api/transcribe", "/api/notes-from-text", "/api/summarize", "/api/import/link"]
+const MAINT_OPEN_GETS = ["/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me", "/me/profile"]
+const MAINT_CONTENT = ["notes", "summaries", "flashcards", "study-sessions", "transcripts"]
+function maintGroup(method, path, parts) {
+  const read = method === "GET" || method === "HEAD"
+  if (method === "OPTIONS" || path === "/admin/maintenance" || path.startsWith("/admin/maintenance/")) return "open"
+  if ((read && MAINT_OPEN_GETS.includes(path)) || (method === "POST" && path === "/login")) return "open"
+  if (method === "POST" && path === "/maintenance/edit-session") return "edit"
+  if (method === "POST" && MAINT_AI.includes(path)) return "long"
+  if ((method === "DELETE" && path === "/me/account") || (["POST", "DELETE"].includes(method) && ["/me/avatar", "/me/theme-image"].includes(path)) || (method === "POST" && path === "/signup")) return "long"
+  if (method === "POST" && path === "/api/stripe-webhook") return "webhook"
+  if (read) return "read"
+  return MAINT_CONTENT.includes(parts[0]) ? "content" : "write"
+}
+/** null to let the request through, else [error_code, message, retry_after]. */
+function maintGate(req, path, parts) {
+  const group = maintGroup(req.method, path, parts)
+  if (group === "open" || maint.phase === "none" || maint.phase === "announced") return null
+  if (maint.phase === "active" || maint.phase === "checking") return ["maintenance_active", MAINT_ACTIVE, group === "webhook" ? 600 : maintRetryAfter()]
+  const graceOver = Date.now() >= (msOf(maint.grace_ends_at) ?? 0)
+  const draining = ["maintenance_draining", MAINT_DRAINING, maintRetryAfter()]
+  if (group === "read" || group === "webhook") return null
+  if (group === "long" || group === "edit") return draining
+  if (group === "write") return graceOver ? draining : null
+  const issued = editSessions.get(String(req.headers["x-luma-edit-session"] || ""))
+  if (!graceOver && issued !== undefined && issued <= (msOf(maint.drain_started_at) ?? 0)) return null
+  return draining
+}
+const chicagoWall = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+const wallOf = (ms) => {
+  const p = Object.fromEntries(chicagoWall.formatToParts(new Date(ms)).map((x) => [x.type, x.value]))
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`
+}
+/** A Chicago wall time ("2026-12-01T05:00") as ms, or [error_code, message] like the server. */
+function chicagoToMs(local) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(String(local || ""))
+  if (!m) return ["time_invalid", "Pick a day and a time."]
+  const base = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5])
+  if (new Date(base).getUTCDate() !== +m[3] || +m[4] > 23) return ["time_invalid", "Pick a day and a time."]
+  const hits = [5, 6].map((h) => base + h * 3_600_000).filter((ms) => wallOf(ms) === local)
+  if (hits.length === 0) return ["time_skipped", "That time is skipped when clocks change. Pick another time."]
+  if (hits.length > 1) return ["time_twice", "That time happens twice when clocks change. Pick another time."]
+  return hits[0]
+}
+function maintTimes(body) {
+  const start = chicagoToMs(body.start_local)
+  if (Array.isArray(start)) return start
+  const end = chicagoToMs(body.estimated_end_local)
+  if (Array.isArray(end)) return end
+  if (start < Date.now() + 30 * 60_000) return ["time_too_soon", "Pick a start at least 30 minutes from now."]
+  if (end <= start) return ["time_order", "The end has to be after the start."]
+  return { start_at: isoZ(start), estimated_end_at: isoZ(end) }
+}
+function maintMove(action, changes, detail = {}) {
+  const from = maint.phase
+  Object.assign(maint, changes)
+  maint.rev += 1
+  maintLog.push({ at: isoZ(Date.now()), action, from_phase: from, to_phase: maint.phase, detail })
+}
+function maintSafety(body) {
+  const reasons = []
+  const now = Date.now()
+  const waitUntil = Math.max(msOf(maint.grace_ends_at) ?? now, (msOf(maint.drain_started_at) ?? now) + 60_000)
+  if (now < waitUntil) reasons.push({ code: "grace_not_over", seconds_left: Math.ceil((waitUntil - now) / 1000) })
+  if (maint.jobs > 0) reasons.push({ code: "jobs_running", count: maint.jobs })
+  if (maint.reason === "database_update" && !(body && body.backup_checked && /^[0-9]{8}T[0-9]{6}Z$/.test(String(body.backup_ref || "")))) reasons.push({ code: "backup_missing" })
+  return reasons
+}
+function maintView() {
+  const { jobs, failChecks, ...state } = maint
+  void failChecks
+  const view = {
+    status: maintStatus(),
+    state,
+    instances: [{ instance: "fake-server", this_one: true, in_flight: 0, heartbeat_age_seconds: 0, phase_seen: maint.phase, code_version: "fake" }],
+    jobs: { running: jobs, stale: 0, by_kind: jobs ? { ai_transcribe: jobs } : {} },
+    log: maintLog.slice(-20).reverse(),
+    partial: false,
+    server_time: isoZ(Date.now()),
+  }
+  if (maint.phase === "draining") view.safety = maintSafety(null)
+  return view
+}
+const maintCounts = () => ({ users: accounts.size, profiles: profiles.size, notes: notes.length, summaries: summaries.length, flashcards: decks.length, study_sessions: studyPlans.length })
+
 let currentOrigin = "http://localhost:5173"
 function send(res, code, body) {
   res.writeHead(code, {
     "content-type": "application/json",
     "access-control-allow-origin": currentOrigin,
     "access-control-allow-credentials": "true",
-    "access-control-allow-headers": "authorization, content-type",
+    "access-control-allow-headers": "authorization, content-type, idempotency-key, x-luma-edit-session",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     // Like the backend: nothing the API serves belongs in a search engine.
     "x-robots-tag": "noindex, nofollow",
+    "access-control-expose-headers": "x-luma-maintenance, x-luma-maintenance-rev, retry-after",
+    "x-luma-maintenance": maint.phase,
+    "x-luma-maintenance-rev": String(maint.rev),
   })
   res.end(body === undefined ? "" : JSON.stringify(body))
 }
@@ -227,6 +344,86 @@ http
 
     if (url.pathname === "/__test/outbox" && req.method === "GET") {
       return send(res, 200, { messages: outbox.get(String(url.searchParams.get("email") || "").trim().toLowerCase()) || [] })
+    }
+
+    // --- maintenance (fake) ---
+    // Test hooks (local only):
+    //   POST /__test/maintenance {"phase": "...", "start_at": "...", "estimated_end_at": "...", "grace_ends_at": "...",
+    //        "drain_started_at": "...", "reason": "...", "note": "...", "reopened_at": "...", "fail_checks": ["storage"]}
+    //   POST /__test/maintenance/jobs {"count": 1}   AI or long tasks "still running"
+    if (url.pathname === "/__test/maintenance" && req.method === "POST") {
+      if (body.phase === "none") Object.assign(maint, MAINT_FIELDS, { reason: "", note: "", reopened_at: null, jobs: 0, failChecks: [] })
+      for (const key of ["phase", "start_at", "estimated_end_at", "grace_ends_at", "drain_started_at", "reason", "note", "reopened_at"]) {
+        if (key in body) maint[key] = body[key]
+      }
+      if (Array.isArray(body.fail_checks)) maint.failChecks = body.fail_checks
+      maint.rev += 1
+      return send(res, 200, maintStatus())
+    }
+    if (url.pathname === "/__test/maintenance/jobs" && req.method === "POST") {
+      maint.jobs = Math.max(0, Number(body.count) || 0)
+      return send(res, 200, { running: maint.jobs })
+    }
+    {
+      const blocked = maintGate(req, url.pathname, parts)
+      if (blocked) {
+        const [error_code, detail, retry_after] = blocked
+        res.setHeader("retry-after", String(retry_after))
+        return send(res, 503, { detail, error_code, retry_after, maintenance: { phase: maint.phase, estimated_end_at: maint.estimated_end_at } })
+      }
+    }
+    if (url.pathname === "/maintenance/status" && req.method === "GET") return send(res, 200, maintStatus())
+    if (url.pathname === "/maintenance/edit-session" && req.method === "POST") {
+      if (!accountFor(req)) return send(res, 401, { detail: "Not authenticated" })
+      const token = `fake-edit-${randomUUID()}`
+      editSessions.set(token, Date.now())
+      return send(res, 200, { token, issued_at: isoZ(Date.now()) })
+    }
+    if (url.pathname === "/admin/maintenance" || url.pathname.startsWith("/admin/maintenance/")) {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Not authenticated" })
+      if (!isFakeAdmin(a)) return send(res, 403, { detail: "Admin access required" })
+      if (req.method === "GET" && parts.length === 2) return send(res, 200, maintView())
+      if (req.method !== "POST" || parts.length !== 3) return send(res, 404, { detail: "Not Found" })
+      const changed = () => send(res, 409, { detail: "Someone else changed the break just now. Look at the page again before you try.", error_code: "maintenance_changed", phase: maint.phase, rev: maint.rev })
+      if (body.expected_rev !== maint.rev) return changed()
+      const step = parts[2]
+      const allowed = { schedule: ["none", "announced"], postpone: ["announced", "draining"], cancel: ["announced", "draining"], drain: ["announced"], activate: ["draining"], checks: ["active", "checking"], reopen: ["checking"] }
+      if (!allowed[step]) return send(res, 404, { detail: "Not Found" })
+      if (!allowed[step].includes(maint.phase)) return changed()
+      if (step === "schedule" || step === "postpone") {
+        const times = maintTimes(body)
+        if (Array.isArray(times)) return send(res, 422, { detail: times[1], error_code: times[0] })
+        if (step === "schedule") {
+          if (!["database_update", "website_update", "backup_check", "other"].includes(body.reason)) return send(res, 422, { detail: [{ msg: "Pick a reason." }] })
+          maintMove(maint.phase === "none" ? "schedule" : "change", { ...MAINT_FIELDS, phase: "announced", reason: body.reason, note: String(body.note || "").slice(0, 200), reopened_at: null, ...times }, { reason: body.reason })
+        } else {
+          maintMove("postpone", { ...MAINT_FIELDS, phase: "announced", ...times })
+        }
+      } else if (step === "cancel") {
+        maintMove("cancel", { ...MAINT_FIELDS, phase: "none", reason: "", note: "" })
+      } else if (step === "drain") {
+        const grace = Number(body.grace_minutes ?? 10)
+        if (!Number.isInteger(grace) || grace < 5 || grace > 30) return send(res, 422, { detail: [{ msg: "Pick 5 to 30 minutes." }] })
+        maintMove("drain", { phase: "draining", drain_started_at: isoZ(Date.now()), grace_ends_at: isoZ(Date.now() + grace * 60_000) }, { grace_minutes: grace })
+      } else if (step === "activate") {
+        const reasons = maintSafety(body)
+        if (reasons.length) {
+          maintLog.push({ at: isoZ(Date.now()), action: "activate_refused", from_phase: "draining", to_phase: "draining", detail: { reasons: reasons.map((r) => r.code) } })
+          return send(res, 409, { error_code: "maintenance_not_safe", detail: "It isn't safe to start yet.", reasons })
+        }
+        const ref = /^[0-9]{8}T[0-9]{6}Z$/.test(String(body.backup_ref || "")) ? body.backup_ref : null
+        maintMove("activate", { phase: "active", activated_at: isoZ(Date.now()), counts_at_activation: maintCounts(), backup_ref: ref, checks: null, checks_passed_at: null })
+      } else if (step === "checks") {
+        const results = ["database", "schema", "records_kept", "log_write", "storage", "code_version"].map((name) => ({ name, passed: !maint.failChecks.includes(name), detail: {} }))
+        const passed = results.every((r) => r.passed)
+        maintMove("checks", { phase: "checking", checks: { ran_at: isoZ(Date.now()), results }, checks_passed_at: passed ? isoZ(Date.now()) : null }, { failed: results.filter((r) => !r.passed).map((r) => r.name) })
+      } else if (step === "reopen") {
+        if (!maint.checks_passed_at) return send(res, 409, { detail: "Every check has to pass before Luma can reopen.", error_code: "checks_not_passed" })
+        if (Date.now() - msOf(maint.checks_passed_at) > 30 * 60_000) return send(res, 409, { detail: "The checks are more than 30 minutes old. Run them again.", error_code: "checks_too_old" })
+        maintMove("reopen", { ...MAINT_FIELDS, phase: "none", reopened_at: isoZ(Date.now()) })
+      }
+      return send(res, 200, maintView())
     }
 
     // --- accounts (fake) ---
@@ -561,7 +758,7 @@ http
       const profile = profiles.get(a.id)
       // An unknown saved theme reads as Light; an empty one stays empty.
       const theme_mode = profile.theme_mode == null ? null : THEME_MODES.includes(profile.theme_mode) ? profile.theme_mode : "light"
-      return send(res, 200, { ...profile, theme_mode, ...publicUser(a), subscription_status: "free", is_admin: a.id === "u1" })
+      return send(res, 200, { ...profile, theme_mode, ...publicUser(a), subscription_status: "free", is_admin: isFakeAdmin(a) })
     }
     // Study plans: create, list, open, change and delete, each account only its own.
     if (parts[0] === "study-sessions") {

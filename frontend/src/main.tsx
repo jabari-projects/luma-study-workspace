@@ -12,6 +12,7 @@ import "./styles.css"
 import "./capture/capture.css"
 import "./notes/notes.css"
 import "./study/study.css"
+import "./maintenance/observe"
 
 const rootElement = document.getElementById("root")
 
