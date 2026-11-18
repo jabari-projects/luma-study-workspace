@@ -8,7 +8,7 @@ function fakeUsername(label: string, info: TestInfo) {
   return `${label}${Date.now().toString(36)}${info.project.name.slice(0, 2)}${Math.floor(Math.random() * 1000)}`
 }
 
-/** Sign up (or, while signed in, add) a new verified account and land on the dashboard. */
+/** Sign up (or, while signed in, add) a new verified account, then go to the dashboard. */
 async function signUp(page: Page, email: string, username: string, adding = false) {
   await page.goto(adding ? "/signup?add=1" : "/signup")
   await page.getByLabel("Email").fill(email)
@@ -19,6 +19,9 @@ async function signUp(page: Page, email: string, username: string, adding = fals
   const { code } = await latestMail(page, email, "code")
   await page.getByLabel(/code/i).fill(code!)
   await page.getByRole("button", { name: /check|verify|confirm/i }).click()
+  // Finishing signup opens Discover; these tests start from Home.
+  await expect(page).toHaveURL(/\/discover$/)
+  await page.goto("/dashboard")
   await expect(page).toHaveURL(/\/dashboard/)
 }
 

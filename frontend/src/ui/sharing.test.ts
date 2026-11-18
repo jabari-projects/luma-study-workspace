@@ -91,16 +91,16 @@ describe("sharing words", () => {
 })
 
 describe("search shows a username only", () => {
-  const search = read("discover/SearchPage.tsx")
+  const search = read("discover/DiscoverPage.tsx")
 
   it("never reads ids, names, photos or counts from search results", () => {
     for (const field of ["user_id", "display_name", "avatar_url", "public_count", "published_by"]) {
-      assert.ok(!search.includes(field), `SearchPage.tsx still mentions ${field}`)
+      assert.ok(!search.includes(field), `DiscoverPage.tsx still mentions ${field}`)
     }
   })
 
   it("people results show @username with no avatar", () => {
-    assert.match(search, /@\{user\.username\}/)
+    assert.match(search, /@\{person\.username\}/)
     assert.doesNotMatch(search, /className="avatar"|<img/)
   })
 })

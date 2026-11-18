@@ -71,8 +71,8 @@ async function readDeck(request: APIRequestContext, owner: Owner, id: string): P
 }
 
 async function searchTopics(page: Page, query: string) {
-  await page.goto("/search")
-  await expect(page.getByRole("heading", { level: 1, name: "Search" })).toBeVisible()
+  await page.goto("/discover")
+  await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
   await page.getByLabel("Search", { exact: true }).fill(query)
   const done = page.waitForResponse((r) => r.url().startsWith(`${API}/public/topics`) && r.url().includes("query="))
   await page.getByRole("button", { name: "Search", exact: true }).click()
@@ -117,15 +117,16 @@ test.describe("Search entry point", () => {
       await expect(page.getByRole("complementary", { name: "Main navigation" }).getByRole("link", { name: "Search", exact: true })).toBeVisible()
     }
 
+    // The label says Search; the page it opens is Discover.
     await visibleSearch.click()
-    await expect(page).toHaveURL(/\/search$/)
-    await expect(page.getByRole("heading", { level: 1, name: "Search" })).toBeVisible()
+    await expect(page).toHaveURL(/\/discover$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
     await expect(page.getByLabel("Search", { exact: true })).toBeVisible()
   })
 
-  test("Search page has no serious accessibility problems", async ({ page }, info) => {
+  test("Discover page has no serious accessibility problems", async ({ page }, info) => {
     await loginAndWait(page, SEEDED.sam.email)
-    await page.goto("/search")
+    await page.goto("/discover")
     await expect(resultCard(page, "Spanish Basics")).toBeVisible()
     expect(await seriousA11yDetails(page, info, "search"), "axe on search").toEqual([])
   })
@@ -169,7 +170,7 @@ test.describe("Sharing a deck", () => {
     await loginAndWait(otherPage, SEEDED.lee.email)
     await searchTopics(otherPage, title)
     await expect(resultCard(otherPage, title)).toHaveCount(0)
-    await expect(otherPage.getByText("No shared notes or cards found.")).toBeVisible()
+    await expect(otherPage.getByRole("heading", { name: `Nothing found for “${title}”.` })).toBeVisible()
 
     // Share for real.
     await share.click()
@@ -329,7 +330,7 @@ test.describe("Sharing is locked down", () => {
 
   test("People search shows @username only, with no avatar, name or count", async ({ page }, info) => {
     await loginAndWait(page, SEEDED.sam.email)
-    await page.goto("/search")
+    await page.goto("/discover")
     await page.getByRole("button", { name: "People", exact: true }).click()
     await expect(page.getByText("Type at least 3 letters of a username.")).toBeVisible()
 
@@ -353,7 +354,7 @@ test.describe("Sharing is locked down", () => {
 
     await page.getByLabel("Search", { exact: true }).fill("nobody_like_this")
     await page.getByRole("button", { name: "Search", exact: true }).click()
-    await expect(page.getByText("No one with that username has shared anything yet.")).toBeVisible()
+    await expect(page.locator(".search-results").getByText("No one with that username has shared anything yet.")).toBeVisible()
   })
 })
 
@@ -470,7 +471,7 @@ test.describe("Reporting shared sets", () => {
   test("open report form has no serious accessibility problems (orange theme account)", async ({ browser }, info) => {
     const page = await (await browser.newContext()).newPage()
     await loginAndWait(page, SEEDED.lee.email)
-    await page.goto("/search")
+    await page.goto("/discover")
     const card = resultCard(page, "Spanish Basics")
     await card.getByRole("button", { name: "Report Spanish Basics" }).click()
     await expect(card.getByLabel("What's wrong?")).toBeVisible()

@@ -39,7 +39,8 @@ import {
 } from "./account/AccountPages"
 import { AdminReportsPage } from "./account/Reporting"
 import { SettingsPage } from "./account/SettingsPage"
-import { SearchPage } from "./discover/SearchPage"
+import { DiscoverPage } from "./discover/DiscoverPage"
+import { DISCOVER, DISCOVER_REDIRECTS } from "./discover/discover"
 import { ImportPage } from "./capture/ImportPage"
 
 type HealthState = {
@@ -238,7 +239,7 @@ function AppLayout() {
         <VerifyEmailBanner />
         <Routes>
           <Route path="/dashboard" element={<TodayPage />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route path={DISCOVER} element={<DiscoverPage />} />
           <Route path="/flashcards" element={<DecksPage />} />
           <Route path="/flashcards/new" element={<DeckEditorPage />} />
           <Route path="/flashcards/:itemId" element={<DeckPage />} />
@@ -262,7 +263,7 @@ function AppLayout() {
           />
           <Route path="/summaries/:itemId/edit" element={<NoteEditorPage kind="summary" />} />
           {/* Old addresses keep working, with their ?query (like /import?from=link). */}
-          {[...NOTE_REDIRECTS, ...STUDY_REDIRECTS].map(([from, to]) => (
+          {[...NOTE_REDIRECTS, ...STUDY_REDIRECTS, ...DISCOVER_REDIRECTS].map(([from, to]) => (
             <Route key={from} path={from} element={<KeepQueryRedirect to={to} />} />
           ))}
           <Route path="/ai-tutor" element={<Navigate to="/dashboard" replace />} />

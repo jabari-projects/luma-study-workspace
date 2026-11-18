@@ -16,6 +16,9 @@ async function signUp(page: import("@playwright/test").Page, email: string, user
   const { code } = await latestMail(page, email, "code")
   await page.getByLabel(/code/i).fill(code!)
   await page.getByRole("button", { name: /check|verify|confirm/i }).click()
+  // Finishing signup opens Discover; these tests start from Home.
+  await expect(page).toHaveURL(/\/discover$/)
+  await page.goto("/dashboard")
   await expect(page).toHaveURL(/\/dashboard/)
 }
 

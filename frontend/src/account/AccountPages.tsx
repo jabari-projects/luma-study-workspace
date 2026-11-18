@@ -5,6 +5,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 import { useAuth } from "../auth"
+import { FIRST_TIME_LANDING } from "../discover/discover"
 import { api, getErrorCode, getErrorMessage, getRetryAfter, getStoredAccessToken, readBook } from "../api"
 
 // Matches the backend rule (backend/app/passwords.py MIN/MAX_PASSWORD_LENGTH).
@@ -557,6 +558,9 @@ export function VerifyEmailPage() {
   const messageId = useId()
   const codeHintId = useId()
   const startedCountdown = useRef(false)
+  // Where a code that just worked sends the student. Set before checking, so the
+  // "already checked" redirect below can't send a brand-new student Home first.
+  const [landing, setLanding] = useState<string | null>(null)
 
   useEffect(() => {
     if (startedCountdown.current) {
@@ -647,7 +651,7 @@ export function VerifyEmailPage() {
   }
 
   if (signedInPath && user && user.email_verified === true) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={landing ?? "/dashboard"} replace />
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -666,6 +670,12 @@ export function VerifyEmailPage() {
     }
     setSubmitting(true)
     setMessage(null)
+    // Finishing signup (a code from the signup in this tab) opens Discover, so a new student
+    // sees what others shared first. An account that was already made (an older account, or a
+    // changed email) goes Home as usual. A signup with no code typed is not an account yet
+    // (the server makes it only when the code works), so it can't log in later and be missed here.
+    const next = ticket ? FIRST_TIME_LANDING : "/dashboard"
+    setLanding(next)
     try {
       await verifyEmail(ticket ? { email: email.trim(), ticket, code: cleaned } : { code: cleaned })
       clearSignupTicket()
@@ -674,8 +684,9 @@ export function VerifyEmailPage() {
       } catch {
         // The new session works even if the profile can't load yet.
       }
-      navigate("/dashboard", { replace: true })
+      navigate(next, { replace: true })
     } catch (error: unknown) {
+      setLanding(null)
       const errorCode = getErrorCode(error)
       setMessage({
         kind: "error",

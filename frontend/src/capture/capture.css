@@ -253,18 +253,12 @@
 /* ---------------------------------------------------- import */
 
 /* Where the lesson is from: the shared underlined tab strip (.tabs), with an icon per tab.
-   It always stays on one line; if it ever runs out of room it slides sideways instead of wrapping. */
+   It fits on one line from a 360px phone up. On a smaller phone the last tabs wrap onto a
+   second line, so every tab stays in sight (a strip that slid sideways hid them). */
 .tabs.source-tabs {
-  flex-wrap: nowrap;
-  gap: 4px 20px;
+  flex-wrap: wrap;
+  gap: 0 20px;
   margin: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-.tabs.source-tabs::-webkit-scrollbar {
-  display: none;
 }
 
 .source-tab {
@@ -272,7 +266,7 @@
   white-space: nowrap;
 }
 
-/* The strip clips anything outside it, so the focus ring is drawn inside the tab. */
+/* The focus ring is drawn inside the tab, so it never runs into the next row of tabs. */
 .tabs.source-tabs .tab:focus-visible {
   outline-offset: -2px;
   box-shadow: inset 0 0 0 5px var(--highlight);

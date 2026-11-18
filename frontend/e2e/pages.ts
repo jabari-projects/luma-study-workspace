@@ -14,7 +14,7 @@ export const APP_PAGES = [
   { path: "/flashcards/new", label: "deck-editor" },
   { path: "/quizzes", label: "quiz-setup" },
   { path: "/study-sessions", label: "study-plans" },
-  { path: "/search", label: "search" },
+  { path: "/discover", label: "discover" },
   { path: "/settings", label: "settings" },
   { path: "/admin/reports", label: "admin-reports" },
 ] as const
