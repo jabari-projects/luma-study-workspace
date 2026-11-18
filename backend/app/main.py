@@ -285,13 +285,25 @@ if not settings.OPENAI_API_KEY and not settings.DEEPGRAM_API_KEY:
         "Transcription routes will return 503."
     )
 
-origins = [
+# Websites allowed to call this API from a browser. The custom domain
+# (bought 2026-11-17) plus the Vercel address it replaces, local dev, and any
+# exact origins set in the environment (FRONTEND_ORIGIN(S), PUBLIC_APP_URL).
+SITE_ORIGINS = [
     "http://localhost:5173",
-    "https://*.vercel.app",
+    "https://lumastudyhub.com",
+    "https://www.lumastudyhub.com",
     "https://luma-frontend-ruby.vercel.app",
-    "https://luma-frontend-dxgnch0h1-jabarimckinney213-7284s-projects.vercel.app",
 ]
-VERCEL_ORIGIN_REGEX = r"https://.*\.vercel\.app"
+origins = list(
+    dict.fromkeys(
+        [*SITE_ORIGINS, *(o for o in settings.FRONTEND_ORIGINS if "*" not in o)]
+    )
+)
+# Only Luma's own Vercel preview builds (this project, this team). Any other
+# *.vercel.app site is refused: anyone can host a page there.
+VERCEL_ORIGIN_REGEX = (
+    r"https://luma-frontend-[a-z0-9-]+-jabarimckinney213-7284s-projects\.vercel\.app"
+)
 
 logger.info(
     "Luma backend starting env=%s api_base=%s frontend_origins=%s supabase_configured=%s",
