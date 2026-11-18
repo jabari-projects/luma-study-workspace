@@ -26,6 +26,7 @@ from tests.test_account_deletion import (  # noqa: F401  (route_env is a fixture
     DBWrapper,
     FakeDB,
     FakeStripe,
+    delete_account,
     make_deps,
     outcomes,
     route_env,
@@ -223,15 +224,16 @@ def _token_without_pv(uid):
 
 def test_pv_token_rejected_after_deletion(route_env):  # noqa: F811
     headers = {"Authorization": f"Bearer {create_access_token({'sub': USER})}"}
-    assert route_env.client.delete("/me/account", headers=headers).status_code == 200
+    assert delete_account(route_env.client, headers).status_code == 200
     assert route_env.client.get("/notifications", headers=headers).status_code == 401
 
 
-def test_token_without_pv_rejected_after_deletion(route_env):  # noqa: F811
+def test_token_without_pv_is_always_rejected(route_env):  # noqa: F811
+    # Every token Luma issues carries pv, so one without it is refused even
+    # while the account still exists.
     old = {"Authorization": f"Bearer {_token_without_pv(USER)}"}
-    fresh = {"Authorization": f"Bearer {create_access_token({'sub': USER})}"}
-    assert route_env.client.delete("/me/account", headers=fresh).status_code == 200
     assert route_env.client.get("/notifications", headers=old).status_code == 401
+    assert delete_account(route_env.client, old).status_code == 401
 
 
 # ---------------------------------------------------------------- migration
@@ -355,13 +357,10 @@ def test_passwordless_user_token_is_tied_to_the_row(monkeypatch):
     token = create_access_token({"sub": "u-nopw"})
     assert "pv" in jwt.decode(token, options={"verify_signature": False})
     assert auth_module.validate_access_token(token)["id"] == "u-nopw"
-    legacy = _token_without_pv("u-nopw")
-    assert auth_module.validate_access_token(legacy)["id"] == "u-nopw"
     rows.clear()
-    for t in (token, legacy):
-        with pytest.raises(Exception) as info:
-            auth_module.validate_access_token(t)
-        assert getattr(info.value, "status_code", None) == 401
+    with pytest.raises(Exception) as info:
+        auth_module.validate_access_token(token)
+    assert getattr(info.value, "status_code", None) == 401
 
 
 def test_script_refuses_anon_key_only(monkeypatch, capsys):

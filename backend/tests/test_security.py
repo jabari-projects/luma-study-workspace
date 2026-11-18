@@ -85,6 +85,20 @@ class FakeQuery:
         self.filters.append((column, (kind, pattern)))
         return self
 
+    def ilike(self, column, pattern):
+        # SQL ILIKE: % is any run, _ is one character, a backslash makes the next one literal.
+        regex, i = "", 0
+        while i < len(pattern):
+            ch = pattern[i]
+            if ch == "\\" and i + 1 < len(pattern):
+                regex += re.escape(pattern[i + 1])
+                i += 2
+                continue
+            regex += ".*" if ch == "%" else "." if ch == "_" else re.escape(ch)
+            i += 1
+        self.filters.append((column, ("__ilike__", re.compile(f"^{regex}$", re.IGNORECASE | re.DOTALL))))
+        return self
+
     def order(self, *_args, **_kwargs):
         return self
 
@@ -113,6 +127,10 @@ class FakeQuery:
                     return False
             elif isinstance(value, tuple) and value and value[0] == "__gt__":
                 if row.get(column) is None or not row.get(column) > value[1]:
+                    return False
+            elif isinstance(value, tuple) and value and value[0] == "__ilike__":
+                cell = row.get(column)
+                if not isinstance(cell, str) or not value[1].match(cell):
                     return False
             elif isinstance(value, tuple) and value and value[0] in ("__like__", "__not_like__"):
                 cell, prefix = row.get(column), value[1].rstrip("%")
@@ -476,12 +494,6 @@ def test_send_verification_sends_code_stored_only_as_digest(api, db, sent_emails
     assert db.users()[0]["email_verified"] is True
 
 
-def test_verify_old_raw_token_row_no_longer_matches(api, db):
-    db.user(email_verification_token="legacy-raw-token", email_verification_sent_at="2099-01-01T00:00:00")
-    response = api.get("/auth/verify", params={"token": "legacy-raw-token"})
-    assert response.json()["success"] is False
-
-
 # ---------- Password reset ----------
 
 GENERIC_RESET = {"success": True, "message": "If an account with that email exists, a reset link has been sent"}
@@ -619,9 +631,8 @@ def test_no_token_or_password_in_logs(api, db, sent_emails, debug_logs):
 
 
 def test_log_link_helpers_do_not_log_tokens(debug_logs):
-    main.log_verification_link("tok-AAA")
     main.log_password_reset_link("tok-BBB")
-    assert "tok-AAA" not in debug_logs.text and "tok-BBB" not in debug_logs.text
+    assert "tok-BBB" not in debug_logs.text
 
 
 def test_reset_email_html_escapes_values():

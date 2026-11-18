@@ -15,6 +15,8 @@ security = HTTPBearer(auto_error=False)
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 CREDENTIAL_VERSION_CLAIM = "pv"
+# A token missing any of these is refused when it is decoded.
+REQUIRED_CLAIMS = ["exp", "sub", "type", CREDENTIAL_VERSION_CLAIM]
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +73,9 @@ def set_credential_lookup(lookup: Callable[[str], Optional[str]]) -> None:
     _credential_lookup = lookup
 
 
-def get_jwt_secret_key() -> str | None:
-    return settings.effective_jwt_secret_key
+def get_jwt_secret_key() -> str:
+    # main.py refuses to start without it (config.check_jwt_secret_key).
+    return settings.JWT_SECRET_KEY
 
 
 def _credential_fingerprint(stored_password: str) -> str:
@@ -82,14 +85,14 @@ def _credential_fingerprint(stored_password: str) -> str:
     issued before the change stop validating. Keyed with the JWT secret so the
     claim reveals nothing about the stored value.
     """
-    secret = (get_jwt_secret_key() or "").encode("utf-8")
+    secret = get_jwt_secret_key().encode("utf-8")
     message = b"luma-pv:" + stored_password.encode("utf-8", "surrogatepass")
     return hmac.new(secret, message, hashlib.sha256).hexdigest()[:32]
 
 
 def _passwordless_fingerprint(user_id: str) -> str:
     """Fingerprint for a users row that has no password (ties tokens to the row)."""
-    secret = (get_jwt_secret_key() or "").encode("utf-8")
+    secret = get_jwt_secret_key().encode("utf-8")
     message = b"luma-pv-nopw:" + user_id.encode("utf-8", "surrogatepass")
     return hmac.new(secret, message, hashlib.sha256).hexdigest()[:32]
 
@@ -117,15 +120,12 @@ def _current_fingerprint(user_id: str) -> Optional[str]:
 def _credential_version_ok(payload: dict) -> bool:
     """False when the token was issued for an older password or the user is gone.
 
-    Tokens without the claim (issued before this check existed) are still
-    checked: they are rejected once the users row no longer exists.
+    Tokens without the claim are refused: create_access_token never makes one.
     """
     claimed = payload.get(CREDENTIAL_VERSION_CLAIM)
     subject = payload.get("sub")
     if not isinstance(subject, str) or not subject:
         return False
-    if claimed is None:
-        return _lookup_stored(subject) is not None
     if not isinstance(claimed, str):
         return False
     current = _current_fingerprint(subject)
@@ -133,34 +133,33 @@ def _credential_version_ok(payload: dict) -> bool:
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    jwt_secret_key = get_jwt_secret_key()
-    if not jwt_secret_key:
-        raise HTTPException(status_code=500, detail="JWT secret is not configured")
-
     to_encode = data.copy()
     subject = to_encode.get("sub")
-    if CREDENTIAL_VERSION_CLAIM not in to_encode and isinstance(subject, str) and subject:
-        try:
-            fingerprint = _current_fingerprint(subject)
-        except CredentialLookupError:
-            logger.warning("Could not read credential version while issuing a token")
-            raise HTTPException(status_code=503, detail="Sign-in is unavailable right now. Try again later.")
-        if fingerprint:
-            to_encode[CREDENTIAL_VERSION_CLAIM] = fingerprint
+    try:
+        fingerprint = _current_fingerprint(subject) if isinstance(subject, str) and subject else None
+    except CredentialLookupError:
+        logger.warning("Could not read credential version while issuing a token")
+        raise HTTPException(status_code=503, detail="Sign-in is unavailable right now. Try again later.")
+    if not fingerprint:
+        # No users row: a token without pv could never be used, so none is made.
+        raise HTTPException(status_code=401, detail="Account not found")
+    to_encode[CREDENTIAL_VERSION_CLAIM] = fingerprint
     expire = datetime.utcnow() + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, jwt_secret_key, algorithm=JWT_ALGORITHM)
+    return jwt.encode(to_encode, get_jwt_secret_key(), algorithm=JWT_ALGORITHM)
 
 
-def validate_access_token(token: str):
-    jwt_secret_key = get_jwt_secret_key()
-    if not jwt_secret_key:
-        raise HTTPException(status_code=500, detail="JWT secret is not configured")
-
+def validate_access_token(token: str) -> dict[str, str]:
+    """Return {"id": user_id} for a valid Luma token, else raise a 401 (503 if the DB is down)."""
     try:
-        payload = jwt.decode(token, jwt_secret_key, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token,
+            get_jwt_secret_key(),
+            algorithms=[JWT_ALGORITHM],
+            options={"require": REQUIRED_CLAIMS},
+        )
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
         if not _credential_version_ok(payload):
@@ -174,58 +173,12 @@ def validate_access_token(token: str):
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
-def _get_user_from_custom_jwt(token: str) -> str | None:
-    jwt_secret_key = get_jwt_secret_key()
-    if not jwt_secret_key:
-        return None
-
-    try:
-        payload = jwt.decode(token, jwt_secret_key, algorithms=[JWT_ALGORITHM])
-    except jwt.PyJWTError:
-        return None
-
-    subject = payload.get("sub")
-    token_type = payload.get("type")
-
-    if token_type != "access" or not isinstance(subject, str) or not subject:
-        return None
-
-    try:
-        if not _credential_version_ok(payload):
-            # A custom JWT for an old password must not fall through to the
-            # Supabase Auth check either.
-            raise StaleSessionError()
-    except CredentialLookupError as exc:
-        raise HTTPException(status_code=503, detail="Sign-in check is unavailable right now. Try again later.") from exc
-
-    return subject
-
-
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict[str, str]:
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-
-    token = credentials.credentials
-
-    custom_user_id = _get_user_from_custom_jwt(token)
-    if custom_user_id:
-        return {"id": custom_user_id}
-
-    supabase = get_supabase()
-
-    try:
-        auth_response = supabase.auth.get_user(token)
-        user = getattr(auth_response, "user", None)
-        user_id = getattr(user, "id", None)
-    except Exception:
-        user_id = None
-
-    if isinstance(user_id, str) and user_id:
-        return {"id": user_id}
-
-    raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return validate_access_token(credentials.credentials)
 
 
 def get_current_user_id(user: dict[str, str] = Depends(get_current_user)) -> str:

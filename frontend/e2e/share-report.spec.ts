@@ -71,8 +71,8 @@ async function readDeck(request: APIRequestContext, owner: Owner, id: string): P
 }
 
 async function searchTopics(page: Page, query: string) {
-  await page.goto("/search")
-  await expect(page.getByRole("heading", { level: 1, name: "Search" })).toBeVisible()
+  await page.goto("/discover")
+  await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
   await page.getByLabel("Search", { exact: true }).fill(query)
   const done = page.waitForResponse((r) => r.url().startsWith(`${API}/public/topics`) && r.url().includes("query="))
   await page.getByRole("button", { name: "Search", exact: true }).click()
@@ -117,22 +117,23 @@ test.describe("Search entry point", () => {
       await expect(page.getByRole("complementary", { name: "Main navigation" }).getByRole("link", { name: "Search", exact: true })).toBeVisible()
     }
 
+    // The label says Search; the page it opens is Discover.
     await visibleSearch.click()
-    await expect(page).toHaveURL(/\/search$/)
-    await expect(page.getByRole("heading", { level: 1, name: "Search" })).toBeVisible()
+    await expect(page).toHaveURL(/\/discover$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
     await expect(page.getByLabel("Search", { exact: true })).toBeVisible()
   })
 
-  test("Search page has no serious accessibility problems", async ({ page }, info) => {
+  test("Discover page has no serious accessibility problems", async ({ page }, info) => {
     await loginAndWait(page, SEEDED.sam.email)
-    await page.goto("/search")
+    await page.goto("/discover")
     await expect(resultCard(page, "Spanish Basics")).toBeVisible()
     expect(await seriousA11yDetails(page, info, "search"), "axe on search").toEqual([])
   })
 })
 
-test.describe("Publishing a deck", () => {
-  test("publish asks first, cancel keeps it private; publish and unpublish change what others find", async ({ browser }, info) => {
+test.describe("Sharing a deck", () => {
+  test("Share asks first, Not now keeps it private; Share and Stop sharing change what others find", async ({ browser }, info) => {
     const ownerContext = await browser.newContext()
     const ownerPage = await ownerContext.newPage()
     const owner = await makeAccount(ownerPage, info, "owner")
@@ -144,13 +145,23 @@ test.describe("Publishing a deck", () => {
     await expect(ownerPage.getByRole("heading", { level: 1, name: title })).toBeVisible()
     await expect(ownerPage.getByText("Flashcards · Private")).toBeVisible()
 
-    // Publishing asks for confirmation; Cancel leaves it private.
-    await ownerPage.getByRole("button", { name: "Publish", exact: true }).click()
-    const dialog = ownerPage.getByRole("dialog", { name: "Publish this study set?" })
+    // The Share button lives in the deck's own header, not floating over the page.
+    const head = ownerPage.locator("header.page-head")
+    const share = head.getByRole("button", { name: "Share", exact: true })
+    await expect(share).toBeVisible()
+    expect(await share.evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed")
+
+    // Sharing asks first and says who can see it; Not now leaves it private.
+    await share.click()
+    const dialog = ownerPage.getByRole("dialog", { name: "Share this deck?" })
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText(/visible to other students/i)
-    await dialog.getByRole("button", { name: "Cancel" }).click()
+    await expect(dialog).toContainText("Students signed in to Luma")
+    await expect(dialog).toContainText(`@${owner.username}`)
+    await expect(dialog).toContainText("Nothing else about you")
+    await expect(dialog.getByRole("button", { name: "Not now" })).toBeFocused()
+    await dialog.getByRole("button", { name: "Not now" }).click()
     await expect(dialog).toBeHidden()
+    await expect(share).toBeFocused()
     expect((await readDeck(ownerPage.request, owner, deck.id)).is_public).toBe(false)
 
     // Second account cannot find a private deck.
@@ -159,29 +170,37 @@ test.describe("Publishing a deck", () => {
     await loginAndWait(otherPage, SEEDED.lee.email)
     await searchTopics(otherPage, title)
     await expect(resultCard(otherPage, title)).toHaveCount(0)
-    await expect(otherPage.getByText("No public study sets found.")).toBeVisible()
+    await expect(otherPage.getByRole("heading", { name: `Nothing found for “${title}”.` })).toBeVisible()
 
-    // Publish for real.
-    await ownerPage.getByRole("button", { name: "Publish", exact: true }).click()
-    await dialog.getByRole("button", { name: "Publish", exact: true }).click()
+    // Share for real.
+    await share.click()
+    await dialog.getByRole("button", { name: "Share", exact: true }).click()
     await expect(dialog).toBeHidden()
-    await expect(ownerPage.getByText("Published.", { exact: true })).toBeVisible()
-    await expect(ownerPage.getByText("Flashcards · Public")).toBeVisible()
-    await expect(ownerPage.getByText(`Shared by ${owner.username}`)).toBeVisible()
+    await expect(ownerPage.getByText("Shared. Students signed in to Luma can find this deck now.")).toBeVisible()
+    await expect(ownerPage.getByText("Flashcards · Shared")).toBeVisible()
+    await expect(ownerPage.getByText(`Shared by @${owner.username}`)).toBeVisible()
     expect((await readDeck(ownerPage.request, owner, deck.id)).is_public).toBe(true)
 
-    // Second account now finds it, credited to the owner's username.
+    // The Study hub marks it "Shared" (never "Public").
+    await ownerPage.goto("/flashcards")
+    const tile = ownerPage.locator("li.deck-tile").filter({ hasText: title })
+    await expect(tile.getByText("Shared", { exact: true })).toBeVisible()
+    await expect(ownerPage.locator("main")).not.toContainText(/\bpublic\b/i)
+    await ownerPage.goto(`/flashcards/${deck.id}`)
+
+    // Second account now finds it, credited to the owner's username and nothing else.
     await searchTopics(otherPage, title)
     const card = resultCard(otherPage, title)
     await expect(card).toBeVisible()
-    // The fake API always credits public items to "@jabari", so the publisher name is not checked here.
-    await expect(card.getByText("Published by")).toBeVisible()
+    await expect(card.getByText(`Shared by @${owner.username}`)).toBeVisible()
     await expect(card).toContainText("What colour is the sky")
+    await expect(card).not.toContainText(/published by/i)
 
-    // Unpublish (no confirmation step, it can be undone by publishing again).
-    await ownerPage.getByRole("button", { name: "Unpublish", exact: true }).click()
-    await expect(ownerPage.getByText("Unpublished.", { exact: true })).toBeVisible()
+    // Stop sharing (no "are you sure?": it only makes the deck private again).
+    await head.getByRole("button", { name: "Stop sharing", exact: true }).click()
+    await expect(ownerPage.getByText("You stopped sharing. Only you can see this deck now.")).toBeVisible()
     await expect(ownerPage.getByText("Flashcards · Private")).toBeVisible()
+    await expect(head.getByRole("button", { name: "Share", exact: true })).toBeVisible()
     expect((await readDeck(ownerPage.request, owner, deck.id)).is_public).toBe(false)
 
     await searchTopics(otherPage, title)
@@ -192,7 +211,154 @@ test.describe("Publishing a deck", () => {
   })
 })
 
-test.describe("Reporting public sets", () => {
+test.describe("Sharing a note", () => {
+  test("Share sits in the note's header, never over the study panel; the hub row menu shares and stops sharing too", async ({ browser }, info) => {
+    const ownerContext = await browser.newContext()
+    const ownerPage = await ownerContext.newPage()
+    const owner = await makeAccount(ownerPage, info, "noter")
+    const title = `Shared Note ${uniqueName("n", info)}`
+    const created = await ownerPage.request.post(`${API}/notes`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+      data: {
+        title,
+        tags: [],
+        content: "Plants make food from light.\nWhat do leaves take in? :: Carbon dioxide\nWhat gas comes out? :: Oxygen",
+      },
+    })
+    expect(created.status()).toBe(201)
+    const noteId = ((await created.json()) as { id: string }).id
+
+    await loginAndWait(ownerPage, owner.email)
+    await ownerPage.goto(`/notes/${noteId}`)
+    await expect(ownerPage.getByRole("heading", { level: 1, name: title })).toBeVisible()
+    await expect(ownerPage.getByText("Note · Private")).toBeVisible()
+
+    // The bug this fixes: a floating Publish button sat on top of the study panel.
+    const head = ownerPage.locator("header.page-head")
+    await expect(head.getByRole("button", { name: "Share", exact: true })).toBeVisible()
+    await expect(ownerPage.getByRole("button", { name: /^(un)?publish$/i })).toHaveCount(0)
+    for (const target of [ownerPage.getByRole("button", { name: /^Make a deck/ }), ownerPage.getByRole("button", { name: "Ask AI for more cards" })]) {
+      await target.scrollIntoViewIfNeeded()
+      await expect(target).toBeInViewport({ ratio: 1 })
+      const onTop = await target.evaluate((el) => {
+        const box = el.getBoundingClientRect()
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+        return hit === el || el.contains(hit)
+      })
+      expect(onTop, "nothing covers the study panel").toBe(true)
+    }
+    expect(await seriousA11yDetails(ownerPage, info, "note-share-closed"), "axe on the note page").toEqual([])
+
+    await head.getByRole("button", { name: "Share", exact: true }).click()
+    const dialog = ownerPage.getByRole("dialog", { name: "Share this note?" })
+    await expect(dialog).toContainText(`@${owner.username}`)
+    expect(await seriousA11yDetails(ownerPage, info, "note-share-dialog"), "axe on the share box").toEqual([])
+    await dialog.getByRole("button", { name: "Share", exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(ownerPage.getByText("Note · Shared")).toBeVisible()
+    await expect(head.getByRole("button", { name: "Stop sharing", exact: true })).toBeVisible()
+
+    // On the Notes hub the row says "Shared", and its ⋮ menu can stop sharing and share again.
+    await ownerPage.goto("/notes")
+    const row = ownerPage.locator("li.note-row", { has: ownerPage.getByRole("link", { name: title, exact: true }) })
+    await expect(row.getByText("Shared", { exact: true })).toBeVisible()
+    const menuButton = row.getByRole("button", { name: `More for ${title}` })
+    await menuButton.click()
+    await row.getByRole("menuitem", { name: "Stop sharing" }).click()
+    await expect(ownerPage.getByText("You stopped sharing. Only you can see this note now.")).toBeVisible()
+    await expect(row.getByText("Shared", { exact: true })).toHaveCount(0)
+    await expect(menuButton).toBeFocused()
+
+    await menuButton.click()
+    await expect(row.getByRole("menuitem", { name: "Stop sharing" })).toHaveCount(0)
+    await row.getByRole("menuitem", { name: "Share", exact: true }).click()
+    const hubDialog = ownerPage.getByRole("dialog", { name: "Share this note?" })
+    await hubDialog.getByRole("button", { name: "Not now" }).click()
+    await expect(hubDialog).toBeHidden()
+    await expect(menuButton).toBeFocused()
+    await expect(row.getByText("Shared", { exact: true })).toHaveCount(0)
+    await menuButton.click()
+    await row.getByRole("menuitem", { name: "Share", exact: true }).click()
+    await hubDialog.getByRole("button", { name: "Share", exact: true }).click()
+    await expect(row.getByText("Shared", { exact: true })).toBeVisible()
+
+    // Another student finds the note under Notes, with the owner's username only.
+    const otherContext = await browser.newContext()
+    const otherPage = await otherContext.newPage()
+    await loginAndWait(otherPage, SEEDED.sam.email)
+    await searchTopics(otherPage, title)
+    const card = resultCard(otherPage, title)
+    await expect(card).toBeVisible()
+    await expect(card.getByText("Note", { exact: true })).toBeVisible()
+    await expect(card.getByText(`Shared by @${owner.username}`)).toBeVisible()
+
+    // Clean up: stop sharing so other tests' searches stay small.
+    const stop = await ownerPage.request.put(`${API}/notes/${noteId}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+      data: { is_public: false },
+    })
+    expect(stop.ok()).toBe(true)
+    await ownerContext.close()
+    await otherContext.close()
+  })
+})
+
+test.describe("Sharing is locked down", () => {
+  test("shared search needs a signed-in student", async ({ request }) => {
+    for (const path of ["/public/topics", "/public/topics?query=spanish", "/public/users?query=jabari"]) {
+      const response = await request.get(`${API}${path}`)
+      expect(response.status(), path).toBe(401)
+      expect(await response.text()).not.toContain("Spanish Basics")
+    }
+  })
+
+  test("results carry a username only: no ids, names, photos or counts", async ({ request }) => {
+    const login = await request.post(`${API}/login`, { data: { email: SEEDED.sam.email, password: PASSWORD } })
+    const { access_token } = (await login.json()) as { access_token: string }
+    const headers = { authorization: `Bearer ${access_token}` }
+    const topics = (await (await request.get(`${API}/public/topics`, { headers })).json()) as Record<string, unknown>[]
+    expect(topics.length).toBeGreaterThan(0)
+    for (const item of topics) {
+      expect(Object.keys(item).sort()).toEqual(["created_at", "id", "preview", "published_at", "study_type", "tags", "title", "username"])
+    }
+    const users = (await (await request.get(`${API}/public/users?query=jabari`, { headers })).json()) as Record<string, unknown>[]
+    expect(users.map((user) => Object.keys(user).sort())).toEqual([["items", "username"]])
+    // People search needs 3 letters, so nobody can list everyone who shared.
+    expect(await (await request.get(`${API}/public/users?query=ja`, { headers })).json()).toEqual([])
+    expect(await (await request.get(`${API}/public/users`, { headers })).json()).toEqual([])
+  })
+
+  test("People search shows @username only, with no avatar, name or count", async ({ page }, info) => {
+    await loginAndWait(page, SEEDED.sam.email)
+    await page.goto("/discover")
+    await page.getByRole("button", { name: "People", exact: true }).click()
+    await expect(page.getByText("Type at least 3 letters of a username.")).toBeVisible()
+
+    // Two letters: nothing is sent, and the hint stays.
+    await page.getByLabel("Search", { exact: true }).fill("ja")
+    await page.getByRole("button", { name: "Search", exact: true }).click()
+    await expect(page.getByText("Type at least 3 letters of a username.")).toBeVisible()
+
+    await page.getByLabel("Search", { exact: true }).fill("jabari")
+    const done = page.waitForResponse((r) => r.url().startsWith(`${API}/public/users`))
+    await page.getByRole("button", { name: "Search", exact: true }).click()
+    await done
+    const person = page.locator("section.person").filter({ has: page.getByRole("heading", { name: "@jabari", exact: true }) })
+    await expect(person).toBeVisible()
+    await expect(person.locator("img, .avatar")).toHaveCount(0)
+    await expect(person.getByRole("heading", { name: "Spanish Basics", exact: true })).toBeVisible()
+    const text = await page.locator("main").innerText()
+    expect(text).not.toMatch(/\d+\s+(public|shared)\s+study\s+sets?/i)
+    expect(text).not.toMatch(/\bpublic\b/i)
+    expect(await seriousA11yDetails(page, info, "people"), "axe on people search").toEqual([])
+
+    await page.getByLabel("Search", { exact: true }).fill("nobody_like_this")
+    await page.getByRole("button", { name: "Search", exact: true }).click()
+    await expect(page.locator(".search-results").getByText("No one with that username has shared anything yet.")).toBeVisible()
+  })
+})
+
+test.describe("Reporting shared sets", () => {
   test("a report from one student reaches the admin queue; a non-admin cannot open the queue", async ({ browser }, info) => {
     const ownerContext = await browser.newContext()
     const ownerPage = await ownerContext.newPage()
@@ -305,7 +471,7 @@ test.describe("Reporting public sets", () => {
   test("open report form has no serious accessibility problems (orange theme account)", async ({ browser }, info) => {
     const page = await (await browser.newContext()).newPage()
     await loginAndWait(page, SEEDED.lee.email)
-    await page.goto("/search")
+    await page.goto("/discover")
     const card = resultCard(page, "Spanish Basics")
     await card.getByRole("button", { name: "Report Spanish Basics" }).click()
     await expect(card.getByLabel("What's wrong?")).toBeVisible()
@@ -322,7 +488,7 @@ test.describe("Reporting public sets", () => {
 })
 
 test.describe("Sharing permissions", () => {
-  test("a non-owner's edits to a public deck are refused and nothing changes", async ({ browser }, info) => {
+  test("a non-owner's edits to a shared deck are refused and nothing changes", async ({ browser }, info) => {
     const ownerContext = await browser.newContext()
     const ownerPage = await ownerContext.newPage()
     const owner = await makeAccount(ownerPage, info, "keeper")
@@ -342,7 +508,7 @@ test.describe("Sharing permissions", () => {
     await otherPage.getByRole("button", { name: /save/i }).click()
     await expect(otherPage.getByText(/not found|could not save|can't|cannot|not allowed/i).first()).toBeVisible()
 
-    // Unpublish/delete directly through the API are refused as well.
+    // Stop sharing / delete directly through the API are refused as well.
     const auth = { authorization: `Bearer ${other.token}` }
     expect((await otherPage.request.put(`${API}/flashcards/${deck.id}`, { headers: auth, data: { is_public: false } })).ok()).toBe(false)
     expect((await otherPage.request.delete(`${API}/flashcards/${deck.id}`, { headers: auth })).ok()).toBe(false)
@@ -355,7 +521,7 @@ test.describe("Sharing permissions", () => {
     await otherContext.close()
   })
 
-  test("a non-owner viewing a public deck is not offered Edit, Delete or Unpublish", async ({ browser }, info) => {
+  test("a non-owner viewing a shared deck is not offered Edit, Delete, Share or Stop sharing", async ({ browser }, info) => {
     // Expected to fail, left as is: only the FAKE API (dev/mock-api.mjs) lets another student open
     // someone else's deck page. The real backend answers 404, so DeckPage shows "Deck not found" and
     // never these buttons, and the app never links to another student's deck. Not a student-facing bug.
@@ -373,11 +539,11 @@ test.describe("Sharing permissions", () => {
     await expect(otherPage).toHaveURL(/\/dashboard/)
     await otherPage.goto(`/flashcards/${deck.id}`)
     await expect(otherPage.getByRole("heading", { level: 1, name: title })).toBeVisible()
-    await expect(otherPage.getByText(`Shared by ${owner.username}`)).toBeVisible()
+    await expect(otherPage.getByText(`Shared by @${owner.username}`)).toBeVisible()
 
     await expect(otherPage.getByRole("link", { name: "Edit" })).toHaveCount(0)
     await expect(otherPage.getByRole("button", { name: /delete deck/i })).toHaveCount(0)
-    await expect(otherPage.getByRole("button", { name: /^(un)?publish$/i })).toHaveCount(0)
+    await expect(otherPage.getByRole("button", { name: /^(share|stop sharing)$/i })).toHaveCount(0)
     await otherContext.close()
   })
 })

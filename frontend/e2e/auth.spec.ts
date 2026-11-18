@@ -26,7 +26,7 @@ async function fillSignup(page: Page, email: string, username: string, password 
   await page.getByRole("button", { name: "Make account" }).click()
 }
 
-/** Makes a fresh verified account in this page and lands on the dashboard. */
+/** Makes a fresh verified account in this page. Finishing signup opens Discover. */
 async function signUpVerified(page: Page, info: TestInfo) {
   const email = fakeEmail("auth", info)
   const username = fakeUsername(info)
@@ -35,7 +35,8 @@ async function signUpVerified(page: Page, info: TestInfo) {
   const { code } = await latestMail(page, email, "code")
   await page.getByLabel("6-number code").fill(code!)
   await page.getByRole("button", { name: "Check code" }).click()
-  await expect(page).toHaveURL(/\/dashboard/)
+  await expect(page).toHaveURL(/\/discover$/)
+  await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
   return { email, username }
 }
 
@@ -112,9 +113,11 @@ test.describe("signup with an emailed code", () => {
 
     await codeInput.fill(second.code!)
     await page.getByRole("button", { name: "Check code" }).click()
-    await expect(page).toHaveURL(/\/dashboard/)
+    // A brand-new student lands on Discover first, never on Home.
+    await expect(page).toHaveURL(/\/discover$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
 
-    // The new account can log in from a clean browser.
+    // The new account can log in from a clean browser, and an ordinary login goes Home.
     const other = await newPage(page.context().browser()!)
     await loginAndWait(other.page, email)
     await other.context.close()
@@ -127,7 +130,36 @@ test.describe("signup with an emailed code", () => {
     const { code } = await latestMail(page, email, "code")
     await page.getByLabel("6-number code").fill(`${code!.slice(0, 3)} ${code!.slice(3)}`)
     await page.getByRole("button", { name: "Check code" }).click()
-    await expect(page).toHaveURL(/\/dashboard/)
+    await expect(page).toHaveURL(/\/discover$/)
+  })
+
+  test("finishing signup opens Discover once; logging in later opens Home", async ({ page, browser }, info) => {
+    // Note every address the app moves to, so a quick hop through Home would show up.
+    await page.addInitScript(() => {
+      const seen: string[] = ((window as unknown as { __paths: string[] }).__paths = [])
+      for (const name of ["pushState", "replaceState"] as const) {
+        const original = history[name].bind(history)
+        history[name] = (data: unknown, unused: string, url?: string | URL | null) => {
+          if (url) seen.push(new URL(String(url), location.href).pathname)
+          return original(data, unused, url)
+        }
+      }
+    })
+    const { email } = await signUpVerified(page, info)
+    const paths = await page.evaluate(() => (window as unknown as { __paths: string[] }).__paths)
+    expect(paths, paths.join(" > ")).toContain("/discover")
+    expect(paths, paths.join(" > ")).not.toContain("/dashboard")
+    // The Search place is lit.
+    await expect(page.getByRole("link", { name: "Search", exact: true }).filter({ visible: true })).toHaveAttribute("aria-current", "page")
+
+    // Signed in already: opening the code page again goes Home, not to Discover.
+    await page.goto(`/verify-email?email=${encodeURIComponent(email)}`)
+    await expect(page).toHaveURL(/\/dashboard$/)
+
+    const other = await newPage(browser)
+    await login(other.page, email)
+    await expect(other.page).toHaveURL(/\/dashboard$/)
+    await other.context.close()
   })
 })
 
@@ -142,6 +174,20 @@ test("an unverified account logging in goes to the code page", async ({ page }) 
   await expect(page).toHaveURL(/\/dashboard/)
   await expect(page.getByRole("status").filter({ hasText: "Check your email." })).toBeVisible()
   await expect(page.getByRole("link", { name: "Enter code" })).toHaveAttribute("href", /\/verify-email\?email=/)
+})
+
+test("a signup with no code typed is not an account yet, so it can't log in and skip Discover", async ({ page }, info) => {
+  // The signup is made through the fake API, then left: no code typed. The account is only made
+  // when the code works (which opens Discover), so a later login is refused instead of landing Home.
+  const email = fakeEmail("later", info)
+  const signup = await page.request.post(`${API}/signup`, {
+    data: { email, username: fakeUsername(info), password: PASSWORD },
+  })
+  expect(signup.status()).toBe(202)
+
+  await login(page, email)
+  await expect(page.getByRole("alert")).toHaveText(/email or password is wrong/i)
+  await expect(page).toHaveURL(/\/login/)
 })
 
 test("forgot password: the reset link sets a new password, the old one stops working", async ({ page, browser }, info) => {
@@ -238,7 +284,8 @@ test("an expired session shows Sign in again with the email filled", async ({ pa
   await expect(page.getByRole("alert")).toHaveText(/email or password is wrong/i)
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD)
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
-  await expect(page).toHaveURL(/\/dashboard/)
+  // Back to the page it was on (Discover, where a finished signup lands).
+  await expect(page).toHaveURL(/\/discover$/)
 })
 
 test.describe("form errors are announced", () => {

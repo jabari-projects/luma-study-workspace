@@ -205,6 +205,39 @@
   text-align: center;
 }
 
+/* "Make a summary": its own short part of the margin, under a thin rule. */
+.note-summary-tool {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 14px;
+}
+
+.note-summary-tool h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.note-summary-tool p {
+  margin: 0;
+}
+
+/* Same width rule as "Make a deck" above it, so the column keeps one right edge. */
+.note-summary-tool .wide {
+  width: min(560px, 100%);
+}
+
+.note-summary-tool .notice {
+  max-width: 560px;
+  margin: 0;
+}
+
+.note-summary-tool [aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Wide screens: the margin stays in view and scrolls on its own, clear of the Publish button. */
 @media (min-width: 1100px) {
   .note-layout > .note-study {
@@ -552,25 +585,10 @@
 
 /* ------------------------------------------------- note editor and sheets */
 
-.note-editor,
-.image-result,
-.image-pick {
+.note-editor {
   display: grid;
   gap: 18px;
   max-width: calc(var(--measure) + 120px);
-}
-
-.image-pick {
-  max-width: 640px;
-}
-
-.image-result h2 {
-  margin: 0;
-  font-size: 1.3rem;
-}
-
-.image-result > p {
-  margin: -10px 0 0;
 }
 
 .editor-title input {
@@ -692,4 +710,26 @@
 
 .note-head h1 {
   overflow-wrap: anywhere;
+}
+
+/* Under 960px the title gets the whole width and Edit, Share and Delete sit in one row below it. */
+@media (max-width: 959px) {
+  .page-head.note-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* On phones the three actions get a little tighter so Delete stays on the same row. */
+@media (max-width: 479px) {
+  .note-head .page-head-actions {
+    gap: 8px;
+  }
+
+  .note-head .page-head-actions > .secondary-button {
+    padding: 0 14px;
+  }
+
+  .note-head .page-head-actions > .ghost-button {
+    padding: 0 8px;
+  }
 }

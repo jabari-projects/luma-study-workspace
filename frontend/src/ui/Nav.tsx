@@ -21,6 +21,7 @@ import {
 import { AccountMenuPopover, AccountSheet } from "./AccountMenu"
 import { accountMenuPosition } from "./accountActions"
 import { IMAGE_NOTES, IMPORT_NOTES, NEW_NOTE, VOICE_NOTES } from "../notes/paths"
+import { DISCOVER } from "../discover/discover"
 
 type NavItem = { to: string; label: string; icon: ComponentType<IconProps>; match?: string[] }
 
@@ -39,7 +40,8 @@ const NOTES: NavItem = {
   icon: Notebook,
   match: ["/notes", "/summaries"],
 }
-const SEARCH: NavItem = { to: "/search", label: "Search", icon: MagnifyingGlass, match: ["/search", "/discover", "/saved"] }
+// The label stays "Search" (the owner's word for the bottom button); the page itself is Discover.
+const SEARCH: NavItem = { to: DISCOVER, label: "Search", icon: MagnifyingGlass, match: [DISCOVER, "/search", "/saved"] }
 const SETTINGS: NavItem = { to: "/settings", label: "Settings", icon: GearSix, match: ["/settings"] }
 
 /**

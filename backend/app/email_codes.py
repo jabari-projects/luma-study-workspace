@@ -9,8 +9,9 @@ Two uses:
       inbox owner enters the code), and
     * a code an attacker triggers can't be used from the owner's browser to
       finish the attacker's signup (the ticket wouldn't match).
-- ``verify_email``: an existing account (older signups, or after changing the
-  email) proves its current address. The code is bound to the user AND the
+- ``verify_email``: an existing account proves an address: its current one
+  (older signups), or the new one during an email change (the email only
+  changes once that code is entered). The code is bound to the user AND the
   address it was sent to, so it can't verify a different address later.
 
 How codes are kept safe:
@@ -22,6 +23,8 @@ How codes are kept safe:
   guesses can't beat MAX_ATTEMPTS; using a code is a conditional update too.
 - Sending is limited: a cooldown per subject, and hourly/daily caps per subject
   and per inbox (so many signups for one address can't flood that inbox).
+  Email-change codes other accounts ask for an address that already has an
+  account are never sent (decoys), so they don't use up that inbox's caps.
 
 Codes, tickets and addresses are never logged.
 """
@@ -60,7 +63,9 @@ _CAS_RETRIES = 25
 
 @dataclass(frozen=True)
 class IssueResult:
-    status: str  # "ok" | "cooldown" | "cap" | "missing"
+    # "cooldown" and "cap" are about the subject (signup or account); "inbox_cap"
+    # is about the address, so callers must not tell a stranger about it.
+    status: str  # "ok" | "cooldown" | "cap" | "inbox_cap" | "missing"
     retry_after: int = 0
 
 
@@ -157,23 +162,31 @@ class EmailCodeStore:
     def _created_times(rows: list[dict]) -> list[datetime]:
         return sorted(t for t in (_parse(r.get("created_at")) for r in rows) if t is not None)
 
-    def _limit(self, subject_rows: list[dict], inbox_rows: list[dict]) -> Optional[IssueResult]:
+    @staticmethod
+    def _newest(rows: list[dict]) -> dict:
+        return max(rows, key=lambda r: _parse(r.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc))
+
+    def _cap(self, times: list[datetime], hourly: int, daily: int, status: str) -> Optional[IssueResult]:
         now = self._clock()
+        last_hour = [t for t in times if (now - t).total_seconds() < 3600]
+        if len(last_hour) >= hourly:
+            return IssueResult(status, max(1, int(3600 - (now - last_hour[0]).total_seconds()) + 1))
+        if len(times) >= daily:
+            return IssueResult(status, max(1, int(86400 - (now - times[0]).total_seconds()) + 1))
+        return None
+
+    def _subject_limit(self, subject_rows: list[dict]) -> Optional[IssueResult]:
         mine = self._created_times(subject_rows)
         if mine:
-            since_last = (now - mine[-1]).total_seconds()
+            since_last = (self._clock() - mine[-1]).total_seconds()
             if since_last < RESEND_COOLDOWN_SECONDS:
                 return IssueResult("cooldown", max(1, int(RESEND_COOLDOWN_SECONDS - since_last) + 1))
-        for times, hourly, daily in (
-            (mine, HOURLY_SEND_CAP, DAILY_SEND_CAP),
-            (self._created_times(inbox_rows), INBOX_HOURLY_CAP, INBOX_DAILY_CAP),
-        ):
-            last_hour = [t for t in times if (now - t).total_seconds() < 3600]
-            if len(last_hour) >= hourly:
-                return IssueResult("cap", max(1, int(3600 - (now - last_hour[0]).total_seconds()) + 1))
-            if len(times) >= daily:
-                return IssueResult("cap", max(1, int(86400 - (now - times[0]).total_seconds()) + 1))
-        return None
+        return self._cap(mine, HOURLY_SEND_CAP, DAILY_SEND_CAP, "cap")
+
+    def _limit(self, subject_rows: list[dict], inbox_rows: list[dict]) -> Optional[IssueResult]:
+        return self._subject_limit(subject_rows) or self._cap(
+            self._created_times(inbox_rows), INBOX_HOURLY_CAP, INBOX_DAILY_CAP, "inbox_cap"
+        )
 
     def _insert(self, row: dict) -> None:
         now = self._clock()
@@ -192,7 +205,7 @@ class EmailCodeStore:
             rows = self._select(filters, active_only=True)
             if not rows:
                 return CheckResult("incorrect")
-            row = max(rows, key=lambda r: _parse(r.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc))
+            row = self._newest(rows)
             expires = _parse(row.get("expires_at"))
             if expires is None or self._clock() >= expires:
                 return CheckResult("expired")
@@ -228,12 +241,28 @@ class EmailCodeStore:
 
     # ---------- existing accounts ----------
 
-    def issue_for_user(self, user_id: str, email: str, code: str) -> IssueResult:
-        """New code for an existing account and its current address."""
+    def _user_rows(self, user_id: str) -> list[dict]:
+        return self._select(
+            {"user_id": user_id, "purpose": PURPOSE_VERIFY_EMAIL}, since=self._clock() - timedelta(days=1)
+        )
+
+    def user_send_wait(self, user_id: str) -> Optional[IssueResult]:
+        """The account's own cooldown or cap, if a new code can't be sent yet. Says nothing about any address."""
+        return self._subject_limit(self._user_rows(user_id))
+
+    def issue_for_user(self, user_id: str, email: str, code: str, *, inbox_owner_id: Optional[str]) -> IssueResult:
+        """New code for an existing account and an address (current or new). Retires older ones.
+
+        ``inbox_owner_id`` is the account that already uses ``email`` (None when free).
+        Codes other accounts asked for that address are never sent, so they don't
+        count toward its inbox caps: they can't use up the owner's allowance.
+        """
         with self._lock_for(f"user:{user_id}"):
             day_ago = self._clock() - timedelta(days=1)
-            subject_rows = self._select({"user_id": user_id, "purpose": PURPOSE_VERIFY_EMAIL}, since=day_ago)
+            subject_rows = self._user_rows(user_id)
             inbox_rows = self._select({"email": email}, since=day_ago)
+            if inbox_owner_id is not None:
+                inbox_rows = [r for r in inbox_rows if r.get("user_id") in (None, inbox_owner_id)]
             limited = self._limit(subject_rows, inbox_rows)
             if limited:
                 return limited
@@ -248,10 +277,15 @@ class EmailCodeStore:
             )
             return IssueResult("ok")
 
-    def retire_for_user(self, user_id: str) -> None:
-        """Stop every unused code for this account (used when the email changes)."""
-        with self._lock_for(f"user:{user_id}"):
-            self._supersede({"user_id": user_id, "purpose": PURPOSE_VERIFY_EMAIL})
+    def reissue_for_user(self, user_id: str, email: str, code: str, *, inbox_owner_id: Optional[str]) -> IssueResult:
+        """New code for the address of this account's newest code, while that code is unused."""
+        rows = self._user_rows(user_id)
+        if not rows:
+            return IssueResult("missing")
+        newest = self._newest(rows)
+        if newest.get("email") != email or newest.get("consumed_at"):
+            return IssueResult("missing")
+        return self.issue_for_user(user_id, email, code, inbox_owner_id=inbox_owner_id)
 
     def check_for_user(self, user_id: str, email: str, raw_code: Any) -> CheckResult:
         return self._check_row(
@@ -301,7 +335,7 @@ class EmailCodeStore:
         ]
         if not rows:
             return IssueResult("missing")
-        latest = max(rows, key=lambda r: _parse(r.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc))
+        latest = self._newest(rows)
         return self.issue_signup(
             email, ticket, code, latest.get("pending_password_hash") or "", latest.get("pending_username") or ""
         )

@@ -13,7 +13,11 @@
 // Test helpers (local only):
 //   POST /__test/expire {"email": "..."}   ends that account's sign-ins, like a password reset elsewhere
 //   TOKEN_TTL_SECONDS=60 npm run mock-api  sign-ins stop working after 60 seconds
-//   GET  /__test/outbox?email=...          the newest fake emails for that address (codes, reset links)
+//   GET  /__test/outbox?email=...          the newest fake emails for that address (codes, reset links, email-changed notices)
+//   POST /__test/profile {"email": "...", "fields": {...}}  writes saved profile fields as-is, null
+//                                          included (an old profile with no color, say); the real
+//                                          PUT /me/profile cannot clear a field, so neither can ours
+//   POST /__test/skip-code-wait {"email": "..."}  ends that account's 60 s wait between codes
 //   POST /__test/clock, /__test/feedback   fake clock and monthly poll scenarios (see dev/mock-feedback.mjs)
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
@@ -24,6 +28,7 @@ import { FEEDBACK_RETAINED, forgetFeedbackUser, handleFeedback } from "./mock-fe
 const PORT = Number(process.env.PORT || 8787)
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_SECONDS || 0) * 1000
 const profiles = new Map() // account id -> saved profile fields (theme etc.)
+const THEME_MODES = ["light", "dark", "auto"]
 
 // ---------- fake accounts ----------
 const accounts = new Map() // email -> account
@@ -64,16 +69,72 @@ function accountFor(req) {
   const a = s && byId(s.id)
   return a && a.version === s.version ? a : null
 }
-function sendCode(account) {
-  const now = Date.now()
-  if (now - account.lastSent < 60_000) return false
-  account.lastSent = now
-  account.code = { value: String(randomInt(0, 1_000_000)).padStart(6, "0"), expires: now + 600_000, attempts: 0, used: false }
-  console.log(`[FAKE EMAIL] code for ${account.email}: ${account.code.value}`)
-  deliver(account.email, { kind: "code", code: account.code.value })
+// A code is for one address: the account's own, or the new one during an email change.
+// quiet: save the code but send nothing (a new email that already has an account).
+function sendCode(account, to = account.email, { quiet = false } = {}) {
+  if (codeWait(account)) return false
+  const sentAt = (account.lastSent = Date.now())
+  account.code = { value: String(randomInt(0, 1_000_000)).padStart(6, "0"), email: to, expires: sentAt + 600_000, attempts: 0, used: false }
+  if (quiet) return true
+  console.log(`[FAKE EMAIL] code for ${to}: ${account.code.value}`)
+  deliver(to, { kind: "code", code: account.code.value })
   return true
 }
+/** Seconds until this account (or pending signup) may get another code; 0 when it may now. */
+function codeWait(account) {
+  const left = 60_000 - (Date.now() - (account.lastSent || 0))
+  return left > 0 ? Math.ceil(left / 1000) : 0
+}
 const err = (detail, error_code, extra = {}) => ({ detail, error_code, ...extra })
+// Shared-item previews read as plain words, like _clip in backend/app/public_search.py:
+// no #, **, _, `, list dashes, quotes, rules or "::" card separators.
+function clipPreview(value, limit = 220) {
+  const plain = String(value || "")
+    .replace(/^[ \t]*(?:[-*_][ \t]*){3,}$/gm, " ")
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?)/gm, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[ \t]*::[ \t]*/g, " - ")
+    .replace(/\*+|~~|`+|(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ")
+  return plain.length <= limit ? plain : `${plain.slice(0, limit - 3).trimEnd()}...`
+}
+const COOLDOWN = (wait) => err("Wait a moment before asking for another code.", "resend_cooldown", { retry_after: wait })
+const CHANGE_STARTED = { status: "code_sent_if_possible", resend_after_seconds: 60, code_expires_in_seconds: 600 }
+const CODE_INCORRECT = err("That code doesn't match. Check your newest email.", "code_incorrect")
+const CODE_LOCKED = err("Too many tries. Send a new code.", "code_locked")
+/** Uses up a right code; else the error body, like the real code check. */
+function checkCode(c, raw) {
+  const code = String(raw || "").replace(/\D/g, "")
+  if (Date.now() > c.expires) return err("That code is too old. Send a new one.", "code_expired")
+  if (c.attempts >= 5) return CODE_LOCKED
+  if (code !== c.value) {
+    c.attempts += 1
+    return c.attempts >= 5 ? CODE_LOCKED : CODE_INCORRECT
+  }
+  c.used = true
+  return null
+}
+const TOO_MANY = "Too many tries. Wait a little and try again."
+/** Like check_current_password: 5 tries per 15 minutes (a right one clears them) and 10 per day. */
+function checkPassword(a, candidate) {
+  const now = Date.now()
+  a.pwTries = (a.pwTries || []).filter((t) => now - t < 15 * 60_000)
+  a.pwDay = (a.pwDay || []).filter((t) => now - t < 86_400_000)
+  if (a.pwTries.length >= 5) return [429, err(TOO_MANY, "rate_limited", { retry_after: 15 * 60 })]
+  a.pwTries.push(now)
+  if (a.pwDay.length >= 10) return [429, err(TOO_MANY, "rate_limited", { retry_after: 86_400 })]
+  a.pwDay.push(now)
+  if (candidate !== a.password) return [400, err("That password is wrong.", "wrong_password")]
+  a.pwTries = []
+  return null
+}
+/** The password field is required (min 1 character), so leaving it out is a plain 422. */
+const needsPassword = (body) => typeof body.current_password !== "string" || !body.current_password
+const MISSING_PASSWORD = { detail: [{ loc: ["body", "current_password"], msg: "Field required", type: "missing" }] }
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 const aiGate = (req) => {
   const a = accountFor(req)
   if (!a) return [401, { error: "Please log in again." }]
@@ -126,6 +187,8 @@ function send(res, code, body) {
     "access-control-allow-credentials": "true",
     "access-control-allow-headers": "authorization, content-type",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    // Like the backend: nothing the API serves belongs in a search engine.
+    "x-robots-tag": "noindex, nofollow",
   })
   res.end(body === undefined ? "" : JSON.stringify(body))
 }
@@ -150,6 +213,20 @@ http
       if (!a) return send(res, 404, { detail: "No fake account with that email." })
       a.version += 1 // every token for this account stops working
       console.log(`[TEST] sign-ins ended for ${a.email}`)
+      return send(res, 200, { success: true })
+    }
+
+    if (url.pathname === "/__test/profile" && req.method === "POST") {
+      const a = accounts.get(String(body.email || "").trim().toLowerCase())
+      if (!a) return send(res, 404, { detail: "No fake account with that email." })
+      profiles.set(a.id, { ...profiles.get(a.id), ...(body.fields || {}) })
+      return send(res, 200, { success: true })
+    }
+
+    if (url.pathname === "/__test/skip-code-wait" && req.method === "POST") {
+      const a = accounts.get(String(body.email || "").trim().toLowerCase())
+      if (!a) return send(res, 404, { detail: "No fake account with that email." })
+      a.lastSent = 0
       return send(res, 200, { success: true })
     }
 
@@ -191,21 +268,14 @@ http
       return send(res, 202, { status: "check_email", email, ticket, resend_after_seconds: 60, code_expires_in_seconds: 600 })
     }
     if (url.pathname === "/auth/verify-email" && req.method === "POST") {
-      const code = String(body.code || "").replace(/\D/g, "")
       const loggedIn = body.ticket ? null : accountFor(req)
       const p = body.ticket ? pending.get(body.ticket) : null
       const a = loggedIn || (p && p.email === String(body.email || "").trim().toLowerCase() ? p : null)
       const c = a?.code
-      if (!a || !c || c.used) return send(res, 400, err("That code doesn't match. Check your newest email.", "code_incorrect"))
-      if (Date.now() > c.expires) return send(res, 400, err("That code is too old. Send a new one.", "code_expired"))
-      if (c.attempts >= 5) return send(res, 400, err("Too many tries. Send a new code.", "code_locked"))
-      if (code !== c.value) {
-        c.attempts += 1
-        return c.attempts >= 5
-          ? send(res, 400, err("Too many tries. Send a new code.", "code_locked"))
-          : send(res, 400, err("That code doesn't match. Check your newest email.", "code_incorrect"))
-      }
-      c.used = true
+      // A code sent for an email change can't check the current address.
+      if (!a || !c || c.used || c.email !== a.email) return send(res, 400, CODE_INCORRECT)
+      const wrong = checkCode(c, body.code)
+      if (wrong) return send(res, 400, wrong)
       if (loggedIn) {
         loggedIn.email_verified = true
         return send(res, 200, newSession(loggedIn))
@@ -223,10 +293,9 @@ http
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
       if (a.email_verified) return send(res, 200, { success: true, message: "Your email is already checked." })
-      if (!sendCode(a)) {
-        const wait = Math.ceil((60_000 - (Date.now() - a.lastSent)) / 1000)
-        return send(res, 429, err("Wait a moment before asking for another code.", "resend_cooldown", { retry_after: wait }))
-      }
+      const wait = codeWait(a)
+      if (wait) return send(res, 429, COOLDOWN(wait))
+      sendCode(a)
       return send(res, 200, { success: true, message: "We sent a new code.", resend_after_seconds: 60 })
     }
     if (url.pathname === "/login" && req.method === "POST") {
@@ -287,6 +356,9 @@ http
     if (url.pathname === "/me/account" && req.method === "DELETE") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
+      if (needsPassword(body)) return send(res, 422, MISSING_PASSWORD)
+      const refused = checkPassword(a, body.current_password)
+      if (refused) return send(res, ...refused)
       accounts.delete(a.email)
       forgetFeedbackUser(a)
       return send(res, 200, { success: true, message: "Your account and study data were deleted.", retained: [
@@ -294,13 +366,13 @@ http
         "Copies already sent to our AI providers follow their own deletion rules",
         "Database backups age out on our hosting provider's schedule",
         "A scrambled code made from your email (not the email itself) stays for a few days, so the free AI limit can't be reset by deleting and making a new account",
-        "Reports you sent about public content stay for safety review, without your name",
+        "Reports you sent about shared content stay for safety review, without your name",
         FEEDBACK_RETAINED,
       ] })
     }
 
     // --- capture endpoints (fake AI) ---
-    if (["/api/transcribe", "/api/notes-from-text", "/api/generate-notes"].includes(url.pathname)) {
+    if (["/api/transcribe", "/api/notes-from-text", "/api/generate-notes", "/api/summarize"].includes(url.pathname)) {
       const blocked = aiGate(req)
       if (blocked) return send(res, blocked[0], blocked[1])
     }
@@ -328,9 +400,36 @@ http
       })
     }
     if (url.pathname === "/api/generate-notes") {
+      // Like the backend: the same notes shape as /api/notes-from-text, 1 notes turn.
       await new Promise((r) => setTimeout(r, 600))
-      if (!/^data:image\/(png|jpeg|webp);base64,/.test(body.image || "")) return send(res, 400, { error: "Invalid request" })
-      return send(res, 200, { notes: "Photosynthesis\n- Plants use sunlight to make food.\n- Leaves take in carbon dioxide.\n- Plants give off oxygen.\nWhere does it happen? :: In the chloroplasts" })
+      if ((body.image || "").length > 21 * 1024 * 1024) return send(res, 413, { error: "That picture is too big. Try one under 15 MB." })
+      if (!/^\s*data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+=*\s*$/i.test(body.image || "")) {
+        return send(res, 400, { error: "We couldn't open that picture. Try a PNG, JPG or WEBP photo." })
+      }
+      if (process.env.LIMIT === "1") return send(res, 403, { error: "You made all your free notes for today. Come back tomorrow." })
+      return send(res, 200, {
+        title: "Photosynthesis from the board",
+        summary: "Plants use sunlight to make food. They give off oxygen.",
+        notes: "## Photosynthesis\n- Plants use sunlight to make food.\n- Leaves take in carbon dioxide.\n- Plants give off oxygen.\n\n## Where does it happen?\n- In the chloroplasts",
+        key_terms: ["photosynthesis", "chloroplast"],
+        flashcards: [
+          { front: "What do plants use to make food?", back: "Sunlight" },
+          { front: "What gas do leaves take in?", back: "Carbon dioxide" },
+          { front: "Where does photosynthesis happen?", back: "In the chloroplasts" },
+        ],
+        truncated: false,
+      })
+    }
+    if (url.pathname === "/api/summarize") {
+      // Like the backend: {text} in, exactly {title, summary} out, 1 notes turn. Nothing is saved
+      // here; the page saves it with POST /summaries.
+      await new Promise((r) => setTimeout(r, 600))
+      if (String(body.text || "").trim().length < 20) return send(res, 400, { error: "We need a few more words to make a summary." })
+      if (process.env.LIMIT === "1") return send(res, 403, { error: "You made all your free notes for today. Come back tomorrow." })
+      return send(res, 200, {
+        title: "Plants in short",
+        summary: "Plants make their own food from sunlight, water and air. This happens in the leaves. They give off oxygen that we breathe.",
+      })
     }
     if (url.pathname === "/api/import/link") {
       await new Promise((r) => setTimeout(r, 700))
@@ -367,30 +466,124 @@ http
       return send(res, 200, item)
     }
 
-    // --- public search (fake data, shaped like backend/app/public_search.py) ---
+    // --- shared search (fake data, shaped like backend/app/public_search.py) ---
+    // Signed in only. Each item carries the owner's CURRENT username and nothing else
+    // about them: no user id, no display name, no photo, no counts. The stored
+    // published_by is never shown or searched (it can hold an old name).
     if (url.pathname === "/public/topics" || url.pathname === "/public/users") {
-      const q = (url.searchParams.get("query") || "").replace(/^#/, "").toLowerCase()
-      const publicItems = decks
-        .filter((d) => d.is_public)
-        .map((d) => ({
-          id: d.id, study_type: "flashcards", title: d.title, preview: d.cards.map((c) => c.front).join(" · ").slice(0, 220),
-          tags: d.tags, user_id: d.user_id, username: "jabari", display_name: null, published_at: d.published_at,
-          published_by: "jabari", created_at: d.created_at,
+      if (!accountFor(req)) return send(res, 401, { detail: "Not authenticated" })
+      const nameOf = (userId) => byId(userId)?.username || "student"
+      const sharedRows = (ownerIds) => [
+        ...notes.filter((n) => n.is_public).map((n) => ({ row: n, study_type: "note", text: [n.content || ""], preview: n.content || "" })),
+        ...decks.filter((d) => d.is_public).map((d) => ({ row: d, study_type: "flashcards", text: [d.cards[0]?.front || "", d.cards[0]?.back || ""], preview: d.cards[0]?.front || d.cards[0]?.back || "" })),
+        ...summaries.filter((s) => s.is_public).map((s) => ({ row: s, study_type: "summary", text: [s.content || ""], preview: s.content || "" })),
+      ]
+        .filter(({ row }) => (row.title || "") && (!ownerIds || ownerIds.has(row.user_id)))
+        .map(({ row, study_type, text, preview }) => ({
+          ownerId: row.user_id,
+          haystack: [row.title, ...text, ...(row.tags || [])].join(" ").toLowerCase(),
+          item: {
+            id: row.id, study_type, title: row.title, preview: clipPreview(preview), tags: row.tags || [],
+            username: nameOf(row.user_id), published_at: row.published_at || row.created_at, created_at: row.created_at,
+          },
         }))
-        .filter((item) => !q || `${item.title} ${item.preview} ${item.tags.join(" ")}`.toLowerCase().includes(q))
-      if (url.pathname === "/public/topics") return send(res, 200, publicItems)
-      const users = publicItems.length && (!q || "jabari".includes(q) || publicItems.length)
-        ? [{ id: "u1", username: "jabari", display_name: null, avatar_url: null, public_count: publicItems.length, items: publicItems }]
-        : []
-      return send(res, 200, users)
+        .sort((a, b) => String(b.item.published_at).localeCompare(String(a.item.published_at)))
+      if (url.pathname === "/public/topics") {
+        const q = (url.searchParams.get("query") || "").trim().replace(/^#/, "").toLowerCase()
+        return send(res, 200, sharedRows().filter(({ haystack }) => !q || haystack.includes(q)).map(({ item }) => item).slice(0, 80))
+      }
+      // People: usernames only, 3+ letters, closest name first, never by how much someone shared.
+      // Like the server, look the name up first, then fetch only those students' shared items,
+      // so someone who shared long ago is still found.
+      const wanted = (url.searchParams.get("query") || "").trim().replace(/^@/, "").toLowerCase()
+      if (wanted.length < 3 || !/^[a-z0-9_]+$/.test(wanted)) return send(res, 200, [])
+      const named = new Set([...accounts.values()].filter((a) => a.username.toLowerCase().includes(wanted)).map((a) => a.id))
+      const byOwner = new Map()
+      for (const { ownerId, item } of sharedRows(named)) byOwner.set(ownerId, [...(byOwner.get(ownerId) || []), item])
+      const rank = (name) => (name === wanted ? 0 : name.startsWith(wanted) ? 1 : 2)
+      const users = [...byOwner.entries()]
+        .map(([ownerId, items]) => ({ username: nameOf(ownerId), items: items.slice(0, 24) }))
+        .sort((a, b) => rank(a.username.toLowerCase()) - rank(b.username.toLowerCase()) || a.username.toLowerCase().localeCompare(b.username.toLowerCase()))
+      return send(res, 200, users.slice(0, 40))
+    }
+    if (url.pathname === "/robots.txt") {
+      res.writeHead(200, { "content-type": "text/plain", "x-robots-tag": "noindex, nofollow" })
+      return res.end("User-agent: *\nDisallow: /\n")
     }
 
     if (url.pathname === "/health") return send(res, 200, { status: "ok" })
+    // Change email, step 1: the current password, then a code to the NEW address.
+    // The answer is the same when that address already has an account, but then
+    // the code is saved and never sent (like the real server), so guesses just fail.
+    if (url.pathname === "/me/email" && req.method === "PUT") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
+      const next = String(body.new_email || "").trim().toLowerCase()
+      if (!EMAIL_RE.test(next)) return send(res, 422, { detail: [{ loc: ["body", "new_email"], msg: "value is not a valid email address" }] })
+      if (needsPassword(body)) return send(res, 422, MISSING_PASSWORD)
+      if (a.id === "u1") return send(res, 403, err("The admin email can't be changed here.", "admin_email_locked"))
+      // The code cooldown is told before the password is checked, so it uses no password try.
+      const wait = codeWait(a)
+      if (wait) return send(res, 429, COOLDOWN(wait))
+      const refused = checkPassword(a, body.current_password)
+      if (refused) return send(res, ...refused)
+      if (next === a.email) return send(res, 400, err("That's already your email.", "same_email"))
+      sendCode(a, next, { quiet: accounts.has(next) })
+      return send(res, 202, CHANGE_STARTED)
+    }
+    // A new code for the change already started: no password, only the pending address.
+    if (url.pathname === "/me/email/resend" && req.method === "POST") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
+      const next = String(body.new_email || "").trim().toLowerCase()
+      if (!EMAIL_RE.test(next)) return send(res, 422, { detail: [{ loc: ["body", "new_email"], msg: "value is not a valid email address" }] })
+      const c = a.code
+      if (next === a.email || !c || c.used || c.email !== next) {
+        return send(res, 400, err("Start again: type your new email and your password.", "no_pending_change"))
+      }
+      const wait = codeWait(a)
+      if (wait) return send(res, 429, COOLDOWN(wait))
+      sendCode(a, next, { quiet: accounts.has(next) })
+      return send(res, 202, CHANGE_STARTED)
+    }
+    // Change email, step 2: the code from the new address. The old address is told.
+    if (url.pathname === "/me/email/confirm" && req.method === "POST") {
+      const a = accountFor(req)
+      if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
+      const next = String(body.new_email || "").trim().toLowerCase()
+      if (!EMAIL_RE.test(next) || typeof body.code !== "string" || !body.code) {
+        return send(res, 422, { detail: [{ loc: ["body"], msg: "Type your new email and the code." }] })
+      }
+      const c = a.code
+      if (next === a.email || !c || c.used || c.email !== next) return send(res, 400, CODE_INCORRECT)
+      const wrong = checkCode(c, body.code)
+      if (wrong) return send(res, 400, wrong)
+      if (accounts.has(next)) return send(res, 400, err("That email already has a Luma account.", "email_taken"))
+      const old = a.email
+      accounts.delete(old)
+      a.email = next
+      a.email_verified = true
+      accounts.set(next, a)
+      console.log(`[FAKE EMAIL] notice to ${old}: your email was changed`)
+      deliver(old, { kind: "email_changed" })
+      return send(res, 200, { ...profiles.get(a.id), ...publicUser(a), subscription_status: "free", is_admin: a.id === "u1" })
+    }
     if (url.pathname === "/me/profile") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
-      if (req.method === "PUT") profiles.set(a.id, { ...profiles.get(a.id), ...body })
-      return send(res, 200, { ...profiles.get(a.id), ...publicUser(a), subscription_status: "free", is_admin: isAdmin(a) })
+      if (req.method === "PUT") {
+        // Like the real API: the theme is "light", "dark" or "auto", and a field left out or sent
+        // as null keeps what is saved (null never clears it; tests use /__test/profile for that).
+        if (body.theme_mode != null && !THEME_MODES.includes(body.theme_mode)) {
+          return send(res, 422, { detail: [{ loc: ["body", "theme_mode"], msg: "Input should be 'light', 'dark' or 'auto'", type: "literal_error" }] })
+        }
+        const changes = Object.fromEntries(Object.entries(body).filter(([, value]) => value != null))
+        profiles.set(a.id, { ...profiles.get(a.id), ...changes })
+      }
+      const profile = profiles.get(a.id)
+      // An unknown saved theme reads as Light; an empty one stays empty.
+      const theme_mode = profile.theme_mode == null ? null : THEME_MODES.includes(profile.theme_mode) ? profile.theme_mode : "light"
+      return send(res, 200, { ...profile, theme_mode, ...publicUser(a), subscription_status: "free", is_admin: isAdmin(a) })
     }
     // Study plans: create, list, open, change and delete, each account only its own.
     if (parts[0] === "study-sessions") {

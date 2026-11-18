@@ -1,42 +1,51 @@
 import { useRef, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
-import { Link, useNavigate } from "react-router-dom"
-import { toast } from "sonner"
-import { ArrowCounterClockwise, ArrowLeft, Image as ImageIcon, MagicWand } from "@phosphor-icons/react"
+import { Link } from "react-router-dom"
+import { ArrowLeft, Image as ImageIcon, MagicWand } from "@phosphor-icons/react"
 
-import { api, getErrorMessage, getTabAccountId } from "../api"
 import { NoticeBanner } from "../ui/common"
-import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
-import { NOTES_HUB, defaultNoteTitle } from "../notes/paths"
+import { NOTES_HUB } from "../notes/paths"
+import { CaptureError, makeNotesFromImage } from "./capture-api"
+import type { NotesDraft } from "./capture-api"
+import { LimitNudge, NotesWorkbench, WorkingSteps } from "./Workbench"
 
 const ACCEPTED_IMAGES = "image/png,image/jpeg,image/webp"
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+type Stage = "pick" | "working" | "review"
 
 /**
- * Image to notes: pick a photo of a page or the board, Luma reads it and writes notes,
- * then the student can fix the words and save them as a note.
+ * Image to notes: pick a photo of a page or the board. Luma reads it and makes notes
+ * and flashcards, which the student checks on the same workbench as the other tools.
  */
 export function ImagePage() {
-  const navigate = useNavigate()
   const [fileName, setFileName] = useState("")
   const [imageData, setImageData] = useState<string | null>(null)
-  const [notes, setNotes] = useState<string | null>(null)
-  const [title, setTitle] = useState(defaultNoteTitle)
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [working, setWorking] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const notesRef = useRef<HTMLTextAreaElement>(null)
+  const [stage, setStage] = useState<Stage>("pick")
+  const [step, setStep] = useState(0)
+  const [draft, setDraft] = useState<NotesDraft | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [limit, setLimit] = useState<string | null>(null)
   // Each pick gets a number, so a slow read of an older picture is ignored.
   const pickRef = useRef(0)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const readImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
+    // Clear the picker so choosing the same picture again still fires a change.
+    event.target.value = ""
     const pick = (pickRef.current += 1)
-    setNotes(null)
-    setNotice(null)
+    setError(null)
+    setLimit(null)
     setFileName(file?.name ?? "")
     setImageData(null)
     if (!file) return
+    if (file.size > MAX_IMAGE_BYTES) {
+      setFileName("")
+      setError("That picture is too big. Try one under 15 MB.")
+      return
+    }
     const reader = new FileReader()
     reader.onload = () => {
       if (pick === pickRef.current) setImageData(typeof reader.result === "string" ? reader.result : null)
@@ -44,62 +53,43 @@ export function ImagePage() {
     reader.readAsDataURL(file)
   }
 
-  const makeNotes = async (event: FormEvent<HTMLFormElement>) => {
+  const run = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!imageData) {
-      setNotice({ type: "error", text: fileName ? "Still opening your image. Try again in a moment." : "Choose an image first." })
+      setError(fileName ? "Still opening your image. Try again in a moment." : "Choose an image first.")
       return
     }
-    setWorking(true)
-    setNotice(null)
+    const pick = pickRef.current
+    setError(null)
+    setLimit(null)
+    setStage("working")
+    setStep(0)
+    const timers = [window.setTimeout(() => setStep(1), 4000), window.setTimeout(() => setStep(2), 9000)]
     try {
-      const response = await api.post<{ notes: string }>("/api/generate-notes", { image: imageData })
-      const text = typeof response.data?.notes === "string" ? response.data.notes.trim() : ""
-      if (!text) {
-        setNotice({ type: "error", text: "We couldn't find words in that image. Try a clearer photo." })
-        return
-      }
-      setNotes(text)
-      requestAnimationFrame(() => notesRef.current?.focus())
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "We couldn't make notes from that image.") })
+      // The file name stays on this device: it only goes into the saved note's "Source:" line.
+      const result = await makeNotesFromImage(imageData, fileName ? `Image: ${fileName}` : "Image")
+      if (pick !== pickRef.current) return
+      setDraft(result)
+      setStage("review")
+    } catch (err: unknown) {
+      if (pick !== pickRef.current) return
+      setStage("pick")
+      if (err instanceof CaptureError && err.limitReached) setLimit(err.message)
+      else setError(err instanceof Error ? err.message : "Something went wrong. Your image is still here.")
     } finally {
-      setWorking(false)
-    }
-  }
-
-  const saveNote = async () => {
-    if (!notes?.trim()) {
-      setNotice({ type: "error", text: "Your notes are empty." })
-      return
-    }
-    setSaving(true)
-    setNotice(null)
-    // Save into the account that made these notes, even if this tab switches meanwhile.
-    const accountId = getTabAccountId() ?? undefined
-    try {
-      const response = await api.post<{ id: string }>(
-        "/notes",
-        { title: title.trim().slice(0, 200) || defaultNoteTitle(), content: notes, tags: [] },
-        { lumaAccountId: accountId },
-      )
-      if ((getTabAccountId() ?? undefined) !== accountId) return
-      toast.success("Saved your note!")
-      navigate(`/notes/${response.data.id}`)
-    } catch (error: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(error, "We couldn't save that. Your notes are still here.") })
-    } finally {
-      setSaving(false)
+      timers.forEach((timer) => window.clearTimeout(timer))
     }
   }
 
   const startOver = () => {
     pickRef.current += 1
-    setNotes(null)
+    setDraft(null)
     setImageData(null)
     setFileName("")
-    setNotice(null)
-    setTitle(defaultNoteTitle())
+    setError(null)
+    setLimit(null)
+    setStage("pick")
+    if (inputRef.current) inputRef.current.value = ""
   }
 
   return (
@@ -112,58 +102,71 @@ export function ImagePage() {
           <h1>
             Image to <Scribble type="underline">notes</Scribble>
           </h1>
-          <p className="lede">Take a photo of a page or the board. Luma reads it and writes notes.</p>
+          <p className="lede">Take a photo of a page or the board. Luma makes notes and flashcards from it.</p>
         </div>
       </header>
-      <NoticeBanner notice={notice} />
 
-      {notes === null ? (
-        <form className="image-pick" onSubmit={makeNotes}>
-          <label className="paper-tray">
-            <span className="tray-sheet" aria-hidden="true" />
-            <ImageIcon size={42} weight="duotone" aria-hidden="true" />
-            <strong>Choose an image</strong>
-            <small>A photo or screenshot. PNG, JPG or WEBP.</small>
-            <input type="file" accept={ACCEPTED_IMAGES} onChange={readImage} disabled={working} />
-          </label>
-          {fileName ? <p className="ready-label">Selected: {fileName}</p> : null}
-          <p className="muted small-text">To make notes, Luma sends your picture to OpenAI. Luma does not save the picture.</p>
-          <div className="button-row">
-            <button className="primary-button" type="submit" disabled={working}>
-              <MagicWand weight="bold" aria-hidden="true" /> {working ? "Reading your image..." : "Make notes"}
+      {limit ? <LimitNudge message={limit} onClose={() => setLimit(null)} /> : null}
+      <NoticeBanner notice={error ? { type: "error", text: error } : null} />
+
+      <div className={stage === "review" ? "capture-layout has-results" : "capture-layout"}>
+        <section className={stage === "review" ? "capture-source collapsed" : "capture-source"} aria-label="Your image">
+          {stage === "review" ? (
+            <button type="button" className="ghost-button small back-to-source" onClick={() => setStage("pick")}>
+              <ArrowLeft weight="bold" aria-hidden="true" /> Back to my image
             </button>
-          </div>
-        </form>
-      ) : (
-        <section className="image-result" aria-labelledby="image-result-title">
-          <h2 id="image-result-title">Check your notes</h2>
-          <p className="muted">Fix anything Luma read wrong. Then save it as a note.</p>
-          <label className="editor-title">
-            Name your notes
-            <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} />
-          </label>
-          <div className="editor-body">
-            <label htmlFor="image-notes-text">Your notes (you can change them)</label>
-            <div className="sheet-note editor-sheet">
-              <textarea
-                id="image-notes-text"
-                ref={notesRef}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                rows={14}
-              />
+          ) : null}
+
+          {draft && stage === "pick" ? (
+            <button type="button" className="primary-button back-to-notes" onClick={() => setStage("review")}>
+              Back to my notes
+            </button>
+          ) : null}
+
+          <form className="image-pick" onSubmit={run}>
+            <label className="paper-tray">
+              <span className="tray-sheet" aria-hidden="true" />
+              <ImageIcon size={42} weight="duotone" aria-hidden="true" />
+              <strong>Choose an image</strong>
+              <small>A photo or screenshot. PNG, JPG or WEBP. Up to 15&nbsp;MB.</small>
+              <input ref={inputRef} type="file" accept={ACCEPTED_IMAGES} onChange={readImage} disabled={stage === "working"} />
+            </label>
+            {fileName ? <p className="ready-label">Selected: {fileName}</p> : null}
+            {imageData ? <img className="image-preview" src={imageData} alt="The image you picked" /> : null}
+            <div className="button-row">
+              <button className="primary-button" type="submit" disabled={stage === "working"}>
+                <MagicWand weight="bold" aria-hidden="true" /> {stage === "working" ? "Reading your image..." : "Make notes"}
+              </button>
             </div>
-          </div>
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={() => void saveNote()} disabled={saving}>
-              {saving ? "Saving..." : "Save as note"}
-            </button>
-            <button type="button" className="ghost-button" onClick={startOver} disabled={saving}>
-              <ArrowCounterClockwise weight="bold" aria-hidden="true" /> Use another image
-            </button>
-          </div>
+            <p className="field-hint">Free plan: making notes uses 1 notes turn.</p>
+          </form>
+
+          <p className="hand-note privacy-note">
+            Your notes are private unless you share them. To make notes, Luma sends your picture to OpenAI. Luma does not save
+            the picture.
+          </p>
         </section>
-      )}
+
+        <div className="capture-results">
+          {stage === "working" ? (
+            <WorkingSteps steps={["Reading your image...", "Writing notes...", "Making cards..."]} current={step} />
+          ) : null}
+          {stage === "review" && draft ? <NotesWorkbench draft={draft} onChange={setDraft} onStartOver={startOver} /> : null}
+          {stage === "pick" && !draft ? (
+            <aside className="capture-tip">
+              <h2>How it works</h2>
+              <ol>
+                <li>Take a clear photo of a page, a worksheet or the board.</li>
+                <li>Luma reads it and writes notes.</li>
+                <li>You get notes and flashcards. Keep the ones you like.</li>
+              </ol>
+              <p className="muted small-text">
+                Have a file or a link instead? <Link to="/notes/import">Import it</Link>.
+              </p>
+            </aside>
+          ) : null}
+        </div>
+      </div>
     </>
   )
 }

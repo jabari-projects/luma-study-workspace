@@ -4,7 +4,8 @@ import type { ReactNode } from "react"
 const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 /**
- * "Are you sure?" box for things that can't be undone, like deleting a note.
+ * "Are you sure?" box for things that can't be undone, like deleting a note,
+ * or for a big choice like sharing a note with other students (tone "primary").
  * Focus starts on the safe choice. Escape or a tap outside means "no".
  * Tab stays inside, and focus goes back to where it was when the box closes.
  */
@@ -18,6 +19,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   returnFocus,
+  tone = "danger",
 }: {
   title: ReactNode
   body: ReactNode
@@ -29,6 +31,8 @@ export function ConfirmDialog({
   onCancel: () => void
   /** Where focus goes when the box closes. Defaults to whatever had focus when it opened. */
   returnFocus?: () => HTMLElement | null | undefined
+  /** "danger" (red button, alert dialog) for deleting; "primary" for an ordinary yes, like Share. */
+  tone?: "danger" | "primary"
 }) {
   const titleId = useId()
   const bodyId = useId()
@@ -92,7 +96,7 @@ export function ConfirmDialog({
       <section
         ref={panelRef}
         className="modal-panel confirm-panel"
-        role="alertdialog"
+        role={tone === "danger" ? "alertdialog" : "dialog"}
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
@@ -103,7 +107,7 @@ export function ConfirmDialog({
         <h2 id={titleId}>{title}</h2>
         <p id={bodyId}>{body}</p>
         <div className="button-row confirm-actions">
-          <button type="button" className="danger-button" onClick={onConfirm} disabled={busy}>
+          <button type="button" className={tone === "danger" ? "danger-button" : "primary-button"} onClick={onConfirm} disabled={busy}>
             {busy && busyLabel ? busyLabel : confirmLabel}
           </button>
           <button ref={cancelRef} type="button" className="secondary-button" onClick={onCancel} disabled={busy}>

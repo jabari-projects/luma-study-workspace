@@ -2,29 +2,10 @@ import { AxiosError } from "axios"
 
 import { api, getErrorMessage } from "../api"
 import { MAX_TEXT_CHARS } from "./extract"
+import { draftHasWords, nextDraftCardId, toNotesDraft } from "./draft"
+import type { DraftCard, NotesDraft, NotesResponse, SourceKind } from "./draft"
 
-export type SourceKind = "audio" | "paste" | "file" | "link" | "youtube"
-
-export type DraftCard = { id: string; front: string; back: string; keep: boolean }
-
-export type NotesDraft = {
-  title: string
-  summary: string
-  notes: string
-  keyTerms: string[]
-  cards: DraftCard[]
-  truncated: boolean
-  source: { kind: SourceKind; label: string }
-}
-
-type NotesResponse = {
-  title: string
-  summary: string
-  notes: string
-  key_terms: string[]
-  flashcards: { front: string; back: string }[]
-  truncated: boolean
-}
+export type { DraftCard, DraftSourceKind, NotesDraft, SourceKind } from "./draft"
 
 export type LinkImport = { title: string; text: string; site_name: string; url: string; truncated: boolean }
 
@@ -40,15 +21,13 @@ export class CaptureError extends Error {
 }
 
 function toCaptureError(error: unknown, fallback: string): CaptureError {
+  if (error instanceof CaptureError) return error
   if (error instanceof AxiosError && error.response) {
     const data = error.response.data as { code?: string } | undefined
     return new CaptureError(getErrorMessage(error, fallback), error.response.status === 403, data?.code)
   }
   return new CaptureError(getErrorMessage(error, fallback))
 }
-
-let cardCounter = 0
-const nextId = () => `draft-${Date.now().toString(36)}-${(cardCounter += 1)}`
 
 export async function transcribeAudio(blob: Blob, filename: string, hint?: string): Promise<string> {
   const form = new FormData()
@@ -73,18 +52,42 @@ export async function makeNotes(text: string, kind: SourceKind, label: string): 
       { text: text.slice(0, MAX_TEXT_CHARS), source_kind: kind, source_label: label.slice(0, 300) || undefined },
       { timeout: 120000 },
     )
-    const data = response.data
-    return {
-      title: data.title || "My notes",
-      summary: data.summary ?? "",
-      notes: data.notes ?? "",
-      keyTerms: data.key_terms ?? [],
-      cards: (data.flashcards ?? []).map((card) => ({ id: nextId(), front: card.front, back: card.back, keep: true })),
-      truncated: Boolean(data.truncated) || text.length > MAX_TEXT_CHARS,
-      source: { kind, label },
-    }
+    return toNotesDraft(response.data, { kind, label }, text.length > MAX_TEXT_CHARS)
   } catch (error: unknown) {
     throw toCaptureError(error, "We couldn't make notes right now.")
+  }
+}
+
+/**
+ * Image to notes: one picture in, the same notes and flashcards as the other tools out.
+ * It uses 1 notes turn. `label` stays on this device (it goes in the saved note only).
+ */
+export async function makeNotesFromImage(image: string, label: string): Promise<NotesDraft> {
+  try {
+    const response = await api.post<NotesResponse>("/api/generate-notes", { image }, { timeout: 120000 })
+    const draft = toNotesDraft(response.data, { kind: "image", label })
+    if (!draftHasWords(draft)) throw new CaptureError("We couldn't find words in that image. Try a clearer photo.")
+    return draft
+  } catch (error: unknown) {
+    throw toCaptureError(error, "We couldn't make notes from that image.")
+  }
+}
+
+export type NoteSummary = { title: string; summary: string }
+
+/**
+ * Make a summary of a note: text in, `{title, summary}` out. It uses 1 notes turn and
+ * saves nothing; the caller saves it with POST /summaries.
+ */
+export async function makeSummary(text: string): Promise<NoteSummary> {
+  try {
+    const response = await api.post<NoteSummary>("/api/summarize", { text: text.slice(0, MAX_TEXT_CHARS) }, { timeout: 120000 })
+    const title = typeof response.data?.title === "string" ? response.data.title.trim() : ""
+    const summary = typeof response.data?.summary === "string" ? response.data.summary.trim() : ""
+    if (!summary) throw new CaptureError("We couldn't make a summary this time. Try again.")
+    return { title, summary }
+  } catch (error: unknown) {
+    throw toCaptureError(error, "We couldn't make a summary right now.")
   }
 }
 
@@ -98,5 +101,5 @@ export async function importLink(url: string): Promise<LinkImport> {
 }
 
 export function newDraftCard(): DraftCard {
-  return { id: nextId(), front: "", back: "", keep: true }
+  return { id: nextDraftCardId(), front: "", back: "", keep: true }
 }

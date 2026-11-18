@@ -5,13 +5,12 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 import { useAuth } from "../auth"
+import { FIRST_TIME_LANDING } from "../discover/discover"
 import { api, getErrorCode, getErrorMessage, getRetryAfter, getStoredAccessToken, readBook } from "../api"
+import { CODE_ERRORS, CODE_LENGTH, cleanCode, useCountdown } from "./codes"
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PasswordField } from "./PasswordField"
 
-// Matches the backend rule (backend/app/passwords.py MIN/MAX_PASSWORD_LENGTH).
-export const MIN_PASSWORD_LENGTH = 8
-export const MAX_PASSWORD_LENGTH = 128
 const PASSWORD_RULE = `Use ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
-const CODE_LENGTH = 6
 const SIGNUP_TICKET_KEY = "luma.signupTicket"
 
 // The signup ticket stays in this tab's session storage only. It is needed
@@ -94,7 +93,7 @@ function FormMessage({ message, id }: { message: Message | null; id: string }) {
 
   // The live region stays in the page so screen readers hear each new message.
   return (
-    <div id={id} aria-live="polite" className="auth-message-slot">
+    <div id={id} aria-live="polite" className="message-slot">
       {message ? (
         <div
           ref={ref}
@@ -104,76 +103,6 @@ function FormMessage({ message, id }: { message: Message | null; id: string }) {
         >
           {message.text}
         </div>
-      ) : null}
-    </div>
-  )
-}
-
-function PasswordField({
-  label,
-  name,
-  value,
-  onChange,
-  autoComplete,
-  hint,
-  extraDescribedBy,
-  invalid,
-  rule,
-  labelAction,
-}: {
-  label: string
-  name: string
-  value: string
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void
-  autoComplete: "current-password" | "new-password"
-  hint?: string
-  extraDescribedBy?: string
-  invalid?: boolean
-  rule?: boolean
-  labelAction?: ReactNode
-}) {
-  const [visible, setVisible] = useState(false)
-  const inputId = useId()
-  const hintId = useId()
-  const describedBy = [hint ? hintId : null, extraDescribedBy].filter(Boolean).join(" ") || undefined
-
-  return (
-    <div className="field">
-      <div className="field-label-row">
-        <label htmlFor={inputId}>{label}</label>
-        {labelAction}
-      </div>
-      <div className="password-field">
-        <input
-          id={inputId}
-          name={name}
-          type={visible ? "text" : "password"}
-          autoComplete={autoComplete}
-          value={value}
-          onChange={onChange}
-          minLength={rule ? MIN_PASSWORD_LENGTH : undefined}
-          maxLength={MAX_PASSWORD_LENGTH}
-          aria-describedby={describedBy}
-          aria-invalid={invalid || undefined}
-          autoCapitalize="none"
-          spellCheck={false}
-          required
-        />
-        <button
-          type="button"
-          className="password-toggle"
-          aria-pressed={visible}
-          aria-controls={inputId}
-          onClick={() => setVisible((current) => !current)}
-        >
-          {visible ? "Hide" : "Show"}
-          <span className="sr-only"> password</span>
-        </button>
-      </div>
-      {hint ? (
-        <p id={hintId} className="field-hint">
-          {hint}
-        </p>
       ) : null}
     </div>
   )
@@ -227,22 +156,6 @@ function TextField({
       ) : null}
     </div>
   )
-}
-
-function useCountdown() {
-  const [secondsLeft, setSecondsLeft] = useState(0)
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      return
-    }
-    const timer = window.setTimeout(() => setSecondsLeft((value) => value - 1), 1000)
-    return () => window.clearTimeout(timer)
-  }, [secondsLeft])
-  return [secondsLeft, setSecondsLeft] as const
-}
-
-function cleanCode(raw: string): string {
-  return raw.replace(/\D/g, "").slice(0, CODE_LENGTH)
 }
 
 /* ------------------------------------------------------------------- login */
@@ -522,13 +435,6 @@ export function SignupPage() {
 
 /* ------------------------------------------------------------ verify email */
 
-const CODE_ERRORS: Record<string, string> = {
-  code_incorrect: "That code doesn't match. Check your newest email and try again.",
-  code_expired: "That code is too old. Tap \"Send a new code\".",
-  code_locked: "Too many tries with that code. Tap \"Send a new code\".",
-  rate_limited: "Too many tries. Wait a little, then try again.",
-}
-
 export function VerifyEmailPage() {
   const { user, isAuthenticated, verifyEmail, refreshProfile, logoutAccount, accounts, switchAccount } = useAuth()
   const navigate = useNavigate()
@@ -557,6 +463,9 @@ export function VerifyEmailPage() {
   const messageId = useId()
   const codeHintId = useId()
   const startedCountdown = useRef(false)
+  // Where a code that just worked sends the student. Set before checking, so the
+  // "already checked" redirect below can't send a brand-new student Home first.
+  const [landing, setLanding] = useState<string | null>(null)
 
   useEffect(() => {
     if (startedCountdown.current) {
@@ -600,7 +509,7 @@ export function VerifyEmailPage() {
     }
   }, [email, setSecondsLeft, signedInPath, ticket])
 
-  // Logged in but not checked yet (older accounts, or after changing email):
+  // Logged in but not checked yet (older accounts made before codes):
   // nothing was sent on login, so send a code once when this page opens.
   useEffect(() => {
     if (!signedInPath || mismatch || autoSent.current || waitParam || user?.email_verified !== false) {
@@ -647,7 +556,7 @@ export function VerifyEmailPage() {
   }
 
   if (signedInPath && user && user.email_verified === true) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={landing ?? "/dashboard"} replace />
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -666,6 +575,12 @@ export function VerifyEmailPage() {
     }
     setSubmitting(true)
     setMessage(null)
+    // Finishing signup (a code from the signup in this tab) opens Discover, so a new student
+    // sees what others shared first. An account that was already made (an older account, or a
+    // changed email) goes Home as usual. A signup with no code typed is not an account yet
+    // (the server makes it only when the code works), so it can't log in later and be missed here.
+    const next = ticket ? FIRST_TIME_LANDING : "/dashboard"
+    setLanding(next)
     try {
       await verifyEmail(ticket ? { email: email.trim(), ticket, code: cleaned } : { code: cleaned })
       clearSignupTicket()
@@ -674,8 +589,9 @@ export function VerifyEmailPage() {
       } catch {
         // The new session works even if the profile can't load yet.
       }
-      navigate("/dashboard", { replace: true })
+      navigate(next, { replace: true })
     } catch (error: unknown) {
+      setLanding(null)
       const errorCode = getErrorCode(error)
       setMessage({
         kind: "error",

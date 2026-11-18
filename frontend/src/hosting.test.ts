@@ -73,6 +73,26 @@ describe("vercel.json", () => {
     assert.equal(robotsTagFor("/"), undefined)
   })
 
+  // Other sites can't show Luma inside a frame (click-jacking), and links such
+  // as /reset-password?token=... never leak to other sites through Referer.
+  it("sends the safety headers on every path, the front page included", () => {
+    const want: Record<string, string> = {
+      "x-frame-options": "DENY",
+      "content-security-policy": "frame-ancestors 'none'",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+    }
+    for (const path of ["/", "/reset-password", ...APP_PATHS, "/assets/index-abc123.js"]) {
+      for (const [key, value] of Object.entries(want)) {
+        const found = (vercel.headers ?? [])
+          .filter((rule) => matches(rule.source, path))
+          .flatMap((rule) => rule.headers)
+          .find((h) => h.key.toLowerCase() === key)
+        assert.equal(found?.value, value, `${key} on ${path}`)
+      }
+    }
+  })
+
   it("keeps the single-page-app rewrite", () => {
     const rewrite = (vercel.rewrites ?? []).find((r) => r.destination === "/index.html")
     assert.ok(rewrite, "rewrite to /index.html is missing")

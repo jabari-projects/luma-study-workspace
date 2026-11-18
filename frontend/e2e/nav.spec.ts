@@ -12,7 +12,8 @@ const PLACES = [
   ["Home", "/dashboard"],
   ["Study", "/flashcards"],
   ["Notes", "/notes"],
-  ["Search", "/search"],
+  // The label stays "Search"; the page it opens is Discover.
+  ["Search", "/discover"],
 ] as const
 
 const MAKE = [
@@ -35,6 +36,8 @@ const LIGHTS_UP = [
   // Old addresses redirect into Notes, and Notes lights up there too.
   ["/import", "Notes"],
   ["/summaries", "Notes"],
+  ["/discover", "Search"],
+  // The old address redirects to Discover, and Search lights up there too.
   ["/search", "Search"],
 ] as const
 

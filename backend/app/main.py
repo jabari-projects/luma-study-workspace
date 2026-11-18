@@ -12,29 +12,32 @@ import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Literal, Optional, List, Union
 
-import anyio
 import httpx
 import stripe
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, Query, WebSocket, WebSocketDisconnect, status, Request
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, WebSocket, WebSocketDisconnect, status, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from openai import APIConnectionError, APIStatusError, AuthenticationError, OpenAI, OpenAIError
 from pydantic import BaseModel, EmailStr, Field
 from supabase import Client
 from .analytics import router as analytics_router
+from . import capture
 from .capture import router as capture_router
 from . import account_deletion
 from . import email_codes as email_codes_module
 from .ai_allowance import AllowanceLedger, allowance_key
 from . import billing
 from . import auth as auth_module
-from .auth import StaleSessionError, create_access_token, get_current_user, validate_access_token
-from .config import settings
+from .auth import (
+    create_access_token,
+    get_current_user,
+    validate_access_token,
+)
+from .config import check_jwt_secret_key, settings
 from .deadline import DeadlineExceeded, run_with_deadline
 from .flashcards import router as flashcards_router
 from .notes import router as notes_router
@@ -56,7 +59,7 @@ from .transcripts import router as transcripts_router
 
 # Deployment notes:
 # - Backend platforms like Render, Railway, and Fly.io should set
-#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET_KEY, API_BASE_URL,
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET_KEY (32+ characters)
 #   and FRONTEND_ORIGINS in environment settings.
 # - For AI features, set OPENAI_API_KEY (optionally OPENAI_ENDPOINT).
 # - Optional AI model overrides:
@@ -68,9 +71,10 @@ from .transcripts import router as transcripts_router
 # - Suggested start commands:
 #   uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 #   gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-8000}
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
-EMAIL_VERIFICATION_EXPIRE_HOURS = 24
+
+# No JWT secret (or a short or leaked one) means no start: tokens would be forgeable.
+check_jwt_secret_key(settings.JWT_SECRET_KEY)
+
 RATE_LIMIT_MESSAGE = "Too many requests, please wait."
 LOGIN_TOO_MANY_TRIES_MESSAGE = "Too many tries. Wait a few minutes and try again."
 EMAIL_SEND_FAILED_MESSAGE = "We couldn't send the email right now. Try again later."
@@ -122,8 +126,11 @@ RESEND_COOLDOWN_MESSAGE = "Wait a moment before asking for another code."
 USERNAME_TAKEN_MESSAGE = "That username is taken. Try another one."
 ACCOUNT_EXISTS_MESSAGE = "You already have a Luma account with this email. Log in instead."
 LOGIN_FAILED_MESSAGE = "That email or password is wrong."
+WRONG_CURRENT_PASSWORD_MESSAGE = "That password is wrong."
+SUPPORT_EMAIL = "help@lumastudyhub.com"
 RESET_INVALID_MESSAGE = "That reset link doesn't work anymore. Ask for a new one."
 EMAIL_UNVERIFIED_AI_MESSAGE = "Check your email and enter your code to use AI tools."
+NO_PENDING_EMAIL_CHANGE_MESSAGE = "Start again: type your new email and your password."
 ONE_AI_TASK_AT_A_TIME_MESSAGE = "One AI task at a time. Try again in a moment."
 login_failure_limiter = SlidingWindowLimiter(LOGIN_FAILURE_LIMIT, LOGIN_FAILURE_WINDOW_SECONDS)
 password_reset_email_limiter = SlidingWindowLimiter(
@@ -141,6 +148,14 @@ verify_code_ip_limiter = SlidingWindowLimiter(VERIFY_CODE_PER_IP_LIMIT, VERIFY_C
 verify_code_email_limiter = SlidingWindowLimiter(VERIFY_CODE_PER_EMAIL_LIMIT, VERIFY_CODE_WINDOW_SECONDS)
 resend_code_ip_limiter = SlidingWindowLimiter(RESEND_CODE_PER_IP_LIMIT, RESEND_CODE_WINDOW_SECONDS)
 signup_notice_limiter = SlidingWindowLimiter(SIGNUP_NOTICE_PER_EMAIL_LIMIT, SIGNUP_NOTICE_WINDOW_SECONDS)
+# Current-password checks (change email, delete account): 5 per account per
+# 15 minutes (a success clears it), and 10 per account per day (a success does not).
+PASSWORD_CHECK_LIMIT = 5
+PASSWORD_CHECK_WINDOW_SECONDS = 15 * 60
+PASSWORD_CHECK_DAILY_LIMIT = 10
+PASSWORD_CHECK_DAILY_WINDOW_SECONDS = 24 * 60 * 60
+password_check_limiter = SlidingWindowLimiter(PASSWORD_CHECK_LIMIT, PASSWORD_CHECK_WINDOW_SECONDS)
+password_check_daily_limiter = SlidingWindowLimiter(PASSWORD_CHECK_DAILY_LIMIT, PASSWORD_CHECK_DAILY_WINDOW_SECONDS)
 _auth_email_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="auth-email")
 _signup_locks: dict = {}
 _signup_locks_guard = threading.Lock()
@@ -198,12 +213,6 @@ class RedactTokenQueryFilter(logging.Filter):
 _token_redaction_filter = RedactTokenQueryFilter()
 for _logger_name in ("uvicorn.access", "uvicorn.error", "httpx", __name__):
     logging.getLogger(_logger_name).addFilter(_token_redaction_filter)
-
-if not settings.API_BASE_URL:
-    logger.warning(
-        "API_BASE_URL is not set; using development fallback %s for public URL generation.",
-        settings.resolved_api_base_url,
-    )
 
 supabase: Client = get_supabase()
 
@@ -266,18 +275,6 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
         )
     return JSONResponse(status_code=422, content={"detail": detail})
 
-if settings.using_production_fallback_jwt_secret:
-    logger.error(
-        "JWT_SECRET_KEY is not set in production. "
-        "Using an in-memory fallback secret for this process so the backend can boot, "
-        "but tokens will rotate on restart until JWT_SECRET_KEY is configured."
-    )
-elif settings.using_fallback_jwt_secret:
-    logger.warning(
-        "JWT_SECRET_KEY is not set; using the shared development secret. "
-        "Set JWT_SECRET_KEY in deployed environments."
-    )
-
 if not is_supabase_configured():
     logger.warning(
         "Supabase is not fully configured. "
@@ -296,18 +293,29 @@ if not settings.OPENAI_API_KEY and not settings.DEEPGRAM_API_KEY:
         "Transcription routes will return 503."
     )
 
-origins = [
+# Websites allowed to call this API from a browser. The custom domain
+# (bought 2026-11-17) plus the Vercel address it replaces, local dev, and any
+# exact origins set in the environment (FRONTEND_ORIGIN(S), PUBLIC_APP_URL).
+SITE_ORIGINS = [
     "http://localhost:5173",
-    "https://*.vercel.app",
+    "https://lumastudyhub.com",
+    "https://www.lumastudyhub.com",
     "https://luma-frontend-ruby.vercel.app",
-    "https://luma-frontend-dxgnch0h1-jabarimckinney213-7284s-projects.vercel.app",
 ]
-VERCEL_ORIGIN_REGEX = r"https://.*\.vercel\.app"
+origins = list(
+    dict.fromkeys(
+        [*SITE_ORIGINS, *(o for o in settings.FRONTEND_ORIGINS if "*" not in o)]
+    )
+)
+# Only Luma's own Vercel preview builds (this project, this team). Any other
+# *.vercel.app site is refused: anyone can host a page there.
+VERCEL_ORIGIN_REGEX = (
+    r"https://luma-frontend(?:-[a-z0-9-]+)?-jabarimckinney213-7284s-projects\.vercel\.app"
+)
 
 logger.info(
-    "Luma backend starting env=%s api_base=%s frontend_origins=%s supabase_configured=%s",
+    "Luma backend starting env=%s frontend_origins=%s supabase_configured=%s",
     settings.APP_ENV,
-    settings.resolved_api_base_url,
     ",".join(origins),
     is_supabase_configured(),
 )
@@ -316,6 +324,10 @@ MAX_TRANSCRIBE_UPLOAD_BYTES = 25 * 1024 * 1024
 # Multipart framing adds a little overhead on top of the audio itself.
 MAX_TRANSCRIBE_REQUEST_BYTES = 26 * 1024 * 1024
 TRANSCRIBE_TOO_BIG_MESSAGE = "That recording is too big. Try one under 25 MB."
+# Pictures arrive as base64 inside JSON. A 15 MB picture is about 20 MB of base64,
+# so the request (and the "image" text) is capped a little above that.
+MAX_NOTES_IMAGE_REQUEST_BYTES = 21 * 1024 * 1024
+IMAGE_TOO_BIG_MESSAGE = "That picture is too big. Try one under 15 MB."
 
 
 # Each HTTP step may take up to the TIMEOUT, but the whole call is also cut off at the
@@ -331,8 +343,9 @@ class _BodyTooLarge(Exception):
     pass
 
 
-class TranscribeBodyLimitMiddleware:
-    """Caps the /api/transcribe request body by counting the bytes actually received.
+class RequestBodyLimitMiddleware:
+    """Caps the /api/transcribe and /api/generate-notes request bodies by counting the
+    bytes actually received.
 
     The Content-Length header is only a fast early check: a client can leave it out
     (chunked upload), so the real limit is enforced on the stream itself.
@@ -340,19 +353,28 @@ class TranscribeBodyLimitMiddleware:
     carries CORS headers.
     """
 
+    LIMITS = {
+        "/api/transcribe": (MAX_TRANSCRIBE_REQUEST_BYTES, TRANSCRIBE_TOO_BIG_MESSAGE),
+        "/api/generate-notes": (MAX_NOTES_IMAGE_REQUEST_BYTES, IMAGE_TOO_BIG_MESSAGE),
+    }
+
     def __init__(self, app_):
         self.app = app_
 
     async def __call__(self, scope, receive, send):
-        if not (scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/api/transcribe"):
+        limit = None
+        if scope["type"] == "http" and scope.get("method") == "POST":
+            limit = self.LIMITS.get(scope.get("path", ""))
+        if limit is None:
             await self.app(scope, receive, send)
             return
+        max_bytes, too_big_message = limit
 
-        too_big_response = JSONResponse(status_code=413, content={"error": TRANSCRIBE_TOO_BIG_MESSAGE})
+        too_big_response = JSONResponse(status_code=413, content={"error": too_big_message})
         for name, value in scope.get("headers", []):
             if name == b"content-length":
                 try:
-                    if int(value) > MAX_TRANSCRIBE_REQUEST_BYTES:
+                    if int(value) > max_bytes:
                         await too_big_response(scope, receive, send)
                         return
                 except ValueError:
@@ -367,7 +389,7 @@ class TranscribeBodyLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > MAX_TRANSCRIBE_REQUEST_BYTES:
+                if received > max_bytes:
                     exceeded = True
                     raise _BodyTooLarge()
             return message
@@ -392,7 +414,7 @@ class TranscribeBodyLimitMiddleware:
                 await too_big_response(scope, receive, send)
 
 
-app.add_middleware(TranscribeBodyLimitMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -419,8 +441,8 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, List[WebSocket]] = {}
 
-    async def connect(self, user_id: str, websocket: WebSocket):
-        await websocket.accept()
+    async def connect(self, user_id: str, websocket: WebSocket, subprotocol: Optional[str] = None):
+        await websocket.accept(subprotocol=subprotocol)
         self.active_connections.setdefault(user_id, []).append(websocket)
 
     async def disconnect(self, user_id: str, websocket: WebSocket):
@@ -456,19 +478,6 @@ ai_rate_limit_windows: dict[tuple[str, str], list[float]] = defaultdict(list)
 
 class AIServiceUnavailableError(RuntimeError):
     pass
-
-
-def build_public_api_url(path: str):
-    return f"{settings.resolved_api_base_url}{path}"
-
-
-def require_internal_webhook_secret(request: Request):
-    if not settings.WEBHOOK_SECRET:
-        raise HTTPException(status_code=503, detail="Webhook secret is not configured")
-
-    secret = request.headers.get("authorization")
-    if secret != f"Bearer {settings.WEBHOOK_SECRET}":
-        raise HTTPException(status_code=401, detail="Unauthorized webhook")
 
 
 def has_premium_subscription(subscription_status: Optional[str]) -> bool:
@@ -512,13 +521,32 @@ def extract_token_from_authorization_header(authorization_header: Optional[str])
     return authorization_header.strip() or None
 
 
+# Browsers can't set headers on a websocket, so they send the token as the
+# subprotocol pair "bearer, <token>". Never in the URL: hosting logs keep URLs.
+WS_TOKEN_SUBPROTOCOL = "bearer"
+
+
 def get_websocket_user(websocket: WebSocket):
-    token = websocket.query_params.get("token")
+    token = extract_token_from_authorization_header(websocket.headers.get("authorization"))
     if not token:
-        token = extract_token_from_authorization_header(websocket.headers.get("authorization"))
+        offered = [p.strip() for p in websocket.headers.get("sec-websocket-protocol", "").split(",")]
+        if len(offered) == 2 and offered[0] == WS_TOKEN_SUBPROTOCOL:
+            token = offered[1] or None
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
     return validate_access_token(token)
+
+
+# Nothing the API serves belongs in a search engine: shared study sets are for
+# signed-in students only (owner decision, 2026-11-16).
+ROBOTS_HEADER_VALUE = "noindex, nofollow"
+
+
+@app.middleware("http")
+async def add_robots_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = ROBOTS_HEADER_VALUE
+    return response
 
 
 @app.middleware("http")
@@ -619,6 +647,23 @@ class AuthSessionResponse(BaseModel):
     access_token: str
 
 
+# Light, Dark or Automatic (light from 7 am to 7 pm). New saves must be one of these.
+ThemeMode = Literal["light", "dark", "auto"]
+THEME_MODES = ("light", "dark", "auto")
+
+
+def read_theme_mode(value) -> Optional[str]:
+    """The saved theme mode as the app should see it.
+
+    Empty stays empty (the app shows Light). Anything else that is not one of the
+    three choices, such as an old or hand-edited value, reads as Light so older
+    profiles keep loading.
+    """
+    if value is None:
+        return None
+    return value if value in THEME_MODES else "light"
+
+
 class ProfileResponse(BaseModel):
     id: str
     email: EmailStr
@@ -628,7 +673,7 @@ class ProfileResponse(BaseModel):
     theme_color: Optional[str] = None
     custom_theme_image_url: Optional[str] = None
     timezone: Optional[str] = None
-    theme_mode: Optional[str] = None
+    theme_mode: Optional[ThemeMode] = None
     phone_number: Optional[str] = None
     birthday: Optional[str] = None
     subscription_status: str = "free"
@@ -644,26 +689,41 @@ class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, min_length=2, max_length=50)
     theme_color: Optional[str] = Field(default=None, max_length=32)
     timezone: Optional[str] = None
-    theme_mode: Optional[str] = None
+    theme_mode: Optional[ThemeMode] = None
     phone_number: Optional[str] = None
     birthday: Optional[str] = None
 
 
 class EmailUpdateRequest(BaseModel):
     new_email: EmailStr
+    # Proves the person changing the email knows the password, not just holds a token.
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class EmailChangeStartResponse(BaseModel):
+    status: Literal["code_sent_if_possible"] = "code_sent_if_possible"
+    resend_after_seconds: int
+    code_expires_in_seconds: int
+
+
+class EmailChangeResendRequest(BaseModel):
+    new_email: EmailStr
+
+
+class EmailChangeConfirmRequest(BaseModel):
+    new_email: EmailStr
+    code: str = Field(..., min_length=1, max_length=32)
+
+
+class AccountDeleteRequest(BaseModel):
+    # A stolen sign-in alone must not be able to delete the account.
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
 
 class AccountDeleteResponse(BaseModel):
     success: bool
     message: str
     retained: Optional[List[str]] = None
-
-
-class UserSearchResponse(BaseModel):
-    id: str
-    username: str
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
 
 
 class VerificationStatusResponse(BaseModel):
@@ -712,8 +772,11 @@ class GenerateNotesRequest(BaseModel):
     image: Optional[str] = None
 
 
-class GenerateNotesResponse(BaseModel):
-    notes: str
+class GenerateNotesResponse(capture.NotesFromTextResponse):
+    """Picture to notes answers with the same notes shape as the other note tools.
+
+    "notes" stays a Markdown string, so an older page that only reads it still works.
+    """
 
 
 class TranscribeResponse(BaseModel):
@@ -783,19 +846,6 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def get_user_by_verification_token(token: str):
-    response = (
-        supabase.table("users")
-        .select("*")
-        .eq("email_verification_token", hash_token(token))
-        .maybe_single()
-        .execute()
-    )
-    if response is None:
-        return None
-    return response.data
-
-
 def get_user_by_password_reset_token(token: str):
     response = (
         supabase.table("users")
@@ -807,25 +857,6 @@ def get_user_by_password_reset_token(token: str):
     if response is None:
         return None
     return response.data
-
-
-def create_user(email: str, password: str, username: str):
-    """Create a user. ``password`` is the plain password; only its hash is stored."""
-    user_id = str(uuid.uuid4())
-    response = (
-        supabase.table("users")
-        .insert(
-            {
-                "id": user_id,
-                "email": email,
-                "password": hash_password(password),
-                "username": username,
-                "created_at": datetime.utcnow().isoformat(),
-            }
-        )
-        .execute()
-    )
-    return response.data[0]
 
 
 def update_user(user_id: str, data: dict):
@@ -932,50 +963,13 @@ def build_profile_response(user_id: str):
         "theme_color": profile.get("theme_color"),
         "custom_theme_image_url": profile.get("custom_theme_image_url"),
         "timezone": profile.get("timezone"),
-        "theme_mode": profile.get("theme_mode"),
+        "theme_mode": read_theme_mode(profile.get("theme_mode")),
         "phone_number": profile.get("phone_number"),
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
         "email_verified": user_data.get("email_verified", False),
         "is_admin": user_data.get("role") == "admin",
     }
-
-
-def set_subscription_status(user_id: str, subscription_status: str):
-    profile = get_profile(user_id)
-    if not profile:
-        logger.warning(
-            "Could not update subscription_status because profile is missing for user_id=%s",
-            user_id,
-        )
-        return None
-
-    return update_profile(user_id, {"subscription_status": subscription_status})
-
-
-def create_notification(
-    user_id: str,
-    notification_type: Literal["system"],
-    actor_user_id: Optional[str] = None,
-    payload: Optional[Any] = None,
-):
-    response = (
-        supabase.table("notifications")
-        .insert(
-            {
-                "id": str(uuid.uuid4()),
-                "user_id": user_id,
-                "type": notification_type,
-                "actor_user_id": actor_user_id,
-                "created_at": datetime.utcnow().isoformat(),
-                "read": False,
-                "payload": payload,
-            }
-        )
-        .execute()
-    )
-
-    return response.data[0] if response and response.data else None
 
 
 def list_notification_rows_for_user(user_id: str):
@@ -1010,10 +1004,6 @@ def mark_notification_rows_as_read(user_id: str, notification_ids: List[str]):
     return response.data or []
 
 
-def generate_email_verification_token():
-    return secrets.token_urlsafe(32)
-
-
 def generate_password_reset_token():
     return secrets.token_urlsafe(32)
 
@@ -1028,14 +1018,6 @@ def parse_iso_datetime(value: Optional[str]):
     return parsed
 
 
-def is_email_verification_expired(sent_at: Optional[str]):
-    parsed_sent_at = parse_iso_datetime(sent_at)
-    if parsed_sent_at is None:
-        return True
-
-    return datetime.utcnow() - parsed_sent_at > timedelta(hours=EMAIL_VERIFICATION_EXPIRE_HOURS)
-
-
 def is_password_reset_expired(sent_at: Optional[str]):
     parsed_sent_at = parse_iso_datetime(sent_at)
     if parsed_sent_at is None:
@@ -1044,18 +1026,9 @@ def is_password_reset_expired(sent_at: Optional[str]):
     return datetime.utcnow() - parsed_sent_at > timedelta(minutes=PASSWORD_RESET_EXPIRE_MINUTES)
 
 
-def log_verification_link(token: Optional[str] = None):
-    # Never log the token or the link: anyone with log access could use it.
-    logger.info("Email verification link issued")
-
-
 def log_password_reset_link(token: Optional[str] = None):
     # Never log the token or the link: anyone with log access could use it.
     logger.info("Password reset link issued")
-
-
-def build_verification_url(token: str) -> str:
-    return build_public_api_url(f"/auth/verify?token={token}")
 
 
 def build_password_reset_url(token: str) -> str:
@@ -1098,40 +1071,6 @@ def send_email(to_email: str, subject: str, html_body: str):
     return response.json()
 
 
-def build_verification_email_html(verification_url: str):
-    verification_url = html.escape(verification_url, quote=True)
-    return f"""
-    <div style="font-family: Arial, sans-serif; color: #171717; line-height: 1.6;">
-      <h2 style="margin-bottom: 12px;">Verify your Luma account</h2>
-      <p style="margin-bottom: 16px;">
-        Confirm your email address to finish setting up your Luma account.
-      </p>
-      <p style="margin-bottom: 24px;">
-        <a
-          href="{verification_url}"
-          style="
-            display: inline-block;
-            padding: 12px 20px;
-            background: #4f46e5;
-            color: #ffffff;
-            text-decoration: none;
-            border-radius: 10px;
-            font-weight: 700;
-          "
-        >
-          Verify email
-        </a>
-      </p>
-      <p style="margin-bottom: 8px;">
-        If the button does not work, use this link:
-      </p>
-      <p>
-        <a href="{verification_url}">{verification_url}</a>
-      </p>
-    </div>
-    """
-
-
 def build_password_reset_email_html(reset_url: str):
     reset_url = html.escape(reset_url, quote=True)
     return f"""
@@ -1140,7 +1079,7 @@ def build_password_reset_email_html(reset_url: str):
       <p style="margin-bottom: 16px;">
         Someone asked to reset the password for your Luma account.
         If it was you, pick a new password with the button below.
-        The link works for {EMAIL_VERIFICATION_EXPIRE_HOURS} hours.
+        The link works for {PASSWORD_RESET_EXPIRE_MINUTES} minutes.
       </p>
       <p style="margin-bottom: 24px;">
         <a
@@ -1169,32 +1108,6 @@ def build_password_reset_email_html(reset_url: str):
     """
 
 
-def issue_email_verification_token(user_id: str):
-    """Create a verification token, store only its digest, return the raw token."""
-    token = generate_email_verification_token()
-    sent_at = datetime.utcnow().isoformat()
-    update_user(
-        user_id,
-        {
-            "email_verified": False,
-            "email_verification_token": hash_token(token),
-            "email_verification_sent_at": sent_at,
-        },
-    )
-    log_verification_link()
-    return token
-
-
-def issue_email_verification_token_best_effort(user_id: str):
-    try:
-        return issue_email_verification_token(user_id)
-    except Exception as exc:
-        logger.warning(
-            "Email verification setup failed for user_id=%s (%s)", user_id, type(exc).__name__
-        )
-        return None
-
-
 def issue_password_reset_token(user_id: str):
     """Create a reset token, store only its digest, return the raw token."""
     token = generate_password_reset_token()
@@ -1208,31 +1121,6 @@ def issue_password_reset_token(user_id: str):
     )
     log_password_reset_link()
     return token
-
-
-def issue_password_reset_token_best_effort(user_id: str):
-    try:
-        return issue_password_reset_token(user_id)
-    except Exception as exc:
-        logger.warning("Password reset setup failed for user_id=%s (%s)", user_id, type(exc).__name__)
-        return None
-
-
-def send_verification_email_best_effort(user_id: str, to_email: str) -> bool:
-    """Issue a token and email the link. Never raises; logs no address or token."""
-    try:
-        token = issue_email_verification_token(user_id)
-        send_email(
-            to_email,
-            "Verify your Luma account",
-            build_verification_email_html(build_verification_url(token)),
-        )
-        return True
-    except Exception as exc:
-        logger.warning(
-            "Verification email could not be sent for user_id=%s (%s)", user_id, type(exc).__name__
-        )
-        return False
 
 
 def auth_error(status_code: int, message: str, error_code: str, retry_after: Optional[int] = None):
@@ -1272,23 +1160,29 @@ def _signup_lock(key: str) -> threading.Lock:
 
 
 def _code_secret() -> str:
-    return settings.effective_jwt_secret_key or ""
+    return settings.JWT_SECRET_KEY
 
 
 email_code_store = email_codes_module.EmailCodeStore(lambda: supabase, _code_secret)
 allowance_ledger = AllowanceLedger(lambda: supabase)
 
 
-def build_verification_code_email_html(code: str) -> str:
+def build_verification_code_email_html(code: str, email_change: bool = False) -> str:
     code = html.escape(code, quote=True)
     minutes = email_codes_module.CODE_TTL_SECONDS // 60
+    if email_change:
+        action = "move your Luma account to this email"
+        ignore = "If you didn't ask for this, you can ignore this email. Nothing changes."
+    else:
+        action = "finish setting up your account"
+        ignore = "If you didn't make a Luma account, you can ignore this email."
     return f"""
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
       <h2>Your Luma code</h2>
-      <p>Type this code in Luma to finish setting up your account:</p>
+      <p>Type this code in Luma to {action}:</p>
       <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">{code}</p>
       <p>It works for {minutes} minutes, one time.</p>
-      <p>If you didn't make a Luma account, you can ignore this email.</p>
+      <p>{ignore}</p>
     </div>
     """
 
@@ -1307,6 +1201,33 @@ def build_signup_notice_email_html() -> str:
     """
 
 
+def mask_email(email: str) -> str:
+    """j\u2022\u2022\u2022@gmail.com: enough to recognise, not enough to copy."""
+    local, _, domain = str(email).partition("@")
+    return f"{local[:1]}\u2022\u2022\u2022@{domain}" if domain else "\u2022\u2022\u2022"
+
+
+def build_email_changed_notice_html(new_email: str) -> str:
+    masked = html.escape(mask_email(new_email), quote=True)
+    help_address = html.escape(SUPPORT_EMAIL, quote=True)
+    return f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
+      <h2>Your Luma email was changed</h2>
+      <p>Your Luma account now uses a new email: <strong>{masked}</strong>.</p>
+      <p>If you did this, you don't need to do anything.</p>
+      <p>If it wasn't you, email <a href="mailto:{help_address}">{help_address}</a> right away
+         and tell us your username.</p>
+    </div>
+    """
+
+
+def _send_email_changed_notice(old_email: str, new_email: str) -> None:
+    try:
+        send_email(old_email, "Your Luma email was changed", build_email_changed_notice_html(new_email))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Email-changed notice could not be sent (%s)", type(exc).__name__)
+
+
 def issue_and_send_verification_code(user_id: str, to_email: str):
     """Make a new code for an existing account's current address and email it.
 
@@ -1315,7 +1236,7 @@ def issue_and_send_verification_code(user_id: str, to_email: str):
     """
     email = normalize_account_email(to_email)
     code = email_codes_module.generate_code()
-    result = email_code_store.issue_for_user(user_id, email, code)
+    result = email_code_store.issue_for_user(user_id, email, code, inbox_owner_id=user_id)
     if result.status != "ok":
         return result
     logger.info("Email verification code issued")
@@ -1323,11 +1244,54 @@ def issue_and_send_verification_code(user_id: str, to_email: str):
     return result
 
 
-def _send_code_best_effort(user_id: str, to_email: str) -> None:
+def _send_email_change_code(new_email: str, code: str) -> None:
+    """Email the code for an email change. Never raises."""
     try:
-        issue_and_send_verification_code(user_id, to_email)
+        logger.info("Email change code issued")
+        send_email(new_email, "Your Luma code", build_verification_code_email_html(code, email_change=True))
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Verification code email could not be sent (%s)", type(exc).__name__)
+        logger.warning("Email change code could not be sent (%s)", type(exc).__name__)
+
+
+def _send_wait_error(result) -> Optional[JSONResponse]:
+    """The 429 for an account's own code cooldown or cap; None for anything else."""
+    if result.status == "cooldown":
+        return auth_error(429, RESEND_COOLDOWN_MESSAGE, "resend_cooldown", result.retry_after)
+    if result.status == "cap":
+        return auth_error(429, TOO_MANY_TRIES_SHORT_MESSAGE, "rate_limited", result.retry_after)
+    return None
+
+
+def _issue_email_change_code(user_id: str, new_email: str, issue) -> JSONResponse:
+    """Save a code for the new address and email it only if no other account uses it.
+
+    A taken address still gets a code row (never sent), like the signup decoy,
+    so cooldowns, caps and wrong-code tries act the same either way. The
+    account's own cooldown and caps are told (they say nothing about the
+    address); the inbox cap is not, so the answer can't hint who uses it.
+    """
+    try:
+        owner = find_user_by_email(new_email)
+        code = email_codes_module.generate_code()
+        result = issue(user_id, new_email, code, inbox_owner_id=owner["id"] if owner else None)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Email change code could not be saved (%s)", type(exc).__name__)
+        return auth_error(503, EMAIL_SEND_FAILED_MESSAGE, "email_send_failed")
+    if result.status == "missing":
+        return auth_error(400, NO_PENDING_EMAIL_CHANGE_MESSAGE, "no_pending_change")
+    wait = _send_wait_error(result)
+    if wait:
+        return wait
+    if result.status == "ok" and not owner:
+        _run_email_job(_send_email_change_code, new_email, code)
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "code_sent_if_possible",
+            "resend_after_seconds": email_codes_module.RESEND_COOLDOWN_SECONDS,
+            "code_expires_in_seconds": email_codes_module.CODE_TTL_SECONDS,
+        },
+    )
 
 
 def _send_signup_code_best_effort(email: str, ticket: str, password_hash: Optional[str], username: Optional[str]) -> None:
@@ -1390,7 +1354,8 @@ def create_user_with_hash(email: str, password_hash: str, username: str, email_v
     return response.data[0]
 
 
-def session_response(user_row: dict) -> dict:
+def session_response(user_row: dict, access_token: Optional[str] = None) -> dict:
+    """The signed-in user plus a token: a new one unless ``access_token`` is given."""
     return {
         "user": {
             "id": user_row["id"],
@@ -1398,7 +1363,7 @@ def session_response(user_row: dict) -> dict:
             "username": user_row["username"],
             "email_verified": bool(user_row.get("email_verified")),
         },
-        "access_token": create_access_token({"sub": user_row["id"]}),
+        "access_token": access_token or create_access_token({"sub": user_row["id"]}),
     }
 
 
@@ -1515,54 +1480,6 @@ def build_notification_items_from_rows(notification_rows: List[dict]):
     return notifications
 
 
-def dispatch_realtime_event_best_effort(user_id: str, event_type: Literal["notification"], data: dict):
-    try:
-        anyio.from_thread.run(
-            connection_manager.send_to_user,
-            user_id,
-            {"type": event_type, "data": data},
-        )
-    except Exception as exc:
-        logger.warning(
-            "Realtime dispatch failed for user_id=%s event_type=%s: %s",
-            user_id,
-            event_type,
-            exc,
-        )
-
-
-def dispatch_notification_event_best_effort(notification_row: dict):
-    notification_items = build_notification_items_from_rows([notification_row])
-    if not notification_items:
-        return
-
-    dispatch_realtime_event_best_effort(notification_row["user_id"], "notification", notification_items[0])
-
-
-def create_notification_best_effort(
-    user_id: str,
-    notification_type: Literal["system"],
-    actor_user_id: Optional[str] = None,
-    payload: Optional[Any] = None,
-):
-    try:
-        notification_row = create_notification(
-            user_id,
-            notification_type,
-            actor_user_id=actor_user_id,
-            payload=payload,
-        )
-        if notification_row:
-            dispatch_notification_event_best_effort(notification_row)
-    except Exception as exc:
-        logger.warning(
-            "Notification creation failed for recipient=%s type=%s: %s",
-            user_id,
-            notification_type,
-            exc,
-        )
-
-
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 IMAGE_EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
@@ -1673,25 +1590,8 @@ def authenticate_ai_request(request: Request):
         return None
 
     try:
-        custom_user = validate_access_token(token)
-        user_id = custom_user["id"]
-    except StaleSessionError:
-        # Our own token, issued before a password change: do not fall back.
-        return None
+        user_id = validate_access_token(token)["id"]
     except HTTPException:
-        user_id = None
-
-    if not user_id:
-        try:
-            auth_response = supabase.auth.get_user(token)
-        except Exception as exc:
-            logger.warning("Supabase auth validation failed for AI route: %s", exc)
-            return None
-
-        user = getattr(auth_response, "user", None)
-        user_id = getattr(user, "id", None)
-
-    if not user_id:
         return None
 
     profile = get_profile(user_id)
@@ -1903,52 +1803,25 @@ def raise_openai_error(exc: Exception):
     raise exc
 
 
-def generate_notes_with_ai(image_data_url: str):
-    mime_type, decoded_image = decode_base64_data_url(image_data_url)
-    client = get_ai_client()
-    model = get_ai_model()
+# Picture types the AI can read. The page offers PNG, JPG and WEBP.
+NOTES_IMAGE_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")
+IMAGE_NOTES_BAD_PICTURE_MESSAGE = "We couldn't open that picture. Try a PNG, JPG or WEBP photo."
 
-    reencoded_data_url = (
-        f"data:{mime_type};base64,{base64.b64encode(decoded_image).decode('utf-8')}"
-    )
 
-    try:
-        response = run_with_deadline(
-            lambda: client.responses.create(
-            model=model,
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "Analyze this image and turn it into concise study notes. "
-                                "Use short headings and bullet points when helpful. "
-                                "Extract visible text accurately and highlight the key ideas."
-                            ),
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": reencoded_data_url,
-                        },
-                    ],
-                }
-            ],
-            max_output_tokens=700,
-                # Don't keep the student's image and notes at OpenAI as a stored response.
-                store=False,
-            ),
-            AI_NOTES_DEADLINE_SECONDS,
-        )
-    except Exception as exc:
-        raise_openai_error(exc)
+def read_notes_image(image_data_url: Optional[str]) -> str:
+    """Check the picture and return a clean data URL. Raises ValueError if it isn't one."""
+    mime_type, decoded_image = decode_base64_data_url(image_data_url or "")
+    mime_type = mime_type.lower()
+    if mime_type == "image/jpg":
+        mime_type = "image/jpeg"
+    if mime_type not in NOTES_IMAGE_TYPES:
+        raise ValueError("Invalid request")
+    return f"data:{mime_type};base64,{base64.b64encode(decoded_image).decode('utf-8')}"
 
-    notes = (response.output_text or "").strip()
-    if not notes:
-        raise RuntimeError("AI returned an empty notes response")
 
-    return notes
+def generate_notes_with_ai(image_data_url: str) -> dict[str, Any]:
+    """One AI call: title, summary, Markdown notes, key terms and flashcards, cleaned."""
+    return capture.generate_study_notes_from_image(read_notes_image(image_data_url))
 
 
 class AudioTooLargeError(ValueError):
@@ -2042,12 +1915,6 @@ def transcribe_audio_bytes(audio_bytes: bytes, filename: str, content_type: str,
     )
 
 
-def transcribe_audio_with_deepgram(file: UploadFile):
-    content_type = get_transcribe_content_type(file)
-    audio_bytes = read_upload_bytes_capped(file)
-    return transcribe_audio_bytes_with_deepgram(audio_bytes, content_type)
-
-
 def transcribe_audio_bytes_with_deepgram(audio_bytes: bytes, content_type: str):
     api_key = get_deepgram_api_key()
     if not api_key:
@@ -2101,6 +1968,12 @@ def transcribe_audio_bytes_with_deepgram(audio_bytes: bytes, content_type: str):
         raise EmptyAudioError("Empty transcript")
 
     return transcript
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+def robots_txt():
+    """Ask every crawler to stay out of the API."""
+    return "User-agent: *\nDisallow: /\n"
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -2255,28 +2128,37 @@ async def stripe_webhook(request: Request):
         400: {"model": BasicApiErrorResponse},
         401: {"model": BasicApiErrorResponse},
         403: {"model": BasicApiErrorResponse},
+        429: {"model": BasicApiErrorResponse},
         503: {"model": BasicApiErrorResponse},
         500: {"model": BasicApiErrorResponse},
     },
 )
 def generate_notes(payload: GenerateNotesRequest, request: Request):
+    """Picture to notes. Same notes shape, cleaning and limits as /api/notes-from-text:
+    one notes turn, counted only when the notes come back."""
     ai_user = authenticate_ai_request(request)
     if not ai_user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": capture.LOGIN_AGAIN_MESSAGE})
 
     gate = ai_email_gate(ai_user)
     if gate is not None:
         return gate
 
-    if not is_valid_base64_data_url(payload.image):
-        return JSONResponse(status_code=400, content={"error": "Invalid request"})
+    # Check the picture before using a turn, so a bad file costs nothing. The size check
+    # is cheap and comes first, so a huge picture is never decoded.
+    if len(payload.image or "") > MAX_NOTES_IMAGE_REQUEST_BYTES:
+        return JSONResponse(status_code=413, content={"error": IMAGE_TOO_BIG_MESSAGE})
+    try:
+        image_data_url = read_notes_image(payload.image)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": IMAGE_NOTES_BAD_PICTURE_MESSAGE})
 
     if not consume_ai_rate_limit_slot(
         ai_user["id"],
         "generate-notes",
         ai_user["subscription_status"],
     ):
-        return JSONResponse(status_code=429, content={"error": RATE_LIMIT_MESSAGE})
+        return JSONResponse(status_code=429, content={"error": capture.SLOW_DOWN_MESSAGE})
 
     with free_ai_turn(ai_user) as my_turn:
         if not my_turn:
@@ -2285,18 +2167,20 @@ def generate_notes(payload: GenerateNotesRequest, request: Request):
             not has_premium_subscription(ai_user["subscription_status"])
             and has_free_ai_daily_limit(ai_user["id"], "notes")
         ):
-            return JSONResponse(status_code=403, content={"error": "You made all your free notes for today. Come back tomorrow."})
+            return JSONResponse(status_code=403, content={"error": capture.DAILY_LIMIT_MESSAGE})
 
+        logger.info("Image to notes request chars=%s", len(image_data_url))
         try:
-            notes = generate_notes_with_ai(payload.image)
+            result = generate_notes_with_ai(image_data_url)
             record_ai_usage(ai_user["id"], "notes")
-            return {"notes": notes}
+            return {**result, "truncated": False}
         except AIServiceUnavailableError as exc:
-            logger.warning("AI note generation unavailable: %s", exc)
-            return JSONResponse(status_code=503, content={"error": str(exc)})
-        except Exception:
-            logger.exception("AI note generation failed")
-            return JSONResponse(status_code=500, content={"error": "AI processing failed"})
+            logger.warning("Image to notes unavailable: %s", type(exc).__name__)
+            return JSONResponse(status_code=503, content={"error": capture.NOTES_UNAVAILABLE_MESSAGE})
+        except Exception as exc:
+            # Exception type only: messages could carry the student's material.
+            logger.warning("Image to notes failed: %s", type(exc).__name__)
+            return JSONResponse(status_code=500, content={"error": capture.NOTES_FAILED_MESSAGE})
 
 
 @app.post(
@@ -2535,13 +2419,16 @@ def verify_email_code(payload: VerifyEmailCodeRequest, http_request: Request):
         if not user_row:
             return _code_error("incorrect")
         if user_row.get("email_verified"):
-            return session_response(user_row)
+            # Already checked: hand back the caller's own token. Issuing a new one
+            # here would let any signed-in token renew itself forever with no code.
+            caller_token = extract_token_from_authorization_header(http_request.headers.get("authorization"))
+            return session_response(user_row, access_token=caller_token)
         result = email_code_store.check_for_user(user_id, normalize_account_email(user_row["email"]), payload.code)
         if result.status != "ok":
             return _code_error(result.status)
         update_user(
             user_id,
-            {"email_verified": True, "email_verification_token": None, "email_verification_sent_at": None},
+            {"email_verified": True},
         )
         return session_response({**user_row, "email_verified": True})
 
@@ -2636,9 +2523,11 @@ def send_verification_email(user=Depends(get_current_user)):
     except Exception as exc:  # noqa: BLE001
         logger.warning("Verification code email could not be sent (%s)", type(exc).__name__)
         return auth_error(503, EMAIL_SEND_FAILED_MESSAGE, "email_send_failed")
-    if result.status == "cooldown":
-        return auth_error(429, RESEND_COOLDOWN_MESSAGE, "resend_cooldown", result.retry_after)
-    if result.status == "cap":
+    wait = _send_wait_error(result)
+    if wait:
+        return wait
+    if result.status == "inbox_cap":
+        # The account's own address, so saying so tells nobody anything new.
         return auth_error(429, TOO_MANY_TRIES_SHORT_MESSAGE, "rate_limited", result.retry_after)
     return JSONResponse(
         status_code=200,
@@ -2648,33 +2537,6 @@ def send_verification_email(user=Depends(get_current_user)):
             "resend_after_seconds": email_codes_module.RESEND_COOLDOWN_SECONDS,
         },
     )
-
-
-@app.get("/auth/verify", response_model=VerificationStatusResponse)
-def verify_email(token: str = Query(..., min_length=1)):
-    user_row = get_user_by_verification_token(token)
-    if not user_row:
-        return {"success": False, "message": "Invalid verification token"}
-
-    if is_email_verification_expired(user_row.get("email_verification_sent_at")):
-        update_user(
-            user_row["id"],
-            {
-                "email_verification_token": None,
-                "email_verification_sent_at": None,
-            },
-        )
-        return {"success": False, "message": "Verification token has expired"}
-
-    update_user(
-        user_row["id"],
-        {
-            "email_verified": True,
-            "email_verification_token": None,
-            "email_verification_sent_at": None,
-        },
-    )
-    return {"success": True, "message": "Email verified successfully"}
 
 
 @app.post("/auth/request-reset", response_model=VerificationStatusResponse)
@@ -2802,7 +2664,7 @@ def get_my_profile(user=Depends(get_current_user)):
         "theme_color": profile.get("theme_color"),
         "custom_theme_image_url": profile.get("custom_theme_image_url"),
         "timezone": profile.get("timezone"),
-        "theme_mode": profile.get("theme_mode"),
+        "theme_mode": read_theme_mode(profile.get("theme_mode")),
         "phone_number": profile.get("phone_number"),
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
@@ -2841,7 +2703,7 @@ def update_my_profile(payload: ProfileUpdateRequest, user=Depends(get_current_us
         "theme_color": updated_profile.get("theme_color"),
         "custom_theme_image_url": updated_profile.get("custom_theme_image_url"),
         "timezone": updated_profile.get("timezone"),
-        "theme_mode": updated_profile.get("theme_mode"),
+        "theme_mode": read_theme_mode(updated_profile.get("theme_mode")),
         "phone_number": updated_profile.get("phone_number"),
         "birthday": updated_profile.get("birthday"),
         "subscription_status": updated_profile.get("subscription_status") or "free",
@@ -2932,35 +2794,126 @@ def update_username(payload: UsernameUpdateRequest, user=Depends(get_current_use
     return {"message": "Username updated successfully", "username": payload.new_username}
 
 
-@app.put("/me/email", response_model=ProfileResponse)
-def update_email(payload: EmailUpdateRequest, user=Depends(get_current_user)):
-    normalized_email = str(payload.new_email).strip().lower()
-    existing_user = find_user_by_email(normalized_email)
-    if existing_user and existing_user["id"] != user["id"]:
-        raise HTTPException(status_code=400, detail="Email already registered")
+def check_current_password(user_row: dict, candidate: str) -> Optional[JSONResponse]:
+    """None when the password is right, else the error to return.
 
-    updated_user = update_user(
-        user["id"],
-        {
-            "email": normalized_email,
-            "email_verified": False,
-            "email_verification_token": None,
-            "email_verification_sent_at": None,
-        },
-    )
+    Limited per account: 5 tries per 15 minutes (a success clears it) and 10 per
+    day (a success does not), so a stolen sign-in can't keep guessing.
+    """
+    stored = user_row.get("password")
+    if not stored:
+        return auth_error(400, "Use Forgot password to set a password first, then try again.", "password_needed")
+    key = f"user:{user_row['id']}"
+    if not password_check_limiter.hit(key):
+        return auth_error(429, TOO_MANY_TRIES_SHORT_MESSAGE, "rate_limited", PASSWORD_CHECK_WINDOW_SECONDS)
+    if not password_check_daily_limiter.hit(key):
+        return auth_error(429, TOO_MANY_TRIES_SHORT_MESSAGE, "rate_limited", PASSWORD_CHECK_DAILY_WINDOW_SECONDS)
+    ok, _needs_rehash = verify_password(stored, candidate)
+    if not ok:
+        return auth_error(400, WRONG_CURRENT_PASSWORD_MESSAGE, "wrong_password")
+    password_check_limiter.reset(key)
+    return None
+
+
+@app.put(
+    "/me/email",
+    status_code=202,
+    response_model=EmailChangeStartResponse,
+    responses={
+        400: {"model": BasicApiErrorResponse},
+        403: {"model": BasicApiErrorResponse},
+        429: {"model": BasicApiErrorResponse},
+    },
+)
+def update_email(payload: EmailUpdateRequest, user=Depends(get_current_user)):
+    """Start an email change. Needs the current password.
+
+    The new address gets a code, and nothing changes until that code is sent to
+    /me/email/confirm. The answer is the same whether or not the address
+    already has an account, so this can't be used to look up emails. While the
+    account's code cooldown or cap is on, it says so before using a password try.
+    """
+    user_row = get_user_by_id(user["id"])
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user_row.get("role") == "admin":
+        return auth_error(403, "The admin email can't be changed here.", "admin_email_locked")
+    waiting = email_code_store.user_send_wait(user["id"])
+    if waiting:
+        return _send_wait_error(waiting)
+    password_error = check_current_password(user_row, payload.current_password)
+    if password_error:
+        return password_error
+
+    new_email = normalize_account_email(payload.new_email)
+    if new_email == normalize_account_email(user_row.get("email") or ""):
+        return auth_error(400, "That's already your email.", "same_email")
+
+    return _issue_email_change_code(user["id"], new_email, email_code_store.issue_for_user)
+
+
+@app.post(
+    "/me/email/resend",
+    status_code=202,
+    response_model=EmailChangeStartResponse,
+    responses={400: {"model": BasicApiErrorResponse}, 429: {"model": BasicApiErrorResponse}},
+)
+def resend_email_change_code(payload: EmailChangeResendRequest, user=Depends(get_current_user)):
+    """A new code for the email change already started, without the password again.
+
+    Only the address of the account's newest code works, and only until that code
+    is used; otherwise the answer is no_pending_change. Same answer for taken addresses.
+    """
+    user_row = get_user_by_id(user["id"])
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_email = normalize_account_email(payload.new_email)
+    if new_email == normalize_account_email(user_row.get("email") or ""):
+        return auth_error(400, NO_PENDING_EMAIL_CHANGE_MESSAGE, "no_pending_change")
+    return _issue_email_change_code(user["id"], new_email, email_code_store.reissue_for_user)
+
+
+@app.post(
+    "/me/email/confirm",
+    response_model=ProfileResponse,
+    responses={400: {"model": BasicApiErrorResponse}, 429: {"model": BasicApiErrorResponse}},
+)
+def confirm_email_change(payload: EmailChangeConfirmRequest, user=Depends(get_current_user)):
+    """Finish an email change with the code sent to the new address.
+
+    The new address counts as checked (the code proves the inbox), and the old
+    address gets a notice.
+    """
+    user_id = user["id"]
+    if not verify_code_email_limiter.hit(f"user:{user_id}"):
+        return auth_error(429, TOO_MANY_TRIES_SHORT_MESSAGE, "rate_limited", VERIFY_CODE_WINDOW_SECONDS)
+    user_row = get_user_by_id(user_id)
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_email = normalize_account_email(payload.new_email)
+    old_email = normalize_account_email(user_row.get("email") or "")
+    if new_email == old_email:
+        # A code for the current address is for /auth/verify-email, not this.
+        return _code_error("incorrect")
+    result = email_code_store.check_for_user(user_id, new_email, payload.code)
+    if result.status != "ok":
+        return _code_error(result.status)
+
+    with _signup_lock(new_email):
+        if find_user_by_email(new_email):
+            return auth_error(400, "That email already has a Luma account.", "email_taken")
+        try:
+            updated_user = update_user(user_id, {"email": new_email, "email_verified": True})
+        except Exception as exc:  # noqa: BLE001 - e.g. a parallel signup won the unique index
+            logger.warning("Email change failed (%s)", type(exc).__name__)
+            return auth_error(400, "We couldn't change your email. Try again.", "email_change_failed")
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Codes sent to the old address stop working, and the new address must be
-    # checked with a fresh code before AI tools unlock again.
-    # (Codes are also bound to the address they were sent to, so this is a second lock.)
-    try:
-        email_code_store.retire_for_user(user["id"])
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not retire old email codes (%s)", type(exc).__name__)
-    _send_code_best_effort(user["id"], normalized_email)
-
-    return build_profile_response(user["id"])
+    if old_email:
+        _run_email_job(_send_email_changed_notice, old_email, new_email)
+    return build_profile_response(user_id)
 
 
 def clear_user_memory_state(user_id: str) -> None:
@@ -2983,9 +2936,22 @@ def build_account_deletion_deps() -> account_deletion.DeletionDeps:
 @app.delete(
     "/me/account",
     response_model=AccountDeleteResponse,
-    responses={500: {"description": "Deletion incomplete; safe to retry"}},
+    responses={
+        400: {"model": BasicApiErrorResponse},
+        429: {"model": BasicApiErrorResponse},
+        500: {"description": "Deletion incomplete; safe to retry"},
+    },
 )
-def delete_account(user=Depends(get_current_user)):
+def delete_account(payload: AccountDeleteRequest, user=Depends(get_current_user)):
+    """Delete the account and its data. Needs the current password, so a
+    stolen sign-in alone can't do it."""
+    user_row = get_user_by_id(user["id"])
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+    password_error = check_current_password(user_row, payload.current_password)
+    if password_error:
+        return password_error
+
     report = account_deletion.delete_account_data(user["id"], build_account_deletion_deps())
     if not report.succeeded:
         return JSONResponse(
@@ -3034,7 +3000,10 @@ async def websocket_endpoint(websocket: WebSocket):
         return
 
     user_id = user["id"]
-    await connection_manager.connect(user_id, websocket)
+    # A browser drops the socket unless the server echoes the subprotocol it used.
+    offered = websocket.scope.get("subprotocols") or []
+    subprotocol = WS_TOKEN_SUBPROTOCOL if WS_TOKEN_SUBPROTOCOL in offered else None
+    await connection_manager.connect(user_id, websocket, subprotocol)
 
     try:
         while True:
@@ -3045,69 +3014,6 @@ async def websocket_endpoint(websocket: WebSocket):
         pass
     finally:
         await connection_manager.disconnect(user_id, websocket)
-
-@app.get("/users/search", response_model=List[UserSearchResponse])
-def search_users(query: str = Query(..., min_length=1, max_length=50)):
-    response = (
-        supabase.table("profiles")
-        .select("user_id, username, display_name, avatar_url")
-        .ilike("username", f"%{query}%")
-        .limit(20)
-        .execute()
-    )
-
-    if response is None or response.data is None:
-        return []
-
-    results = []
-    for row in response.data:
-        results.append(
-            {
-                "id": row["user_id"],
-                "username": row["username"],
-                "display_name": row.get("display_name"),
-                "avatar_url": row.get("avatar_url"),
-            }
-        )
-
-    return results
-
-
-@app.post("/internal/supabase/user-updated")
-async def supabase_user_updated(payload: dict, request: Request):
-    require_internal_webhook_secret(request)
-
-    # Do not log headers (they carry the webhook secret) or the payload (it can
-    # carry user records).
-    logger.info("Supabase webhook fired keys=%s", sorted(payload.keys()) if isinstance(payload, dict) else "-")
-
-    return {"status": "ok"}
-
-
-@app.post("/internal/supabase/user-updated-test")
-async def supabase_user_updated_test(payload: dict, request: Request):
-    require_internal_webhook_secret(request)
-    logger.info("Test webhook hit keys=%s", sorted(payload.keys()) if isinstance(payload, dict) else "-")
-    return {"status": "test-ok"}
-
-
-@app.get("/internal/debug/file")
-async def debug_file(request: Request):
-    require_internal_webhook_secret(request)
-    import os
-    return {
-        "cwd": os.getcwd(),
-        "file": str(Path(__file__).resolve()),
-        "listdir": os.listdir(),
-    }
-
-
-# ---------- Protected test route ----------
-
-@app.get("/protected")
-def protected_route(user=Depends(get_current_user)):
-    return {"message": f"Hello, user {user['id']}"}
-
 
 if (settings.EMAIL_FROM or "").strip().lower().rstrip(">").endswith("@resend.dev"):
     # Resend's test sender only delivers to the Resend account owner's own inbox,

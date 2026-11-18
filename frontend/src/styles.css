@@ -2256,31 +2256,6 @@ input[type="radio"] {
 
 /* ------------------------------------------------------- detail screens */
 
-.floating-publish {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 20;
-  min-height: 52px;
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-  padding: 0 24px;
-  color: var(--on-accent);
-  background: var(--accent);
-  box-shadow: var(--print), var(--lift);
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.floating-publish:hover {
-  transform: translateY(-2px);
-}
-
-.floating-publish.unpublish {
-  color: var(--danger);
-  background: var(--card);
-}
-
 .modal-backdrop,
 .sheet-backdrop {
   position: fixed;
@@ -2361,6 +2336,9 @@ input[type="radio"] {
     "preview preview"
     "help help";
   align-items: center;
+  /* The three cards stretch to the tallest one; keep the extra space at the bottom so the
+     radio rows line up across all three. */
+  align-content: start;
   gap: 8px 8px;
   min-height: 44px;
   border: 1.5px solid var(--field-border);
@@ -2962,16 +2940,6 @@ input[type="radio"] {
     bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
   }
 
-  .floating-publish {
-    right: 16px;
-    bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
-  }
-
-  /* Room under the last thing on the page for the Publish pill (52px) above the tab bar. */
-  .content:has(.floating-publish) {
-    padding-bottom: calc(var(--tabbar-h) + 22px + 52px + 24px + env(safe-area-inset-bottom));
-  }
-
   .score-ring {
     width: 140px;
     height: 140px;
@@ -3081,19 +3049,20 @@ input[type="radio"] {
   line-height: 1.5;
 }
 
+/* A long email address wraps instead of widening the page (code pages and Settings). */
 .auth-email {
   overflow-wrap: anywhere;
 }
 
-.auth-message-slot:empty {
+.message-slot:empty {
   display: none;
 }
 
-.auth-message-slot .notice {
+.message-slot .notice {
   margin-bottom: 0;
 }
 
-.auth-message-slot .notice:focus {
+.message-slot .notice:focus {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
@@ -3316,8 +3285,24 @@ input[aria-invalid="true"] {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 10px;
   cursor: pointer;
   font-weight: 700;
+}
+
+/* display: flex hides the browser's triangle, so draw a chevron that turns when open. */
+.danger-zone summary::before {
+  content: "";
+  flex: none;
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.danger-zone details[open] > summary::before {
+  transform: rotate(45deg);
 }
 
 /* ===================================================== accounts on this device */
@@ -3803,7 +3788,6 @@ button.account-row:hover {
 
 .search-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   max-width: 760px;
@@ -3813,8 +3797,13 @@ button.account-row:hover {
 .search-field {
   position: relative;
   display: flex;
-  flex: 1 1 260px;
+  flex: 1 1 0;
   min-width: 0;
+}
+
+/* The Search button stays on the same line as the box, even on phones. */
+.search-bar > button {
+  flex: none;
 }
 
 .search-field svg {
@@ -3942,6 +3931,78 @@ button.account-row:hover {
   .result-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 40px;
+  }
+}
+
+/* Discover: the list heading sits on the rule, and "Show newest" goes back to browsing. */
+.discover-page .section-head {
+  margin-bottom: 0;
+}
+
+/* Empty and "nothing found" sit on the ruled list like a row, not in a dashed box. */
+.discover-empty {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 4px 22px;
+}
+
+.discover-empty h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.discover-empty p {
+  margin: 0;
+}
+
+.discover-empty .hand-note {
+  margin: 6px 0 4px;
+}
+
+/* Grey placeholder rows while shared notes load (a sleeping server can take a while). */
+.discover-loading {
+  display: grid;
+  gap: 4px;
+}
+
+.discover-loading > p {
+  margin: 0;
+}
+
+.skeleton-list > li {
+  display: grid;
+  gap: 10px;
+  padding: 18px 4px;
+}
+
+.skeleton-line {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--line-strong);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-line.short {
+  width: 30%;
+  height: 10px;
+}
+
+.skeleton-line:last-child {
+  width: 72%;
+}
+
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
   }
 }
 
