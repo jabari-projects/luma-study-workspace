@@ -53,6 +53,8 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 Use a private, randomly generated `JWT_SECRET_KEY` that stays the same between server restarts. For example, generate one locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in the backend environment only. Do not rely on the development fallback for a deployed app.
 
+Optionally set `FEEDBACK_VOTER_KEY_SECRET` (made the same way) for the monthly feedback poll's one-vote-per-email check. Without it the poll uses `JWT_SECRET_KEY`. Change it only between polls: a new value while a poll is open lets someone who deleted their account and signed up again with the same email vote a second time in that poll.
+
 `SUPABASE_KEY` is accepted as an alternative to `SUPABASE_SERVICE_ROLE_KEY`. `FRONTEND_ORIGINS` accepts a comma-separated list or JSON array of allowed origins; `PUBLIC_APP_URL` is also recognized for the frontend origin. `APP_ENV` (or `ENV`) and `LOG_LEVEL` are optional deployment settings.
 
 Configure only the integrations you plan to use:
