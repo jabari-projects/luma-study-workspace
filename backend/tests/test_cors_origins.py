@@ -28,6 +28,7 @@ def preflight(origin: str):
         # Luma's own Vercel preview builds.
         "https://luma-frontend-dxgnch0h1-jabarimckinney213-7284s-projects.vercel.app",
         "https://luma-frontend-git-claude-polish-b-jabarimckinney213-7284s-projects.vercel.app",
+        "https://luma-frontend-jabarimckinney213-7284s-projects.vercel.app",
     ],
 )
 def test_luma_sites_are_allowed(origin):

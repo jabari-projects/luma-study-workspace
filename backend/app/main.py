@@ -302,7 +302,7 @@ origins = list(
 # Only Luma's own Vercel preview builds (this project, this team). Any other
 # *.vercel.app site is refused: anyone can host a page there.
 VERCEL_ORIGIN_REGEX = (
-    r"https://luma-frontend-[a-z0-9-]+-jabarimckinney213-7284s-projects\.vercel\.app"
+    r"https://luma-frontend(?:-[a-z0-9-]+)?-jabarimckinney213-7284s-projects\.vercel\.app"
 )
 
 logger.info(
