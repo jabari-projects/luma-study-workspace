@@ -28,11 +28,14 @@ import {
   chatbotAccountId as findChatbotAccountId,
   orderedAccounts,
   pickActive,
+  removeLegacyNoteDrafts,
   updateUser,
 } from "./accounts"
 import type { AccountBook } from "./accounts"
-import type { AccountSummary, AuthContextValue, LoginInput, SignupInput, VerifyEmailInput } from "./auth"
+import type { AccountSummary, AuthContextValue, LoginInput, SignedOutElsewhereInfo, SignupInput, VerifyEmailInput } from "./auth"
 import type { AuthSession, Profile } from "./api"
+import { sessionDraftStore, sweepAccountDrafts } from "./work/drafts"
+import { hasUnsavedWorkFor } from "./work/unsaved"
 
 type AuthState = {
   book: AccountBook
@@ -45,6 +48,11 @@ type StartState = AuthState & { lostBinding: boolean }
 // A reloaded or restored tab whose account was signed out while it was asleep shows the
 // "signed out" notice instead of quietly opening another account.
 function initialState(): StartState {
+  try {
+    removeLegacyNoteDrafts(window.localStorage)
+  } catch {
+    // Storage blocked: nothing old to remove.
+  }
   const book = readBook()
   const saved = getTabAccountId()
   const { id, lostBinding } = pickActive(book, saved, saved !== null)
@@ -60,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   /** The account whose profile a log in is fetching right now. */
   const [profileLoadingId, setProfileLoadingId] = useState<string | null>(null)
-  const [signedOutElsewhere, setSignedOutElsewhere] = useState<{ username: string } | null>(() =>
+  const [signedOutElsewhere, setSignedOutElsewhere] = useState<SignedOutElsewhereInfo | null>(() =>
     // The account is gone from the book, so its name is unknown.
     start.lostBinding ? { username: "This account" } : null,
   )
@@ -88,13 +96,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const previous = stateRef.current
       const book = readBook()
       const tabId = getTabAccountId()
+      // Accounts signed out in another tab: their drafts in THIS tab go too, unless this tab
+      // still has unsaved work for them (then they stay until the student signs in again or
+      // throws the work away).
+      for (const id of Object.keys(previous.book.accounts)) {
+        if (!book.accounts[id] && !hasUnsavedWorkFor(id)) sweepAccountDrafts(sessionDraftStore(), id)
+      }
       if (tabId) {
         const pick = pickActive(book, tabId, true)
         if (pick.lostBinding) {
-          // Show a notice instead of quietly moving this tab to someone else.
-          const username = previous.book.accounts[tabId]?.user.username ?? "This account"
+          // Show a notice instead of quietly moving this tab to someone else. With unsaved work
+          // the page stays open (held) and asks to sign in again instead.
+          const user = previous.book.accounts[tabId]?.user
           setTabAccountId(null)
-          setSignedOutElsewhere({ username })
+          setSignedOutElsewhere({
+            username: user?.username ?? "This account",
+            id: tabId,
+            email: user?.email,
+            held: hasUnsavedWorkFor(tabId),
+          })
         }
       } else if (!signedOutRef.current) {
         const pick = pickActive(book, null, false)
@@ -280,6 +300,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const dismissSignedOutElsewhere = useCallback(() => setSignedOutElsewhere(null), [])
 
+  const signInAgain = useCallback(
+    async (accountId: string, email: string, password: string) => {
+      const response = await api.post<AuthSession>("/login", { email, password }, { lumaAuth: "none" })
+      const user = response.data.user
+      if (user.id !== accountId) {
+        throw new Error("That's a different account.")
+      }
+      // The new token replaces the old one for this same account, and this tab uses it again.
+      writeStoredSession({ accessToken: response.data.access_token, user })
+      setSignedOutElsewhere(null)
+      resync()
+      refreshProfile(accountId).catch(() => undefined)
+    },
+    [refreshProfile, resync],
+  )
+
   const value = useMemo<AuthContextValue>(() => {
     const { book, tabId } = state
     const chatbotId = findChatbotAccountId(book)
@@ -300,7 +336,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileLoading: Boolean(tabId && tabId === profileLoadingId),
       isAuthenticated: signedIn,
       accounts,
-      activeAccountId: active ? tabId : null,
+      // While work is held after a sign-out elsewhere, the page keeps that account's id so
+      // nothing re-mounts and the unsaved words stay on screen.
+      activeAccountId: active ? tabId : signedOutElsewhere?.held ? (signedOutElsewhere.id ?? null) : null,
       activeAccount: accounts.find((account) => account.isActive) ?? null,
       chatbotAccountId: chatbotId,
       isChatbotAccount: Boolean(tabId && tabId === chatbotId),
@@ -316,6 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshProfile,
       setProfile,
       dismissSignedOutElsewhere,
+      signInAgain,
     }
   }, [
     dismissSignedOutElsewhere,
@@ -328,6 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshProfile,
     setProfile,
     signedOutElsewhere,
+    signInAgain,
     signup,
     state,
     switchAccount,

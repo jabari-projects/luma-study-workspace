@@ -409,8 +409,12 @@ test.describe("making notes", () => {
     const myTitle = uniqueTitle("Capitals", info)
     await title.fill(myTitle)
     await body.fill("Capital of France :: Paris\nCapital of Japan :: Tokyo")
-    await expect(page.getByText("Draft saved on this device.")).toBeVisible()
+    await expect(page.getByText("Not saved yet")).toBeVisible()
     await page.getByRole("button", { name: "Save note" }).click()
+    // The first save makes the note and keeps writing open; it saves by itself from now on.
+    await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}\/edit$/)
+    await expect(page.getByText(/^Saved at /)).toBeVisible()
+    await page.getByRole("button", { name: "Save changes" }).click()
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
     await expect(pageTitle(page)).toHaveText(myTitle)
     await expect(page.getByText(/We found 2 cards in your note/)).toBeVisible()
@@ -421,7 +425,7 @@ test.describe("making notes", () => {
     // Saved, so the draft is gone: a new note starts fresh.
     await page.goto("/notes/new")
     await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("")
-    await expect(page.getByText("Draft saved on this device.")).toHaveCount(0)
+    await expect(page.getByText("You have changes from earlier in this tab.")).toHaveCount(0)
   })
 
   test("edit a note: change the title and words, save, and the new title shows", async ({ page }, info) => {
@@ -437,17 +441,19 @@ test.describe("making notes", () => {
     await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("Cells are tiny.")
     await expectNoSeriousA11yIssues(page, "note-edit", info)
 
-    // Cancel goes back without saving.
-    await page.getByRole("link", { name: "Cancel" }).click()
+    // Going back with nothing changed sends nothing.
+    await page.getByRole("link", { name: "Back to the note" }).click()
     await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
     await page.getByRole("link", { name: "Edit", exact: true }).click()
 
     const newTitle = uniqueTitle("New title", info)
+    const sent = page.waitForRequest(
+      (r) => r.url().endsWith(`/notes/${id}`) && r.method() === "PUT" && r.postDataJSON()?.content === "Cells are tiny.\nThey have a nucleus.",
+    )
     await title.fill(newTitle)
     await page.getByRole("textbox", { name: "Your notes" }).fill("Cells are tiny.\nThey have a nucleus.")
-    const sent = page.waitForRequest((r) => r.url().endsWith(`/notes/${id}`) && r.method() === "PUT")
     await page.getByRole("button", { name: "Save changes" }).click()
-    expect((await sent).postDataJSON()).toMatchObject({ title: newTitle, content: "Cells are tiny.\nThey have a nucleus." })
+    expect((await sent).postDataJSON()).toMatchObject({ title: newTitle, content: "Cells are tiny.\nThey have a nucleus.", expected_version: 1 })
     await expect(page).toHaveURL(new RegExp(`/notes/${id}$`))
     await expect(pageTitle(page)).toHaveText(newTitle)
     await expect(page.getByRole("article", { name: newTitle })).toContainText("They have a nucleus.")
@@ -818,30 +824,35 @@ test.describe("making notes", () => {
     await expect(page.getByRole("tab", { name: /^Summaries/ })).toHaveAttribute("aria-selected", "true")
   })
 
-  test("a new note's draft stays on this device, and signing out clears it", async ({ page }) => {
+  test("a new note's draft stays in this tab only, and signing out clears it", async ({ page }) => {
     await page.goto("/notes/new")
     const body = page.getByRole("textbox", { name: "Your notes" })
     await body.fill("Half a thought about volcanoes")
-    await expect(page.getByText("Draft saved on this device.")).toBeVisible()
+    await expect(page.getByText("Not saved yet")).toBeVisible()
     const draftKeys = () =>
-      page.evaluate(() => Object.keys(window.localStorage).filter((key) => key.startsWith("luma.noteDraft:")))
-    expect(await draftKeys()).toEqual(["luma.noteDraft:u1"])
+      page.evaluate(() => Object.keys(window.sessionStorage).filter((key) => key.startsWith("luma.draft:v1:")))
+    await expect.poll(draftKeys).toEqual(["luma.draft:v1:u1:note:new"])
+    // Nothing is kept on the device after the tab closes (no localStorage copy).
+    expect(await page.evaluate(() => Object.keys(window.localStorage).filter((key) => /draft/i.test(key)))).toEqual([])
 
-    // It comes back after a reload.
+    // It is offered again after a reload in this tab.
+    page.once("dialog", (dialog) => void dialog.accept())
     await page.reload()
+    await expect(page.getByText("You have changes from earlier in this tab.")).toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("")
+    await page.getByRole("button", { name: "Use them" }).click()
     await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("Half a thought about volcanoes")
-    await expect(page.getByText("Draft saved on this device.")).toBeVisible()
 
     // Signing out asks first (the note is not saved yet), then forgets the draft.
-    page.once("dialog", (dialog) => {
-      expect(dialog.message()).toContain("Your work on this page is not saved yet.")
-      void dialog.accept()
-    })
     await page.getByRole("button", { name: /^Accounts/ }).click()
     await page
       .getByRole("dialog", { name: "Accounts" })
       .getByRole("button", { name: `Sign out of ${SEEDED.demo.username}` })
       .click()
+    const ask = page.getByRole("alertdialog", { name: "You have work that isn't saved yet." })
+    await expect(ask).toContainText("Signing out throws away work that isn't saved.")
+    await expect(ask.getByRole("button", { name: "Stay and save" })).toBeFocused()
+    await ask.getByRole("button", { name: "Sign out anyway" }).click()
     await expect(page).not.toHaveURL(/\/notes\/new/)
     await expect.poll(draftKeys).toEqual([])
   })

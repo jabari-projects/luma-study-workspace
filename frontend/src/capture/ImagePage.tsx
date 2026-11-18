@@ -8,7 +8,9 @@ import { Scribble } from "../ui/Scribble"
 import { NOTES_HUB } from "../notes/paths"
 import { CaptureError, makeNotesFromImage } from "./capture-api"
 import type { NotesDraft } from "./capture-api"
+import { DraftOffer } from "../work/DraftOffer"
 import { LimitNudge, NotesWorkbench, WorkingSteps } from "./Workbench"
+import { useCaptureWork } from "./useCaptureWork"
 
 const ACCEPTED_IMAGES = "image/png,image/jpeg,image/webp"
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024
@@ -30,6 +32,11 @@ export function ImagePage() {
   // Each pick gets a number, so a slow read of an older picture is ignored.
   const pickRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  // The notes wait here for the student. A text-only copy stays in this tab (never the picture).
+  const work = useCaptureWork("capture-image", draft, "", () => {
+    setDraft(null)
+    setStage("pick")
+  })
 
   const readImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -83,6 +90,7 @@ export function ImagePage() {
 
   const startOver = () => {
     pickRef.current += 1
+    work.renewKeys()
     setDraft(null)
     setImageData(null)
     setFileName("")
@@ -106,6 +114,19 @@ export function ImagePage() {
         </div>
       </header>
 
+      {work.offer && !draft ? (
+        <DraftOffer
+          text="You have notes from earlier in this tab."
+          onUse={() => {
+            const restored = work.takeOffer()
+            if (restored?.draft) {
+              setDraft(restored.draft)
+              setStage("review")
+            }
+          }}
+          onThrowAway={work.dropOffer}
+        />
+      ) : null}
       {limit ? <LimitNudge message={limit} onClose={() => setLimit(null)} /> : null}
       <NoticeBanner notice={error ? { type: "error", text: error } : null} />
 
@@ -151,7 +172,18 @@ export function ImagePage() {
           {stage === "working" ? (
             <WorkingSteps steps={["Reading your image...", "Writing notes...", "Making cards..."]} current={step} />
           ) : null}
-          {stage === "review" && draft ? <NotesWorkbench draft={draft} onChange={setDraft} onStartOver={startOver} /> : null}
+          {stage === "review" && draft ? (
+            <NotesWorkbench
+              draft={draft}
+              onChange={setDraft}
+              onStartOver={startOver}
+              keys={work.keys}
+              onSaved={() => {
+                setDraft(null)
+                work.renewKeys()
+              }}
+            />
+          ) : null}
           {stage === "pick" && !draft ? (
             <aside className="capture-tip">
               <h2>How it works</h2>

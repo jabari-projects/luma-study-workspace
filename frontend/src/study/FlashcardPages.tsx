@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react"
+import type { FocusEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
+import { toast } from "sonner"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import {
   ArrowLeft,
@@ -26,6 +27,12 @@ import { ShareControl } from "../ui/Share"
 import { sharedLine, useShareName } from "../ui/sharing"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
+import { ConflictPanel, YourVersionBox } from "../work/ConflictPanel"
+import { DraftOffer } from "../work/DraftOffer"
+import { SaveStatus } from "../work/SaveStatus"
+import { clearDraft, readDraft, sessionDraftStore } from "../work/drafts"
+import type { Draft } from "../work/drafts"
+import { newCreateKey, toReply, useAutosave } from "../work/useAutosave"
 import {
   buildSession,
   deckStats,
@@ -295,31 +302,243 @@ function parsePastedCards(text: string): DraftCard[] {
     .filter((card): card is DraftCard => card !== null)
 }
 
+type DeckFields = { title: string; tags: string; cards: DraftCard[] }
+
+/** Autosave waits this long after the last change (B.4). */
+const DECK_AUTOSAVE_MS = 2000
+
+// A new deck becomes its edit page after the first save, with its words and version.
+const justCreatedDecks = new Map<string, { fields: DeckFields; version: number; savedAt: number | null }>()
+
+function deckFieldsFrom(deck: Deck): DeckFields {
+  return {
+    title: deck.title === "Untitled deck" ? "" : deck.title,
+    tags: deck.tags.join(", "),
+    cards: deck.cards.length > 0 ? deck.cards.map(({ id, front, back }) => ({ id, front, back, review: null })) : [emptyCard()],
+  }
+}
+
+function isDeckFields(value: unknown): value is DeckFields {
+  const v = value as Partial<DeckFields> | null
+  return Boolean(
+    v &&
+      typeof v.title === "string" &&
+      typeof v.tags === "string" &&
+      Array.isArray(v.cards) &&
+      v.cards.every((card) => card && typeof card.id === "string" && typeof card.front === "string" && typeof card.back === "string"),
+  )
+}
+
+/** Why this deck can't be saved yet, or null. */
+function deckProblem(fields: DeckFields): string | null {
+  if (!fields.title.trim()) return "Give your deck a title."
+  if (fields.cards.some((card) => Boolean(card.front.trim()) !== Boolean(card.back.trim()))) {
+    return "Some cards are missing a question or an answer."
+  }
+  if (!fields.cards.some((card) => card.front.trim() && card.back.trim())) {
+    return "Add at least one card with a question and an answer."
+  }
+  return null
+}
+
+/** What the server stores: cards with words only. Review progress is never sent from here. */
+function deckBody(fields: DeckFields) {
+  return {
+    title: fields.title.trim(),
+    tags: fields.tags
+      .split(",")
+      .map((tag) => tag.trim().replace(/^#/, ""))
+      .filter(Boolean),
+    cards: fields.cards
+      .map((card) => ({ id: card.id, front: card.front.trim(), back: card.back.trim() }))
+      .filter((card) => card.front && card.back),
+  }
+}
+
+const deckText = (fields: DeckFields) =>
+  [fields.title.trim(), ...fields.cards.filter((card) => card.front.trim() || card.back.trim()).map((card) => `${card.front} - ${card.back}`)]
+    .filter(Boolean)
+    .join("\n")
+
+/** Only the words, as a draft in this tab (text only). */
+const deckDraftData = (fields: DeckFields) => ({
+  title: fields.title,
+  tags: fields.tags,
+  cards: fields.cards.map(({ id, front, back }) => ({ id, front, back })),
+})
+
+function fromDraft(value: unknown): DeckFields | null {
+  if (!isDeckFields(value)) return null
+  return { ...value, cards: value.cards.map(({ id, front, back }) => ({ id, front, back, review: null })) }
+}
+
+/**
+ * Make a deck (/flashcards/new) or change one (/flashcards/:id/edit). A saved deck saves by
+ * itself a moment after each change. A new deck is saved with "Save deck" first.
+ */
 export function DeckEditorPage() {
   const { itemId } = useParams()
-  const isNew = !itemId
+  // This tab's account when the page opened. Saving goes to it, even if the tab switches.
+  const [accountId] = useState(() => getTabAccountId())
+  if (!itemId) return <NewDeck key="new" accountId={accountId} />
+  return <LoadDeck key={itemId} accountId={accountId} itemId={itemId} />
+}
+
+function NewDeck({ accountId }: { accountId: string | null }) {
+  const [start, setStart] = useState(() => {
+    const draft = readDraft(sessionDraftStore(), getTabAccountId(), accountId, "deck", "new")
+    const fields = draft ? fromDraft(draft.data) : null
+    return { round: 0, draft: draft && fields ? { ...draft, data: fields } : null, createKey: (draft && fields && draft.createKey) || newCreateKey() }
+  })
+  return (
+    <DeckForm
+      key={start.round}
+      accountId={accountId}
+      itemId={null}
+      version={null}
+      createKey={start.createKey}
+      initial={{ title: "", tags: "", cards: [emptyCard(), emptyCard()] }}
+      offer={start.draft}
+      onThrowAwayOffer={() => {
+        clearDraft(sessionDraftStore(), accountId, "deck", "new")
+        setStart((current) => ({ round: current.round + 1, draft: null, createKey: newCreateKey() }))
+      }}
+    />
+  )
+}
+
+function LoadDeck({ accountId, itemId }: { accountId: string | null; itemId: string }) {
+  const [handoff] = useState(() => justCreatedDecks.get(itemId) ?? null)
+  const { deck, loading, error } = useDeck(handoff ? null : itemId)
+  useEffect(() => {
+    justCreatedDecks.delete(itemId)
+  }, [itemId])
+  const [draft] = useState(() => {
+    const found = handoff ? null : readDraft(sessionDraftStore(), getTabAccountId(), accountId, "deck", itemId)
+    const fields = found ? fromDraft(found.data) : null
+    return found && fields ? { ...found, data: fields } : null
+  })
+
+  if (handoff) {
+    return (
+      <DeckForm
+        accountId={accountId}
+        itemId={itemId}
+        version={handoff.version}
+        savedAt={handoff.savedAt}
+        createKey={null}
+        initial={handoff.fields}
+        offer={null}
+      />
+    )
+  }
+  if (loading) return <LoadingCard text="Opening your deck..." />
+  if (!deck) {
+    return (
+      <>
+        <PageHeader eyebrow="Edit deck" title="Deck not found" />
+        <NoticeBanner notice={{ type: "error", text: error ?? "We could not find this deck." }} />
+        <Link className="secondary-button" to={STUDY_HUB}>
+          Back to Study
+        </Link>
+      </>
+    )
+  }
+  return (
+    <DeckForm
+      accountId={accountId}
+      itemId={itemId}
+      version={typeof deck.version === "number" ? deck.version : 1}
+      createKey={null}
+      initial={deckFieldsFrom(deck)}
+      currentDeck={deck}
+      offer={draft}
+    />
+  )
+}
+
+function DeckForm({
+  accountId,
+  itemId,
+  version,
+  createKey,
+  initial,
+  currentDeck,
+  offer,
+  onThrowAwayOffer,
+  savedAt = null,
+}: {
+  accountId: string | null
+  itemId: string | null
+  version: number | null
+  savedAt?: number | null
+  createKey: string | null
+  initial: DeckFields
+  currentDeck?: Deck
+  offer: Draft<DeckFields> | null
+  onThrowAwayOffer?: () => void
+}) {
+  const isNew = itemId === null
   const navigate = useNavigate()
-  const { deck, loading, error } = useDeck(isNew ? null : itemId)
-  const [title, setTitle] = useState("")
-  const [tags, setTags] = useState("")
-  const [cards, setCards] = useState<DraftCard[]>(() => [emptyCard(), emptyCard()])
+  const [fields, setFields] = useState<DeckFields>(initial)
+  const { title, tags, cards } = fields
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState("")
   const [notice, setNotice] = useState<Notice | null>(null)
   const [saving, setSaving] = useState(false)
+  const [mine, setMine] = useState<string | null>(null)
+  const [pendingOffer, setPendingOffer] = useState<Draft<DeckFields> | null>(() =>
+    offer && (offer.baseVersion ?? null) === (version ?? null) ? offer : null,
+  )
+  const [draftConflict, setDraftConflict] = useState<DeckFields | null>(() =>
+    offer && (offer.baseVersion ?? null) !== (version ?? null) ? offer.data : null,
+  )
+  const [copyBusy, setCopyBusy] = useState(false)
+  const copyKey = useRef<string | null>(null)
   const [listRef] = useAutoAnimate<HTMLOListElement>()
 
-  useEffect(() => {
-    if (!isNew && deck) {
-      setTitle(deck.title === "Untitled deck" ? "" : deck.title)
-      setTags(deck.tags.join(", "))
-      setCards(deck.cards.length > 0 ? deck.cards : [emptyCard()])
-    }
-  }, [deck, isNew])
+  const autosave = useAutosave<DeckFields, Deck>({
+    label: "Your deck",
+    accountId,
+    itemId,
+    version,
+    createKey,
+    savedAt,
+    debounceMs: DECK_AUTOSAVE_MS,
+    autosave: true,
+    textOf: deckText,
+    rowHas: (row, sent) => {
+      const stored = normalizeDeck(row)
+      const words = deckBody(sent).cards
+      return stored.title === deckBody(sent).title && JSON.stringify(stored.cards.map(({ id, front, back }) => ({ id, front, back }))) === JSON.stringify(words)
+    },
+    draft: { kind: "deck", data: deckDraftData },
+    send: (request, config) => {
+      const why = deckProblem(request.content)
+      if (why) return Promise.resolve({ kind: "http", status: 422, data: { detail: why }, retryAfterHeader: null })
+      if (request.mode === "create") {
+        return toReply(() =>
+          api.post<Deck>("/flashcards", deckBody(request.content), {
+            ...config,
+            headers: { ...config.headers, "Idempotency-Key": request.createKey ?? newCreateKey() },
+          }),
+        )
+      }
+      return toReply(() =>
+        api.put<Deck>(`/flashcards/${request.itemId}`, { ...deckBody(request.content), expected_version: request.expectedVersion }, config),
+      )
+    },
+  })
+  const { snapshot } = autosave
+  const showConflict = snapshot.state === "conflict" || snapshot.state === "gone" || draftConflict !== null
+  const conflictDeck = snapshot.state === "conflict" ? snapshot.current : draftConflict ? (currentDeck ?? null) : null
 
-  const updateCard = (id: string, side: "front" | "back", value: string) => {
-    setCards((current) => current.map((card) => (card.id === id ? { ...card, [side]: value } : card)))
+  const update = (next: DeckFields) => {
+    setFields(next)
+    autosave.change(next)
   }
+  const updateCard = (id: string, side: "front" | "back", value: string) =>
+    update({ ...fields, cards: cards.map((card) => (card.id === id ? { ...card, [side]: value } : card)) })
 
   const addPasted = () => {
     const parsed = parsePastedCards(pasteText)
@@ -327,56 +546,89 @@ export function DeckEditorPage() {
       setNotice({ type: "error", text: "Put one card on each line, like: Question - Answer" })
       return
     }
-    setCards((current) => [...current.filter((card) => card.front.trim() || card.back.trim()), ...parsed])
+    update({ ...fields, cards: [...cards.filter((card) => card.front.trim() || card.back.trim()), ...parsed] })
     setPasteText("")
     setPasteOpen(false)
     setNotice({ type: "success", text: `Added ${parsed.length} card${parsed.length === 1 ? "" : "s"}.` })
   }
 
+  // Leaving the form (not just moving between its fields) saves right away.
+  const onBlur = (event: FocusEvent<HTMLFormElement>) => {
+    if (isNew) return
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void autosave.flush()
+  }
+
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setNotice(null)
-    const ready = cards
-      .map((card) => ({ ...card, front: card.front.trim(), back: card.back.trim() }))
-      .filter((card) => card.front && card.back)
-    const half = cards.filter((card) => Boolean(card.front.trim()) !== Boolean(card.back.trim()))
-
-    if (!title.trim()) {
-      setNotice({ type: "error", text: "Give your deck a title." })
+    const why = deckProblem(fields)
+    if (why) {
+      setNotice({ type: "error", text: why })
       return
     }
-    if (half.length > 0) {
-      setNotice({ type: "error", text: "Some cards are missing a question or an answer." })
-      return
-    }
-    if (ready.length === 0) {
-      setNotice({ type: "error", text: "Add at least one card with a question and an answer." })
-      return
-    }
-
-    const payload = {
-      title: title.trim(),
-      tags: tags
-        .split(",")
-        .map((tag) => tag.trim().replace(/^#/, ""))
-        .filter(Boolean),
-      cards: ready,
-    }
-
     setSaving(true)
-    try {
-      const response = isNew
-        ? await api.post<Deck>("/flashcards", payload)
-        : await api.put<Deck>(`/flashcards/${itemId}`, payload)
-      navigate(`/flashcards/${response.data.id}`, { replace: true })
-    } catch (err: unknown) {
-      setNotice({ type: "error", text: getErrorMessage(err, "Could not save this deck.") })
-    } finally {
-      setSaving(false)
+    if (isNew) autosave.change(fields)
+    const saved = await autosave.flush({ allowCreate: true })
+    setSaving(false)
+    if (!saved) return // The save line says why, and the cards stay here.
+    if ((getTabAccountId() ?? null) !== accountId) return
+    if (isNew) {
+      const now = autosave.peek()
+      if (!now?.itemId || now.version === null) return
+      justCreatedDecks.set(now.itemId, { fields, version: now.version, savedAt: now.savedAt })
+      navigate(`/flashcards/${now.itemId}/edit`, { replace: true })
+      return
+    }
+    navigate(`/flashcards/${itemId}`, { replace: true })
+  }
+
+  const saveMineAsNew = async () => {
+    const words = draftConflict ?? fields
+    if (deckProblem(words)) {
+      setNotice({ type: "error", text: deckProblem(words)! })
+      return
+    }
+    setCopyBusy(true)
+    copyKey.current = copyKey.current ?? newCreateKey()
+    const key = copyKey.current
+    const reply = await toReply(() =>
+      api.post<Deck>("/flashcards", deckBody(words), { lumaAccountId: accountId ?? undefined, headers: { "Idempotency-Key": key } }),
+    )
+    setCopyBusy(false)
+    if (reply.kind !== "ok" || !reply.row || typeof reply.row.version !== "number") {
+      setNotice({ type: "error", text: "We couldn't save a copy. Your cards are still here. Try again." })
+      return
+    }
+    autosave.discard()
+    if (draftConflict) clearDraft(sessionDraftStore(), accountId, "deck", itemId ?? "new")
+    toast.success("Saved yours as a new deck.")
+    const created = normalizeDeck(reply.row)
+    justCreatedDecks.set(created.id, { fields: deckFieldsFrom(created), version: reply.row.version, savedAt: Date.now() })
+    navigate(`/flashcards/${created.id}/edit`, { replace: true })
+  }
+
+  const seeNewer = () => {
+    const row = conflictDeck
+    if (!row) return
+    setMine(deckText(draftConflict ?? fields))
+    setFields(deckFieldsFrom(normalizeDeck(row)))
+    if (draftConflict) {
+      clearDraft(sessionDraftStore(), accountId, "deck", itemId ?? "new")
+      setDraftConflict(null)
+    } else {
+      autosave.takeTheirs(row)
     }
   }
 
-  if (!isNew && loading) return <LoadingCard text="Opening your deck..." />
+  const keepMine = () => {
+    if (draftConflict) {
+      update(draftConflict)
+      setDraftConflict(null)
+      return
+    }
+    const current = snapshot.current
+    if (current && typeof current.version === "number") autosave.keepMine(current.version)
+  }
 
   return (
     <>
@@ -388,23 +640,51 @@ export function DeckEditorPage() {
             <Scribble type="underline">deck</Scribble>
           </>
         }
-        description="Question on the front. Answer on the back."
+        description={isNew ? "Question on the front. Answer on the back." : "Luma saves your changes as you go."}
         actions={
           <Link className="ghost-button" to={isNew ? "/flashcards" : `/flashcards/${itemId}`}>
             <ArrowLeft weight="bold" aria-hidden="true" /> Back
           </Link>
         }
       />
-      <NoticeBanner notice={!isNew && error ? { type: "error", text: error } : notice} />
-      <form className="deck-editor" onSubmit={save}>
+      <NoticeBanner notice={notice} />
+      {showConflict ? (
+        <ConflictPanel
+          noun="deck"
+          gone={snapshot.state === "gone"}
+          busy={copyBusy}
+          onSeeNewer={seeNewer}
+          onKeepMine={keepMine}
+          onSaveAsNew={() => void saveMineAsNew()}
+          onThrowAway={() => {
+            autosave.discard()
+            navigate(STUDY_HUB, { replace: true })
+          }}
+        />
+      ) : null}
+      {mine !== null ? <YourVersionBox text={mine} onClose={() => setMine(null)} /> : null}
+      {pendingOffer ? (
+        <DraftOffer
+          onUse={() => {
+            update(pendingOffer.data)
+            setPendingOffer(null)
+          }}
+          onThrowAway={() => {
+            setPendingOffer(null)
+            if (onThrowAwayOffer) onThrowAwayOffer()
+            else clearDraft(sessionDraftStore(), accountId, "deck", itemId ?? "new")
+          }}
+        />
+      ) : null}
+      <form className="deck-editor" onSubmit={save} onBlur={onBlur}>
         <section className="editor-head">
           <label>
             Title
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" maxLength={200} />
+            <input value={title} onChange={(event) => update({ ...fields, title: event.target.value })} placeholder="Title" maxLength={200} />
           </label>
           <label>
             Tags
-            <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Add tags (optional)" />
+            <input value={tags} onChange={(event) => update({ ...fields, tags: event.target.value })} placeholder="Add tags (optional)" />
           </label>
         </section>
 
@@ -436,7 +716,7 @@ export function DeckEditorPage() {
                 type="button"
                 className="icon-button"
                 aria-label={`Remove card ${index + 1}`}
-                onClick={() => setCards((current) => (current.length > 1 ? current.filter((c) => c.id !== card.id) : [emptyCard()]))}
+                onClick={() => update({ ...fields, cards: cards.length > 1 ? cards.filter((c) => c.id !== card.id) : [emptyCard()] })}
               >
                 <Trash aria-hidden="true" />
               </button>
@@ -445,7 +725,7 @@ export function DeckEditorPage() {
         </ol>
 
         <div className="editor-tools">
-          <button type="button" className="secondary-button" onClick={() => setCards((current) => [...current, emptyCard()])}>
+          <button type="button" className="secondary-button" onClick={() => setFields({ ...fields, cards: [...cards, emptyCard()] })}>
             <Plus weight="bold" aria-hidden="true" /> Add card
           </button>
           <button type="button" className="ghost-button" onClick={() => setPasteOpen((open) => !open)} aria-expanded={pasteOpen}>
@@ -472,10 +752,12 @@ export function DeckEditorPage() {
 
         <div className="sticky-save">
           <span>{cards.filter((card) => card.front.trim() && card.back.trim()).length} cards ready</span>
-          <button type="submit" className="primary-button" disabled={saving}>
+          <SaveStatus snapshot={snapshot} onRetry={autosave.retry} accountId={accountId} draftProblem={autosave.draftProblem} />
+          <button type="submit" className="primary-button" disabled={saving || showConflict || (isNew && Boolean(autosave.editBlocked))}>
             {saving ? "Saving..." : "Save deck"}
           </button>
         </div>
+        {autosave.editBlocked ? <p className="field-hint">{autosave.editBlocked}</p> : null}
       </form>
     </>
   )
@@ -510,7 +792,8 @@ export function DeckPage() {
 
   const remove = async () => {
     try {
-      await api.delete(`/flashcards/${deck.id}`)
+      // Delete it in the account that showed this deck, even if the tab switches meanwhile.
+      await api.delete(`/flashcards/${deck.id}`, { lumaAccountId: getTabAccountId() ?? undefined })
       navigate(STUDY_HUB, { replace: true })
     } catch (err: unknown) {
       setNotice({ type: "error", text: getErrorMessage(err, "Could not delete this deck.") })
@@ -753,9 +1036,10 @@ function StudySession({
   practiceAll: boolean
   onRestart: (cards: DeckCard[]) => void
 }) {
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const onSaveError = useCallback((message: string) => setNotice({ type: "error", text: message }), [])
-  const saveProgress = useProgressSaver(deck.id, onSaveError)
+  const progressSaver = useProgressSaver(deck.id)
+  const saveProgress = progressSaver.record
+  // Show the save line only when a grade could not be saved (offline, failed, signed out...).
+  const progressProblem = !["clean", "saved", "saving", "dirty"].includes(progressSaver.snapshot.state)
 
   const [queue, setQueue] = useState<DeckCard[]>(() => firstQueue(deck, practiceAll))
   const [cards, setCards] = useState<DeckCard[]>(deck.cards)
@@ -779,7 +1063,7 @@ function StudySession({
 
       const nextCards = cards.map((card) => (card.id === updated.id ? updated : card))
       setCards(nextCards)
-      void saveProgress(nextCards)
+      saveProgress(updated)
       setReviewCount((count) => count + 1)
 
       setResults((prev) => {
@@ -889,7 +1173,9 @@ function StudySession({
             </ul>
           </section>
         ) : null}
-        <NoticeBanner notice={notice} />
+        {progressProblem ? (
+          <SaveStatus snapshot={progressSaver.snapshot} onRetry={progressSaver.retry} accountId={progressSaver.accountId} />
+        ) : null}
         <div className="button-row center">
           <button type="button" className="secondary-button" onClick={() => onRestart(cards)}>
             <ArrowsClockwise weight="bold" aria-hidden="true" /> Practice more
@@ -917,7 +1203,9 @@ function StudySession({
         </div>
         <span className="study-count">{queue.length} left</span>
       </header>
-      <NoticeBanner notice={notice} />
+      {progressProblem ? (
+          <SaveStatus snapshot={progressSaver.snapshot} onRetry={progressSaver.retry} accountId={progressSaver.accountId} />
+        ) : null}
 
       <div className="study-stage" ref={stageRef} tabIndex={0} onKeyDown={onKey} aria-label="Flashcard. Press space to flip.">
         <AnimatePresence mode="popLayout" initial={false}>

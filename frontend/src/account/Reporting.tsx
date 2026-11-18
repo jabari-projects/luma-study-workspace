@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { Flag } from "@phosphor-icons/react"
 
-import { api, getErrorMessage } from "../api"
+import { api, getErrorMessage, getTabAccountId } from "../api"
 import { NoticeBanner, PageHeader } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
@@ -50,7 +50,12 @@ export function ReportButton({ itemType, itemId, title }: { itemType: StudyType;
     setSending(true)
     setNotice(null)
     try {
-      await api.post("/public/reports", { item_type: itemType, item_id: itemId, reason, details: details.trim() || null })
+      // Sent from the account that showed this item, even if the tab switches meanwhile.
+      await api.post(
+        "/public/reports",
+        { item_type: itemType, item_id: itemId, reason, details: details.trim() || null },
+        { lumaAccountId: getTabAccountId() ?? undefined },
+      )
       setSent(true)
       setNotice({ type: "success", text: "Thanks. A Luma helper will look at this." })
     } catch (error: unknown) {
@@ -197,7 +202,7 @@ export function AdminReportsPage() {
 
   const update = async (report: Report, next: string) => {
     try {
-      await api.patch(`/admin/reports/${report.id}`, { status: next })
+      await api.patch(`/admin/reports/${report.id}`, { status: next }, { lumaAccountId: getTabAccountId() ?? undefined })
       setNotice({ type: "success", text: `Marked as ${next}.` })
       setReloadKey((key) => key + 1)
     } catch (error: unknown) {

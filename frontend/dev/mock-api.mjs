@@ -18,6 +18,10 @@
 //                                          included (an old profile with no color, say); the real
 //                                          PUT /me/profile cannot clear a field, so neither can ours
 //   POST /__test/skip-code-wait {"email": "..."}  ends that account's 60 s wait between codes
+//   POST /__test/slow {"path": "/notes", "ms": 4000, "times": 1}  the next saves to that path wait first
+//   POST /__test/fail {"path": "/notes", "mode": "500" | "drop-after-commit" | "drop-before-commit", "times": 1}
+//                                          "drop-after-commit" saves, then cuts the connection (a lost answer)
+//   POST /__test/edit-elsewhere {"kind": "notes", "id": "...", "fields": {...}}  another tab saves (version + 1)
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
 import { randomInt, randomUUID } from "node:crypto"
@@ -180,7 +184,7 @@ function send(res, code, body) {
     "content-type": "application/json",
     "access-control-allow-origin": currentOrigin,
     "access-control-allow-credentials": "true",
-    "access-control-allow-headers": "authorization, content-type",
+    "access-control-allow-headers": "authorization, content-type, idempotency-key, x-luma-edit-session",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     // Like the backend: nothing the API serves belongs in a search engine.
     "x-robots-tag": "noindex, nofollow",
@@ -189,6 +193,71 @@ function send(res, code, body) {
 }
 
 const shape = (d) => ({ ...d, front: d.cards[0]?.front ?? "", back: d.cards[0]?.back ?? "", study_type: "flashcards" })
+
+// --- student work (fake): versions, retry-safe creates and save faults, like backend/app/edit_versions.py ---
+const createKeys = new Map() // `${user}:${kind}:${key}` -> item id
+const faults = [] // { path, ms, mode, times } set by /__test/slow and /__test/fail
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CONFLICT_DETAIL = "This was changed in another tab or on another device."
+const BAD_KEY = err("That save key isn't valid. Please reload Luma and try again.", "bad_idempotency_key")
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+/** Every row has a version (the seeded ones start at 1). */
+const versioned = (item) => {
+  if (typeof item.version !== "number") item.version = 1
+  return item
+}
+/** The client never sets these. */
+const clientOnly = ({ expected_version, version, create_key, progress_rev, ...rest }) => rest
+/** The Idempotency-Key header: {key} (null when not sent) or {bad: true}. */
+function createKeyOf(req) {
+  const raw = req.headers["idempotency-key"]
+  if (raw === undefined) return { key: null }
+  const key = String(raw).trim().toLowerCase()
+  return UUID_RE.test(key) ? { key } : { bad: true }
+}
+/** The same key from the same student returns the first item (200 + Idempotent-Replay). */
+function replayed(res, me, kind, key, list, format = (item) => item) {
+  if (!key) return false
+  const id = createKeys.get(`${me.id}:${kind}:${key}`)
+  const item = id && list.find((x) => x.id === id && x.user_id === me.id)
+  if (!item) return false
+  res.setHeader("idempotent-replay", "true")
+  send(res, 200, format(versioned(item)))
+  return true
+}
+function rememberKey(me, kind, key, item) {
+  if (key) createKeys.set(`${me.id}:${kind}:${key}`, item.id)
+}
+const sameWords = (fields) => (item, body) => {
+  const sent = fields.filter((field) => field in body)
+  return sent.length > 0 && sent.every((field) => JSON.stringify(item[field] ?? null) === JSON.stringify(body[field] ?? null))
+}
+const deckWords = (cards) => (cards || []).map(({ id, front, back }) => ({ id, front, back }))
+function sameDeck(item, body) {
+  const fields = ["title", "tags", "is_public"].filter((field) => field in body)
+  const cardsSame = !("cards" in body) || JSON.stringify(deckWords(item.cards)) === JSON.stringify(deckWords(body.cards))
+  return ("cards" in body || fields.length > 0) && cardsSame && fields.every((f) => JSON.stringify(item[f] ?? null) === JSON.stringify(body[f] ?? null))
+}
+/**
+ * expected_version, like cas_update: a stale save gets 409 with the newer row, unless the row
+ * already holds what was sent (a retry whose first copy landed): then 200. True when it answered.
+ */
+function versionClash(res, item, body, same, format = (x) => x) {
+  versioned(item)
+  const expected = body.expected_version
+  if (typeof expected !== "number" || expected === item.version) return false
+  if (same(item, body)) send(res, 200, format(item))
+  else send(res, 409, { detail: CONFLICT_DETAIL, error_code: "edit_conflict", current: format(item) })
+  return true
+}
+/** The next fault set for this save (never for GET). */
+function takeFault(method, pathname) {
+  if (method === "GET" || method === "OPTIONS") return null
+  const fault = faults.find((f) => f.times > 0 && pathname.startsWith(f.path))
+  if (!fault) return null
+  fault.times -= 1
+  return fault
+}
 
 http
   .createServer(async (req, res) => {
@@ -210,6 +279,39 @@ http
       console.log(`[TEST] sign-ins ended for ${a.email}`)
       return send(res, 200, { success: true })
     }
+    if (url.pathname === "/__test/slow" && req.method === "POST") {
+      faults.push({ path: String(body.path || "/"), ms: Number(body.ms) || 0, mode: null, times: Number(body.times) || 1 })
+      return send(res, 200, { success: true })
+    }
+    if (url.pathname === "/__test/fail" && req.method === "POST") {
+      const mode = ["500", "drop-after-commit", "drop-before-commit"].includes(body.mode) ? body.mode : "500"
+      faults.push({ path: String(body.path || "/"), ms: 0, mode, times: Number(body.times) || 1 })
+      return send(res, 200, { success: true })
+    }
+    if (url.pathname === "/__test/edit-elsewhere" && req.method === "POST") {
+      const list = { notes, summaries, flashcards: decks, "study-sessions": studyPlans }[body.kind]
+      const item = list?.find((x) => x.id === body.id)
+      if (!item) return send(res, 404, { detail: "No fake item with that id." })
+      versioned(item)
+      Object.assign(item, clientOnly(body.fields || {}), { version: item.version + 1, updated_at: new Date().toISOString() })
+      return send(res, 200, body.kind === "flashcards" ? shape(item) : item)
+    }
+    // A fault set above applies to the next matching save.
+    const fault = takeFault(req.method, url.pathname)
+    if (fault?.ms) await sleep(fault.ms)
+    if (fault?.mode === "500") return send(res, 500, { detail: "Internal Server Error" })
+    // The answer starts, then the connection is cut. (Cutting it before any answer would let the
+    // browser quietly send the request again by itself, which is not what we want to test.)
+    const cutAnswer = () => {
+      res.write("{")
+      setTimeout(() => req.socket.destroy(), 20)
+    }
+    if (fault?.mode === "drop-before-commit") {
+      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": currentOrigin })
+      return cutAnswer()
+    }
+    // The save happens below (send() writes the head), but its answer never arrives.
+    if (fault?.mode === "drop-after-commit") res.end = () => cutAnswer()
 
     if (url.pathname === "/__test/profile" && req.method === "POST") {
       const a = accounts.get(String(body.email || "").trim().toLowerCase())
@@ -426,16 +528,23 @@ http
       if (parts.length === 1 && req.method === "POST") {
         // Like the backend: a note needs a title, a summary may leave it empty.
         if ((kind === "note" && !String(body.title || "").trim()) || !String(body.content || "").trim()) return send(res, 422, { detail: "Title and content are required." })
-        const item = { id: randomUUID(), created_at: new Date().toISOString(), updated_at: null, is_public: false, tags: [], study_type: kind, ...body, user_id: me.id }
+        const created = createKeyOf(req)
+        if (created.bad) return send(res, 422, BAD_KEY)
+        if (replayed(res, me, parts[0], created.key, store)) return
+        const stamp = new Date().toISOString()
+        const item = { id: randomUUID(), created_at: stamp, updated_at: stamp, is_public: false, tags: [], study_type: kind, ...clientOnly(body), user_id: me.id, version: 1 }
         store.unshift(item)
+        rememberKey(me, parts[0], created.key, item)
         return send(res, 201, item)
       }
-      if (parts.length === 1) return send(res, 200, store.filter((n) => n.user_id === me.id))
+      if (parts.length === 1) return send(res, 200, store.filter((n) => n.user_id === me.id).map(versioned))
       const item = store.find((n) => n.id === parts[1] && n.user_id === me.id)
-      if (!item) return send(res, 404, { detail: missing })
+      if (!item) return send(res, 404, req.method === "PUT" ? { detail: missing, error_code: "item_gone" } : { detail: missing })
+      versioned(item)
       if (req.method === "PUT") {
         if (kind === "note" && "title" in body && !String(body.title || "").trim()) return send(res, 422, { detail: "Title can't be empty." })
-        Object.assign(item, body, { user_id: me.id, updated_at: new Date().toISOString() })
+        if (versionClash(res, item, body, sameWords(["title", "content", "tags", "is_public"]))) return
+        Object.assign(item, clientOnly(body), { user_id: me.id, updated_at: new Date().toISOString(), version: item.version + 1 })
       }
       if (req.method === "DELETE") {
         store.splice(store.indexOf(item), 1)
@@ -573,16 +682,23 @@ http
         const seconds = body.duration_seconds ?? 0
         if (!name || name.length > 200) return send(res, 422, { detail: "Name is required." })
         if (!Number.isInteger(seconds) || seconds < 0) return send(res, 422, { detail: "duration_seconds must be a whole number of 0 or more." })
+        const created = createKeyOf(req)
+        if (created.bad) return send(res, 422, BAD_KEY)
+        if (replayed(res, me, "study-sessions", created.key, studyPlans)) return
         const plan = {
           id: randomUUID(), user_id: me.id, name, subject: body.subject ?? null, notes: body.notes ?? null,
-          duration_seconds: seconds, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          duration_seconds: seconds, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1,
         }
         studyPlans.unshift(plan)
+        rememberKey(me, "study-sessions", created.key, plan)
         return send(res, 201, plan)
       }
       const plan = studyPlans.find((p) => p.id === parts[1] && p.user_id === me.id)
-      if (!plan) return send(res, 404, { detail: "Study session not found" })
-      if (req.method === "PUT") Object.assign(plan, body, { updated_at: new Date().toISOString() })
+      if (!plan) return send(res, 404, req.method === "PUT" ? { detail: "Study session not found", error_code: "item_gone" } : { detail: "Study session not found" })
+      if (req.method === "PUT") {
+        if (versionClash(res, plan, body, sameWords(["name", "subject", "notes", "duration_seconds"]))) return
+        Object.assign(plan, clientOnly(body), { updated_at: new Date().toISOString(), version: plan.version + 1 })
+      }
       if (req.method === "DELETE") {
         studyPlans.splice(studyPlans.indexOf(plan), 1)
         return send(res, 200, { message: "Study session deleted successfully" })
@@ -592,15 +708,43 @@ http
     if (parts[0] === "flashcards") {
       const me = accountFor(req)
       if (!me) return send(res, 401, { detail: "Invalid or expired token" })
-      if (parts.length === 1 && req.method === "GET") return send(res, 200, decks.filter((d) => d.user_id === me.id).map(shape))
+      if (parts.length === 1 && req.method === "GET") return send(res, 200, decks.filter((d) => d.user_id === me.id).map((d) => shape(versioned(d))))
       if (parts.length === 1 && req.method === "POST") {
-        const d = { id: randomUUID(), is_public: false, created_at: new Date().toISOString(), tags: [], ...body, user_id: me.id }
+        const created = createKeyOf(req)
+        if (created.bad) return send(res, 422, BAD_KEY)
+        if (replayed(res, me, "flashcards", created.key, decks, shape)) return
+        const stamp = new Date().toISOString()
+        const d = { id: randomUUID(), is_public: false, created_at: stamp, updated_at: stamp, tags: [], ...clientOnly(body), user_id: me.id, version: 1, progress_rev: 0 }
+        d.cards = (d.cards || []).map((card) => ({ review: null, ...card }))
         decks.unshift(d)
+        rememberKey(me, "flashcards", created.key, d)
         return send(res, 201, shape(d))
       }
+      // Review progress: merged per card id. Never changes the words or the version.
+      if (parts[2] === "progress" && req.method === "PATCH") {
+        const deck = decks.find((x) => x.id === parts[1] && x.user_id === me.id)
+        if (!deck) return send(res, 404, { detail: "Flashcard not found", error_code: "item_gone" })
+        const reviews = body.reviews
+        if (!reviews || typeof reviews !== "object" || Array.isArray(reviews) || !Object.keys(reviews).length || Object.keys(reviews).length > 500) {
+          return send(res, 422, { detail: [{ msg: "Send at least one card's progress." }] })
+        }
+        deck.cards = deck.cards.map((card) => (card.id in reviews ? { ...card, review: reviews[card.id] } : card))
+        deck.progress_rev = (deck.progress_rev ?? 0) + 1
+        return send(res, 200, { version: versioned(deck).version, progress_rev: deck.progress_rev })
+      }
       const d = decks.find((x) => x.id === parts[1] && (x.user_id === me.id || (req.method === "GET" && x.is_public)))
-      if (!d) return send(res, 404, { detail: "Flashcard not found" })
-      if (req.method === "PUT") Object.assign(d, body, { updated_at: new Date().toISOString() })
+      if (!d) return send(res, 404, req.method === "PUT" ? { detail: "Flashcard not found", error_code: "item_gone" } : { detail: "Flashcard not found" })
+      versioned(d)
+      if (req.method === "PUT") {
+        if (versionClash(res, d, body, sameDeck, shape)) return
+        const changes = clientOnly(body)
+        if (Array.isArray(changes.cards) && typeof body.expected_version === "number") {
+          // The editor never sends progress: keep what studying stored for each card id.
+          const stored = new Map(d.cards.map((card) => [card.id, card.review ?? null]))
+          changes.cards = changes.cards.map(({ review, ...card }) => ({ ...card, review: stored.get(card.id) ?? null }))
+        }
+        Object.assign(d, changes, { updated_at: new Date().toISOString(), version: d.version + 1 })
+      }
       if (req.method === "DELETE") {
         decks.splice(decks.indexOf(d), 1)
         return send(res, 200, { message: "deleted" })

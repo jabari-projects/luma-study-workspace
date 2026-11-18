@@ -9,7 +9,9 @@ import { Scribble } from "../ui/Scribble"
 import { CaptureError, importLink, makeNotes } from "./capture-api"
 import type { NotesDraft, SourceKind } from "./capture-api"
 import { ACCEPTED_FILES, MAX_TEXT_CHARS, cleanTranscript, countWords, extractFromFile, isYouTubeUrl, tidyText } from "./extract"
+import { DraftOffer } from "../work/DraftOffer"
 import { LimitNudge, NotesWorkbench, WorkingSteps } from "./Workbench"
+import { useCaptureWork } from "./useCaptureWork"
 
 type Tab = "paste" | "file" | "link" | "youtube"
 
@@ -43,6 +45,11 @@ export function ImportPage() {
   const requestRef = useRef(0)
   const newRequest = () => (requestRef.current += 1)
   const isCurrent = (id: number) => id === requestRef.current
+  // The notes wait here for the student. A text-only copy stays in this tab (never the file).
+  const work = useCaptureWork("capture-import", draft, "", () => {
+    setDraft(null)
+    setStage("source")
+  })
 
   const chooseTab = (next: Tab) => {
     setTab(next)
@@ -171,6 +178,7 @@ export function ImportPage() {
 
   const startOver = () => {
     newRequest()
+    work.renewKeys()
     setBusy(null)
     setDraft(null)
     setSource(null)
@@ -195,6 +203,19 @@ export function ImportPage() {
         description="Paste words, add a file, or use a link. Luma turns it into notes and flashcards."
       />
 
+      {work.offer && !draft ? (
+        <DraftOffer
+          text="You have notes from earlier in this tab."
+          onUse={() => {
+            const restored = work.takeOffer()
+            if (restored?.draft) {
+              setDraft(restored.draft)
+              setStage("review")
+            }
+          }}
+          onThrowAway={work.dropOffer}
+        />
+      ) : null}
       {limit ? <LimitNudge message={limit} onClose={() => setLimit(null)} /> : null}
       <NoticeBanner notice={error ? { type: "error", text: error } : null} />
 
@@ -385,7 +406,18 @@ export function ImportPage() {
 
         <div className="capture-results">
           {stage === "working" ? <WorkingSteps steps={["Reading...", "Writing notes...", "Making cards..."]} current={step} /> : null}
-          {stage === "review" && draft ? <NotesWorkbench draft={draft} onChange={setDraft} onStartOver={startOver} /> : null}
+          {stage === "review" && draft ? (
+            <NotesWorkbench
+              draft={draft}
+              onChange={setDraft}
+              onStartOver={startOver}
+              keys={work.keys}
+              onSaved={() => {
+                setDraft(null)
+                work.renewKeys()
+              }}
+            />
+          ) : null}
           {stage === "source" && !draft ? (
             <aside className="capture-tip">
               <h2>How it works</h2>

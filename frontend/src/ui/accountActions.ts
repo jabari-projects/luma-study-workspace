@@ -1,13 +1,17 @@
 import { useCallback } from "react"
 import type { CSSProperties } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 import { ACCOUNT_LIMIT_MESSAGE } from "../accounts"
 import { useAuth } from "../auth"
+import { LEAVE_ANYWAY_STATE, markSigningOut, requestLeave } from "../work/leave"
+import { useHasUnsavedWork } from "../work/useAutosave"
 
-// Pages where switching or signing out would throw away work in progress.
-// The old note addresses (/import, /voice-input, /image-to-notes) stay listed for safety.
+// Pages where the automatic theme (Light by day, Dark from 7 pm) waits for the next page
+// instead of flipping colors in the middle of studying or writing. This is only about colors:
+// whether work is unsaved is asked of the editors themselves (work/unsaved.ts).
+// The old note addresses (/import, /voice-input, /image-to-notes) stay listed.
 const BUSY_PATHS = [
   /^\/notes\/(new|import|voice|image)\/?$/,
   /^\/(notes|summaries)\/[^/]+\/edit\/?$/,
@@ -31,69 +35,53 @@ export function accountMenuPosition(anchor: HTMLElement): CSSProperties {
   return { left: railRight + 10, bottom: Math.max(12, window.innerHeight - rect.bottom) }
 }
 
-export type LeaveAction = "switch" | "signOut" | "add"
+/** Added to "Sign out of all accounts?" while work in this tab isn't saved. */
+export const UNSAVED_WORK_WARNING = "Signing out throws away work that isn't saved."
 
-const LEAVE_QUESTIONS: Record<LeaveAction, string> = {
-  switch: "Switch accounts now?",
-  signOut: "Sign out now?",
-  add: "Add another account now?",
-}
-
-export const UNSAVED_WORK_WARNING = "Your work on this page is not saved yet."
-
-/** The words for the "are you sure?" box. Short and plain on purpose. */
-export function leaveMessage(action: LeaveAction): string {
-  return `${LEAVE_QUESTIONS[action]} ${UNSAVED_WORK_WARNING} Notes being made now still count for this account.`
-}
-
-/** True when leaving this page could lose work. */
+/** True on pages where the automatic theme waits for the next page (see BUSY_PATHS). */
 export function isBusyPath(pathname: string): boolean {
   return BUSY_PATHS.some((pattern) => pattern.test(pathname))
 }
 
-/** Asks first when leaving this page could lose work. True means go ahead. */
-export function confirmLeaveIfBusy(pathname: string, action: LeaveAction): boolean {
-  if (!isBusyPath(pathname)) {
-    return true
-  }
-  return window.confirm(leaveMessage(action))
-}
-
-/** Switch, sign out and add, with the same messages everywhere. */
+/**
+ * Switch, sign out and add, with the same messages everywhere. With unsaved work in this tab
+ * each one asks first ("Stay and save" / "... anyway"), so nothing is lost by surprise.
+ */
 export function useAccountActions() {
   const { accounts, activeAccountId, canAddAccount, switchAccount, logoutAccount, logoutAll } = useAuth()
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const busy = useHasUnsavedWork()
 
   const switchTo = useCallback(
-    (id: string): boolean => {
+    async (id: string): Promise<boolean> => {
       const target = accounts.find((account) => account.id === id)
       if (!target || id === activeAccountId) {
         return false
       }
-      if (!confirmLeaveIfBusy(pathname, "switch")) {
+      if (!(await requestLeave("switch"))) {
         return false
       }
       switchAccount(id)
-      navigate("/dashboard", { replace: true })
+      navigate("/dashboard", { replace: true, state: LEAVE_ANYWAY_STATE })
       if (target.status === "signed_in") {
         toast.success(`Now using ${target.username}.`)
       }
       return true
     },
-    [accounts, activeAccountId, navigate, pathname, switchAccount],
+    [accounts, activeAccountId, navigate, switchAccount],
   )
 
   const signOut = useCallback(
-    (id: string): boolean => {
+    async (id: string): Promise<boolean> => {
       const leaving = accounts.find((account) => account.id === id)
       if (!leaving) {
         return false
       }
       const wasActive = id === activeAccountId
-      if (wasActive && !confirmLeaveIfBusy(pathname, "signOut")) {
+      if (wasActive && !(await requestLeave("signOut"))) {
         return false
       }
+      if (wasActive) markSigningOut(true)
       const { nextId } = logoutAccount(id)
       if (!wasActive) {
         toast.success(
@@ -102,34 +90,34 @@ export function useAccountActions() {
         return true
       }
       const next = accounts.find((account) => account.id === nextId)
-      if (next) {
-        navigate("/dashboard", { replace: true })
-        toast.success(`Signed out of ${leaving.username}. You're now using ${next.username}.`)
-      } else {
-        navigate("/", { replace: true })
-      }
+      const moved = next
+        ? navigate("/dashboard", { replace: true, state: LEAVE_ANYWAY_STATE })
+        : navigate("/", { replace: true, state: LEAVE_ANYWAY_STATE })
+      void Promise.resolve(moved).finally(() => markSigningOut(false))
+      if (next) toast.success(`Signed out of ${leaving.username}. You're now using ${next.username}.`)
       return true
     },
-    [accounts, activeAccountId, logoutAccount, navigate, pathname],
+    [accounts, activeAccountId, logoutAccount, navigate],
   )
 
-  // The account menu asks first, and adds the unsaved-work warning on busy pages (busy).
+  // The account menu asks first, and adds the unsaved-work warning when work isn't saved (busy).
   const signOutAll = useCallback(() => {
+    markSigningOut(true)
     logoutAll()
-    navigate("/", { replace: true })
+    void Promise.resolve(navigate("/", { replace: true, state: LEAVE_ANYWAY_STATE })).finally(() => markSigningOut(false))
   }, [logoutAll, navigate])
 
-  const addAccount = useCallback((): boolean => {
+  const addAccount = useCallback(async (): Promise<boolean> => {
     if (!canAddAccount) {
       toast.error(ACCOUNT_LIMIT_MESSAGE, { id: "account-limit" })
       return false
     }
-    if (!confirmLeaveIfBusy(pathname, "add")) {
+    if (!(await requestLeave("add"))) {
       return false
     }
-    navigate("/login?add=1")
+    navigate("/login?add=1", { state: LEAVE_ANYWAY_STATE })
     return true
-  }, [canAddAccount, navigate, pathname])
+  }, [canAddAccount, navigate])
 
-  return { switchTo, signOut, signOutAll, addAccount, busy: isBusyPath(pathname) }
+  return { switchTo, signOut, signOutAll, addAccount, busy }
 }

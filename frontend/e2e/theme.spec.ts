@@ -512,6 +512,32 @@ test("another tab of the same account follows a saved theme without a reload", a
   }
 })
 
+test("a theme saved in another tab never moves an open editor or touches its words", async ({ context }) => {
+  const tabA = await context.newPage()
+  try {
+    await setThemeMode(tabA, SEEDED.demo.email, "light")
+    await loginAndWait(tabA, SEEDED.demo.email)
+    await tabA.goto("/notes/new")
+    const words = tabA.getByRole("textbox", { name: "Your notes" })
+    await words.fill("SYNTH words while the theme changes")
+
+    const tabB = await context.newPage()
+    await tabB.goto("/settings")
+    await settle(tabB)
+    await tabB.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Dark", exact: true }).check()
+    await tabB.getByRole("button", { name: "Save theme" }).click()
+    await expect(tabB.getByText("Theme saved.")).toBeVisible()
+    await expect(tabB.locator("html")).toHaveAttribute("data-theme", "dark")
+
+    await tabA.waitForTimeout(1000)
+    await expect(tabA).toHaveURL(/\/notes\/new$/)
+    await expect(words).toHaveValue("SYNTH words while the theme changes")
+    await expect(tabA.getByText("Not saved yet")).toBeVisible()
+  } finally {
+    await setThemeMode(tabA, SEEDED.demo.email, "light")
+  }
+})
+
 test("signing out removes the saved theme from this device, and the public pages stay light", async ({ page }) => {
   try {
     await setThemeMode(page, SEEDED.demo.email, "dark")

@@ -10,6 +10,8 @@ export type ShareableItem = {
   id: string
   is_public?: boolean | null
   title?: unknown
+  /** The version this page loaded. Sent back, so a newer change from another tab is never overwritten. */
+  version?: unknown
 }
 
 /**
@@ -56,7 +58,8 @@ export async function setSharing<T>(
   const body = share
     ? { is_public: true, published_at: new Date().toISOString(), ...(username ? { published_by: username } : {}), study_type: studyType }
     : { is_public: false, published_at: null, published_by: null }
+  const versioned = typeof item.version === "number" ? { ...body, expected_version: item.version } : body
   // Change it in the account that showed this item, even if the tab switches meanwhile.
-  const response = await api.put<T>(`${endpoint}/${item.id}`, body, { lumaAccountId: getTabAccountId() ?? undefined })
+  const response = await api.put<T>(`${endpoint}/${item.id}`, versioned, { lumaAccountId: getTabAccountId() ?? undefined })
   return response.data
 }

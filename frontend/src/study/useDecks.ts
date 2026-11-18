@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 import { api, getErrorMessage, getTabAccountId } from "../api"
+import { toReply, useAutosave } from "../work/useAutosave"
 import { normalizeDeck } from "./deck"
 import type { Deck, DeckCard } from "./deck"
 
@@ -61,34 +62,35 @@ export function useDeck(deckId: string | null | undefined) {
   return { deck: ready ? state.deck : null, setDeck, loading: !ready, error: ready ? state.error : null }
 }
 
+type ProgressReviews = Record<string, DeckCard["review"] | null>
+
 /**
- * Saves review progress one request at a time so a slow save never overwrites a newer one.
+ * Saves each grade right away with PATCH /flashcards/:id/progress, one request at a time.
+ * Grades made while one is saving wait and go next, keeping only the newest review per card.
+ * Progress never changes the deck's words or version, so studying here never conflicts with
+ * the deck editor open in another tab.
  */
-export function useProgressSaver(deckId: string | undefined, onError: (message: string) => void) {
-  const chain = useRef<Promise<unknown>>(Promise.resolve())
-  const latest = useRef<DeckCard[] | null>(null)
+export function useProgressSaver(deckId: string) {
   // The account this study session belongs to. A save still waiting after a switch
   // must go out with this account's token, never the new one.
   const [accountId] = useState(() => getTabAccountId())
+  const autosave = useAutosave<ProgressReviews, { version?: number; progress_rev?: number }>({
+    label: "Your review progress",
+    accountId,
+    itemId: deckId,
+    version: null,
+    createKey: null,
+    debounceMs: 0,
+    autosave: true,
+    textOf: () => "",
+    merge: (older, newer) => ({ ...older, ...newer }),
+    send: (request, config) =>
+      toReply(() => api.patch(`/flashcards/${request.itemId}/progress`, { reviews: request.content }, config)),
+  })
+  const { change } = autosave
 
-  const save = useCallback(
-    (cards: DeckCard[]) => {
-      if (!deckId) return chain.current
-      latest.current = cards
-      chain.current = chain.current.then(async () => {
-        const snapshot = latest.current
-        if (!snapshot) return
-        latest.current = null
-        try {
-          await api.put(`/flashcards/${deckId}`, { cards: snapshot }, accountId ? { lumaAccountId: accountId } : undefined)
-        } catch (err: unknown) {
-          onError(getErrorMessage(err, "Your progress could not be saved. Check your connection."))
-        }
-      })
-      return chain.current
-    },
-    [accountId, deckId, onError],
-  )
+  /** Saves one card's new review state. */
+  const record = useCallback((card: DeckCard) => change({ [card.id]: card.review ?? null }), [change])
 
-  return save
+  return { record, snapshot: autosave.snapshot, retry: autosave.retry, accountId }
 }

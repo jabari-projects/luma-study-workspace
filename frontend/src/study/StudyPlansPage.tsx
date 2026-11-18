@@ -9,6 +9,9 @@ import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner } from "../ui/common"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
+import { DraftOffer } from "../work/DraftOffer"
+import { newCreateKey, useEditSession } from "../work/useAutosave"
+import { useExplicitWork } from "../work/useExplicitWork"
 import { STUDY_HUB, STUDY_PLANS, planMinutesText, secondsFromMinutes } from "./hub"
 
 /** A study plan as the server sends it. Time is kept in seconds; the page shows minutes. */
@@ -23,6 +26,14 @@ type StudyPlan = {
 }
 
 const emptyForm = { name: "", subject: "", minutes: "", notes: "" }
+type PlanForm = typeof emptyForm & { createKey?: string }
+
+function isPlanForm(value: unknown): value is PlanForm {
+  const v = value as Partial<PlanForm> | null
+  return Boolean(v && ["name", "subject", "minutes", "notes"].every((key) => typeof v[key as keyof PlanForm] === "string"))
+}
+
+const hasWords = (form: PlanForm) => Boolean(form.name.trim() || form.subject.trim() || form.minutes.trim() || form.notes.trim())
 
 const planName = (plan: StudyPlan) => plan.name?.trim() || "Untitled plan"
 
@@ -30,13 +41,27 @@ const planName = (plan: StudyPlan) => plan.name?.trim() || "Untitled plan"
 export function StudyPlansPage() {
   const [plans, setPlans] = useState<StudyPlan[]>([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState(emptyForm)
+  // This tab's account when the page opened. The plan is saved into it.
+  const [accountId] = useState(() => getTabAccountId())
+  // One Idempotency-Key per new plan: a retry after a lost answer can't make two plans.
+  const [form, setForm] = useState<PlanForm>(() => ({ ...emptyForm, createKey: newCreateKey() }))
   const [notice, setNotice] = useState<Notice | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<StudyPlan | null>(null)
   const [removing, setRemoving] = useState(false)
   const listRef = useRef<HTMLElement>(null)
   const deleteButtons = useRef(new Map<string, HTMLButtonElement>())
+  const { headers: sessionHeaders } = useEditSession()
+  const work = useExplicitWork<PlanForm>({
+    label: "Your study plan",
+    accountId,
+    kind: "plan",
+    data: hasWords(form) ? form : null,
+    saving,
+    textOf: (value) => [value.name, value.subject, value.minutes ? `${value.minutes} minutes` : "", value.notes].filter(Boolean).join("\n"),
+    accept: isPlanForm,
+    onDiscard: () => setForm({ ...emptyForm, createKey: newCreateKey() }),
+  })
 
   useEffect(() => {
     let active = true
@@ -64,7 +89,7 @@ export function StudyPlansPage() {
       return
     }
     // Save into the account that showed this page, even if the tab switches meanwhile.
-    const accountId = getTabAccountId() ?? undefined
+    const createKey = form.createKey ?? newCreateKey()
     setSaving(true)
     try {
       const response = await api.post<StudyPlan>(
@@ -75,10 +100,10 @@ export function StudyPlansPage() {
           notes: form.notes.trim(),
           duration_seconds: secondsFromMinutes(form.minutes),
         },
-        { lumaAccountId: accountId },
+        { lumaAccountId: accountId ?? undefined, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": createKey } },
       )
-      if ((getTabAccountId() ?? undefined) !== accountId) return
-      setForm(emptyForm)
+      if ((getTabAccountId() ?? null) !== accountId) return
+      setForm({ ...emptyForm, createKey: newCreateKey() })
       setPlans((current) => [response.data, ...current.filter((plan) => plan.id !== response.data.id)])
       toast.success(`Saved “${planName(response.data)}”.`)
     } catch (error: unknown) {
@@ -93,7 +118,7 @@ export function StudyPlansPage() {
     const target = deleting
     setRemoving(true)
     try {
-      await api.delete(`${STUDY_PLANS}/${target.id}`, { lumaAccountId: getTabAccountId() ?? undefined })
+      await api.delete(`${STUDY_PLANS}/${target.id}`, { lumaAccountId: accountId ?? undefined })
       setPlans((current) => current.filter((plan) => plan.id !== target.id))
       toast.success(`Deleted “${planName(target)}”.`)
     } catch (error: unknown) {
@@ -170,6 +195,15 @@ export function StudyPlansPage() {
         </section>
         <form className="plan-form" onSubmit={save} noValidate aria-labelledby="plan-form-title">
           <h2 id="plan-form-title">New plan</h2>
+          {work.offer ? (
+            <DraftOffer
+              onUse={() => {
+                const restored = work.takeOffer()
+                if (restored) setForm({ ...restored, createKey: restored.createKey ?? newCreateKey() })
+              }}
+              onThrowAway={work.dropOffer}
+            />
+          ) : null}
           <label>
             Name
             <input
@@ -217,6 +251,7 @@ export function StudyPlansPage() {
               {saving ? "Saving..." : "Save plan"}
             </button>
           </div>
+          {work.draftProblem ? <p className="field-hint">{work.draftProblem}</p> : null}
         </form>
 
       </div>

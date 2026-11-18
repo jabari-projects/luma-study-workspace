@@ -12,6 +12,10 @@ import { NoticeBanner, PageHeader } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
 import { ShareControl } from "../ui/Share"
 import { sharedLine, useShareName } from "../ui/sharing"
+import { DraftOffer } from "../work/DraftOffer"
+import { LEAVE_ANYWAY_STATE } from "../work/leave"
+import { newCreateKey, useEditSession } from "../work/useAutosave"
+import { useExplicitWork } from "../work/useExplicitWork"
 import { NoteMarkdown } from "./markdown"
 import { aiCardsToFound, findCardsInNote } from "./findCards"
 import type { FoundCard } from "./findCards"
@@ -34,6 +38,13 @@ function friendlyDate(value?: string | null) {
 }
 
 type MadeSummary = { title: string; summary: string }
+/** A made summary that isn't saved yet, with the Idempotency-Key its save uses. */
+type HeldSummary = { made: MadeSummary; key: string }
+
+function isHeldSummary(value: unknown): value is HeldSummary {
+  const v = value as Partial<HeldSummary> | null
+  return Boolean(v && typeof v.key === "string" && v.made && typeof v.made.title === "string" && typeof v.made.summary === "string")
+}
 
 type NotePageProps = { endpoint: string; studyType: StudyType; backTo: string; kindLabel: string }
 
@@ -66,6 +77,23 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
   const [summaryNotice, setSummaryNotice] = useState<Notice | null>(null)
   // A summary the AI made but we couldn't save. The next tap only tries saving again, so no new AI turn.
   const [unsavedSummary, setUnsavedSummary] = useState<MadeSummary | null>(null)
+  // One Idempotency-Key per made summary and per deck from this note: a retry never makes copies.
+  const [summaryKey, setSummaryKey] = useState(newCreateKey)
+  const deckKey = useRef(newCreateKey())
+  const [accountId] = useState(() => getTabAccountId())
+  const { headers: sessionHeaders } = useEditSession()
+  const heldSummary = useMemo<HeldSummary | null>(() => (unsavedSummary ? { made: unsavedSummary, key: summaryKey } : null), [unsavedSummary, summaryKey])
+  const summaryWork = useExplicitWork<HeldSummary>({
+    label: "Your new summary",
+    accountId,
+    kind: "summary-result",
+    itemId: itemId ?? "none",
+    data: heldSummary,
+    saving: false,
+    textOf: (held) => [held.made.title, held.made.summary].filter(Boolean).join("\n\n"),
+    accept: isHeldSummary,
+    onDiscard: () => setUnsavedSummary(null),
+  })
   const summaryNoticeRef = useRef<HTMLDivElement>(null)
   // False once the student leaves this note, so a slow AI answer doesn't pull them back here.
   const onThisNote = useRef(true)
@@ -138,8 +166,9 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
           tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
           cards: kept.map((card) => ({ id: newCardId(), front: card.front, back: card.back, review: null })),
         },
-        { lumaAccountId: accountId },
+        { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": deckKey.current } },
       )
+      deckKey.current = newCreateKey()
       if ((getTabAccountId() ?? undefined) !== accountId) return
       toast.success("Your deck is ready!")
       navigate(`/flashcards/${response.data.id}`)
@@ -184,8 +213,9 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
           content: made.summary,
           tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
         },
-        { lumaAccountId: accountId },
+        { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": summaryKey } },
       )
+      setSummaryKey(newCreateKey())
       const summaryPath = `/summaries/${response.data.id}`
       if (!onThisNote.current) {
         // They moved on while Luma was working: don't pull them back. Let them open it if they want.
@@ -198,7 +228,8 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
       setConfirmingSummary(false)
       if ((getTabAccountId() ?? undefined) !== accountId) return
       toast.success("Your summary is ready!")
-      navigate(summaryPath)
+      // Saved and confirmed, so leaving needs no "are you sure?".
+      navigate(summaryPath, { state: LEAVE_ANYWAY_STATE })
     } catch (error: unknown) {
       if (!onThisNote.current) {
         toast.error(getErrorMessage(error, "We made your summary but couldn't save it. Your note is safe."))
@@ -282,6 +313,19 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
         </div>
       </header>
       <NoticeBanner notice={notice} />
+      {summaryWork.offer && !unsavedSummary ? (
+        <DraftOffer
+          text="You have a summary from earlier in this tab that isn't saved yet."
+          onUse={() => {
+            const held = summaryWork.takeOffer()
+            if (!held) return
+            setSummaryKey(held.key)
+            setUnsavedSummary(held.made)
+            setSummaryNotice({ type: "info", text: "Your summary isn't saved yet. Tap to save it." })
+          }}
+          onThrowAway={summaryWork.dropOffer}
+        />
+      ) : null}
 
       {/* The note on a sheet of paper, and a quiet margin beside it for studying it. */}
       <div className="with-margin note-layout">

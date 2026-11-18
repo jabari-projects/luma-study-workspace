@@ -1,6 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { BrowserRouter } from "react-router-dom"
+import { RouterProvider, createBrowserRouter } from "react-router-dom"
 import { MotionConfig } from "motion/react"
 
 import App from "./App"
@@ -19,14 +19,22 @@ if (!rootElement) {
   throw new Error("Root element #root was not found.")
 }
 
+// A data router, so an open editor can hold an in-app link until its work is saved (useBlocker).
+const router = createBrowserRouter([
+  {
+    path: "*",
+    element: (
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    ),
+  },
+])
+
 createRoot(rootElement).render(
   <StrictMode>
     <MotionConfig reducedMotion="user">
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </MotionConfig>
   </StrictMode>,
 )

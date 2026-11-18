@@ -1,0 +1,168 @@
+/* Saving student work: the save line, the conflict panel, "Your version" and sign in again.
+   Imported by the components in src/work (not by main.tsx). Colors come from styles.css tokens,
+   so light, dark and every accent color work. */
+
+.save-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 32px;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.save-status.good {
+  color: var(--success);
+}
+
+.save-status.bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.save-status-why {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.work-conflict {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 2px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--ink);
+}
+
+.work-conflict-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--danger);
+}
+
+.work-conflict-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.work-conflict h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.work-conflict h2:focus {
+  outline: none;
+}
+
+.work-conflict h2:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.work-conflict p {
+  margin: 0;
+}
+
+.your-version {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.your-version h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.your-version p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.your-version textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+}
+
+.work-draft-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.work-draft-offer p {
+  margin: 0;
+  flex: 1 1 220px;
+}
+
+.work-signin-backdrop {
+  /* Above the app's sheets and toasts' backdrop: the page waits for this choice. */
+  z-index: 60;
+}
+
+.work-signin {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+
+.work-signin h2 {
+  margin: 0;
+}
+
+.work-signin-form {
+  display: grid;
+  gap: 12px;
+}
+
+.work-signin-form input[readonly] {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.work-throw-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+}
+
+.work-throw-confirm p {
+  margin: 0;
+}
+
+.work-saving-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: auto;
+}
+
+@media (max-width: 560px) {
+  .work-conflict {
+    flex-direction: column;
+  }
+
+  .work-conflict .button-row > * {
+    flex: 1 1 100%;
+  }
+}

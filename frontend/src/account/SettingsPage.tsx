@@ -141,19 +141,25 @@ function UsernameSettingsForm({
   profile: Profile | null
   setNotice: (notice: Notice | null) => void
 }) {
-  const { refreshProfile, user } = useAuth()
+  const { refreshProfile, user, activeAccountId } = useAuth()
   const [username, setUsername] = useState(profile?.username ?? user?.username ?? "")
+  const [saving, setSaving] = useState(false)
+  // Saved into the account that showed this page, even if the tab switches meanwhile.
+  const [accountId] = useState(activeAccountId)
 
   const saveUsername = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
     setNotice(null)
-
+    setSaving(true)
     try {
-      await api.put("/me/username", { new_username: username.trim() })
-      await refreshProfile()
+      await api.put("/me/username", { new_username: username.trim() }, { lumaAccountId: accountId ?? undefined })
+      await refreshProfile(accountId ?? undefined)
       setNotice({ type: "success", text: "Username saved." })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not save username.") })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -170,8 +176,8 @@ function UsernameSettingsForm({
             required
             aria-describedby="settings-username-hint"
           />
-          <button className="secondary-button" type="submit">
-            Save username
+          <button className="secondary-button" type="submit" disabled={saving}>
+            {saving ? "Saving..." : "Save username"}
           </button>
         </div>
         <p id="settings-username-hint" className="field-hint">
@@ -662,24 +668,34 @@ function ThemeSettingsForm({
   profile: Profile | null
   setNotice: (notice: Notice | null) => void
 }) {
-  const { setProfile } = useAuth()
+  const { setProfile, activeAccountId } = useAuth()
   const [themeColor, setThemeColor] = useState(profile?.theme_color ?? DEFAULT_ACCENT)
   const [themeMode, setThemeMode] = useState<ThemeMode>(normalizeMode(profile?.theme_mode))
+  const [saving, setSaving] = useState(false)
+  // Saved into the account that showed this page, even if the tab switches meanwhile.
+  const [accountId] = useState(activeAccountId)
   const previewStyle = { "--theme-choice": themeColor } as CSSProperties
 
   const saveTheme = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
     setNotice(null)
-
+    setSaving(true)
     try {
-      const response = await api.put<Profile>("/me/profile", {
-        theme_color: themeColor,
-        theme_mode: themeMode,
-      })
+      const response = await api.put<Profile>(
+        "/me/profile",
+        {
+          theme_color: themeColor,
+          theme_mode: themeMode,
+        },
+        { lumaAccountId: accountId ?? undefined },
+      )
       setProfile(response.data)
       setNotice({ type: "success", text: "Theme saved." })
     } catch (error: unknown) {
       setNotice({ type: "error", text: getErrorMessage(error, "Could not save theme.") })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -732,8 +748,8 @@ function ThemeSettingsForm({
         ))}
       </div>
       <div>
-        <button className="primary-button" type="submit">
-          Save theme
+        <button className="primary-button" type="submit" disabled={saving}>
+          {saving ? "Saving..." : "Save theme"}
         </button>
       </div>
     </form>

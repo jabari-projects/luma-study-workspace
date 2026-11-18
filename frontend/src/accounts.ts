@@ -16,9 +16,27 @@ export const TAB_ACCOUNT_KEY = "luma.tabAccount"
 export const LEGACY_ACTIVITY_KEY = "luma.activity"
 export const MAX_ACCOUNTS = 3
 export const activityKey = (id: string) => `${LEGACY_ACTIVITY_KEY}:${id}`
-/** A new note that is not saved yet, kept on this device per account (cleared on sign-out). */
+/**
+ * Old new-note drafts that earlier versions kept in localStorage (on the device, after the tab
+ * closed). Drafts now live only in the tab (work/drafts.ts). Real-data migration path: this
+ * removes the old copies once per page load. Remove after 2027-02-01 (Task Board item:
+ * "Remove the luma.noteDraft cleanup").
+ */
 export const NOTE_DRAFT_PREFIX = "luma.noteDraft:"
-export const noteDraftKey = (id: string) => `${NOTE_DRAFT_PREFIX}${id}`
+
+export function removeLegacyNoteDrafts(storage: Pick<Storage, "key" | "length" | "removeItem"> | null): void {
+  if (!storage) return
+  try {
+    const keys: string[] = []
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index)
+      if (key && key.startsWith(NOTE_DRAFT_PREFIX)) keys.push(key)
+    }
+    keys.forEach((key) => storage.removeItem(key))
+  } catch {
+    // Storage blocked: there is nothing to remove.
+  }
+}
 /** "Don't show this again" on the review intro, kept on this device per account (cleared on sign-out). */
 export const STUDY_INTRO_PREFIX = "luma.studyIntroSeen:"
 export const studyIntroKey = (id: string) => `${STUDY_INTRO_PREFIX}${id}`

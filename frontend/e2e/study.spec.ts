@@ -50,6 +50,11 @@ async function createDeck(page: Page, title: string, cards: Card[], tags = "") {
     await field(page, `Answer ${i + 1}`).fill(card.back)
   }
   await expect(page.getByText(`${cards.length} cards ready`)).toBeVisible()
+  // The first save makes the deck and keeps the editor open (it saves by itself from now on).
+  await page.getByRole("button", { name: "Save deck" }).click()
+  await expect(page).toHaveURL(/\/flashcards\/[^/]+\/edit$/)
+  await expect(page.getByText(/^Saved at /)).toBeVisible()
+  // Save deck again opens the deck.
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible()
@@ -326,6 +331,11 @@ test.describe("make a deck (fresh account)", () => {
     await expect(page.getByText("4 cards ready")).toBeVisible()
     await field(page, "Tags").fill("#trivia, math")
 
+    // The first save makes the deck; the editor stays open and says it is saved.
+    await page.getByRole("button", { name: "Save deck" }).click()
+    await expect(page).toHaveURL(/\/flashcards\/[^/]+\/edit$/)
+    await expect(page.getByRole("heading", { level: 1, name: "Edit your deck" })).toBeVisible()
+    await expect(page.getByText(/^Saved at /)).toBeVisible()
     await page.getByRole("button", { name: "Save deck" }).click()
     await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
     await expect(page.getByRole("heading", { level: 1, name: "Made Up Facts" })).toBeVisible()

@@ -49,8 +49,11 @@ export type AuthContextValue = {
   chatbotAccountId: string | null
   isChatbotAccount: boolean
   canAddAccount: boolean
-  /** Set when this tab's account was signed out in another tab. */
-  signedOutElsewhere: { username: string } | null
+  /**
+   * Set when this tab's account was signed out in another tab. `held` means this tab still has
+   * unsaved work for that account, so the page stays open with the sign-in-again box.
+   */
+  signedOutElsewhere: SignedOutElsewhereInfo | null
   /** Logs in (adds or refreshes an account) and binds this tab to it. Check user.email_verified. */
   login: (input: LoginInput) => Promise<{ user: BasicUser; alreadyListed: boolean }>
   /** Starts an account. No session yet: the emailed code logs the user in. */
@@ -67,6 +70,18 @@ export type AuthContextValue = {
   refreshProfile: (id?: string) => Promise<void>
   setProfile: (profile: Profile) => void
   dismissSignedOutElsewhere: () => void
+  /**
+   * Signs the same account in again without leaving the page (its sign-in ended, or it was
+   * signed out in another tab while this tab had unsaved work). Refuses a different account.
+   */
+  signInAgain: (accountId: string, email: string, password: string) => Promise<void>
+}
+
+export type SignedOutElsewhereInfo = {
+  username: string
+  id?: string
+  email?: string
+  held?: boolean
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined)

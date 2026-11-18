@@ -116,9 +116,9 @@ export function AccountList({
             className="account-row"
             aria-current={account.isActive ? "true" : undefined}
             onClick={() => {
-              if (account.isActive || switchTo(account.id)) {
-                done()
-              }
+              // Close the menu first: with unsaved work a "Stay and save?" box may open.
+              done()
+              if (!account.isActive) void switchTo(account.id)
             }}
           >
             <AccountInfo account={account} />
@@ -148,18 +148,18 @@ export function AccountList({
             </span>
           ) : null}
           {account.status === "expired" ? (
-            <button type="button" className="secondary-button small" onClick={() => switchTo(account.id)}>
+            <button type="button" className="secondary-button small" onClick={() => void switchTo(account.id)}>
               Sign in again
             </button>
           ) : account.isActive ? null : (
-            <button type="button" className="secondary-button small" onClick={() => switchTo(account.id)}>
+            <button type="button" className="secondary-button small" onClick={() => void switchTo(account.id)}>
               Switch
             </button>
           )}
           <button
             type="button"
             className="ghost-button small"
-            onClick={() => signOut(account.id)}
+            onClick={() => void signOut(account.id)}
             aria-label={account.status === "expired" ? `Remove ${account.username}` : `Sign out of ${account.username}`}
           >
             {account.status === "expired" ? "Remove" : "Sign out"}
@@ -190,9 +190,8 @@ export function AccountList({
           disabled={!canAddAccount}
           aria-describedby={canAddAccount ? undefined : "account-limit-hint"}
           onClick={() => {
-            if (addAccount()) {
-              done()
-            }
+            done()
+            void addAccount()
           }}
         >
           <Plus weight="bold" aria-hidden="true" /> Add another account
@@ -207,9 +206,8 @@ export function AccountList({
             type="button"
             className="ghost-button wide account-action"
             onClick={() => {
-              if (signOut(activeAccount.id)) {
-                done()
-              }
+              done()
+              void signOut(activeAccount.id)
             }}
           >
             <SignOut weight="bold" aria-hidden="true" /> Sign out of {activeAccount.username}

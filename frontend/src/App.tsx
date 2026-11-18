@@ -17,6 +17,7 @@ import { Scribble } from "./ui/Scribble"
 import { isBusyPath } from "./ui/accountActions"
 import { applyTheme, clearTheme, readThemeCache, useResolvedTheme } from "./ui/theme"
 import { ACCOUNT_LIMIT_MESSAGE } from "./accounts"
+import { SignInAgainHost, UnsavedWorkGuard, isSigningOut, useHasUnsavedWork } from "./work"
 import { DeckEditorPage, DeckPage, DecksPage, StudyPage } from "./study/FlashcardPages"
 import { QuizPage } from "./study/QuizPage"
 import { StudyPlansPage } from "./study/StudyPlansPage"
@@ -124,20 +125,31 @@ function BackendConnectionBanner({ health }: { health: HealthState }) {
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { loading, isAuthenticated, signedOutElsewhere } = useAuth()
   const location = useLocation()
+  // Unsaved work is never dropped by a redirect or a sign-out in another tab: the page stays
+  // open and asks to sign in again (SignInAgainHost). With nothing unsaved, nothing changes.
+  const holdingWork = useHasUnsavedWork()
 
   if (loading) {
     return <LoadingScreen message="Checking your session..." />
   }
 
-  if (signedOutElsewhere) {
+  if (signedOutElsewhere && !holdingWork) {
     return <SignedOutElsewhere />
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !signedOutElsewhere && !holdingWork) {
+    // Signing out goes to the home page next; don't send the student to the login page first.
+    if (isSigningOut()) return null
     return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
   }
 
-  return <>{children}</>
+  return (
+    <>
+      <UnsavedWorkGuard />
+      {children}
+      <SignInAgainHost />
+    </>
+  )
 }
 
 function PublicOnlyRoute({ children }: { children: ReactNode }) {

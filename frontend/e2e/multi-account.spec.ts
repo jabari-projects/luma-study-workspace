@@ -300,40 +300,32 @@ test("switching accounts in the middle of writing a note asks first, and keeps e
   const body = page.getByRole("textbox", { name: "Your notes" })
   await body.fill("Sam's half-written note")
 
-  // Switching asks first. "Cancel" keeps sam and the words on the page.
-  const questions: string[] = []
-  page.once("dialog", (dialog) => {
-    questions.push(dialog.message())
-    void dialog.dismiss()
-  })
+  // Switching asks first. "Stay and save" keeps sam and the words on the page.
   let menu = await openAccountMenu(page)
   await menu.getByRole("button", { name: /demo@luma\.test/ }).click()
-  await expect.poll(() => questions.length).toBe(1)
-  expect(questions[0]).toContain("Switch accounts now?")
-  expect(questions[0]).toContain("Your work on this page is not saved yet.")
+  const ask = page.getByRole("alertdialog", { name: "You have work that isn't saved yet." })
+  await expect(ask).toBeVisible()
+  await expect(ask.getByRole("button", { name: "Stay and save" })).toBeFocused()
+  await ask.getByRole("button", { name: "Stay and save" }).click()
   await expect(page).toHaveURL(/\/notes\/new$/)
   expect(await tabAccount(page)).toBe("u2")
-  if (await menu.isVisible()) await page.keyboard.press("Escape")
   await expect(body).toHaveValue("Sam's half-written note")
 
-  // "OK" switches to the first account, which does not see sam's draft.
-  page.once("dialog", (dialog) => {
-    questions.push(dialog.message())
-    void dialog.accept()
-  })
+  // "Switch anyway" switches to the first account, which does not see sam's draft.
   menu = await openAccountMenu(page)
   await menu.getByRole("button", { name: /demo@luma\.test/ }).click()
+  await ask.getByRole("button", { name: "Switch anyway" }).click()
   await expect(page).toHaveURL(/\/dashboard/)
   expect(await tabAccount(page)).toBe("u1")
-  expect(questions).toHaveLength(2)
   await page.goto("/notes/new")
   await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("")
+  await expect(page.getByText("You have changes from earlier in this tab.")).toHaveCount(0)
 
-  // Back on sam, the draft is still there (it is kept per account on this device).
+  // Back on sam, the draft is still there (kept per account, in this tab only).
   menu = await openAccountMenu(page)
-  page.once("dialog", (dialog) => void dialog.accept())
   await menu.getByRole("button", { name: /second@luma\.test/ }).click()
   await expect(page).toHaveURL(/\/dashboard/)
   await page.goto("/notes/new")
+  await page.getByRole("button", { name: "Use them" }).click()
   await expect(page.getByRole("textbox", { name: "Your notes" })).toHaveValue("Sam's half-written note")
 })

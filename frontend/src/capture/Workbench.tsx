@@ -7,8 +7,11 @@ import { ArrowCounterClockwise, Cards, Check, FloppyDisk, MoonStars, Plus, Spark
 
 import { api, getErrorMessage, getTabAccountId } from "../api"
 import { newCardId } from "../study/deck"
+import { LEAVE_ANYWAY_STATE } from "../work/leave"
+import { useEditSession } from "../work/useAutosave"
 import { newDraftCard } from "./capture-api"
 import type { DraftCard, NotesDraft } from "./capture-api"
+import type { CaptureKeys } from "./useCaptureWork"
 
 /* ------------------------------------------------------------------ */
 /* Waiting steps                                                      */
@@ -85,10 +88,16 @@ export function NotesWorkbench({
   draft,
   onChange,
   onStartOver,
+  keys,
+  onSaved,
 }: {
   draft: NotesDraft
   onChange: (draft: NotesDraft) => void
   onStartOver: () => void
+  /** One Idempotency-Key for the note and one for the deck: a retry never makes copies. */
+  keys: CaptureKeys
+  /** Everything the student asked for is saved: the page can let go of its draft. */
+  onSaved: () => void
 }) {
   const navigate = useNavigate()
   const titleRef = useRef<HTMLInputElement>(null)
@@ -98,6 +107,8 @@ export function NotesWorkbench({
   // If the note saved but the deck didn't, remember the note so we only retry the deck.
   const [savedNoteId, setSavedNoteId] = useState<string | null>(null)
   const kept = draft.cards.filter((card) => card.keep && card.front.trim() && card.back.trim())
+  // Saves send the maintenance edit-session headers, like the other editors.
+  const { headers: sessionHeaders } = useEditSession()
 
   useEffect(() => {
     const title = titleRef.current
@@ -120,7 +131,7 @@ export function NotesWorkbench({
         tags,
         cards: kept.map((card) => ({ id: newCardId(), front: card.front.trim(), back: card.back.trim(), review: null })),
       },
-      { lumaAccountId: accountId },
+      { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": keys.deck } },
     )
 
   const save = async (withDeck: boolean) => {
@@ -139,7 +150,7 @@ export function NotesWorkbench({
         const note = await api.post<{ id: string }>(
           "/notes",
           { title, content: noteContent(draft), tags },
-          { lumaAccountId: accountId },
+          { lumaAccountId: accountId, timeout: 30_000, headers: { ...sessionHeaders(), "Idempotency-Key": keys.note } },
         )
         noteId = note.data.id
       }
@@ -157,17 +168,20 @@ export function NotesWorkbench({
 
     if (!withDeck || kept.length === 0) {
       setSaving(null)
+      onSaved()
       toast.success("Saved your note!")
-      navigate(`/notes/${noteId}`)
+      // Saved and confirmed, so leaving needs no "are you sure?".
+      navigate(`/notes/${noteId}`, { state: LEAVE_ANYWAY_STATE })
       return
     }
 
     try {
       const deck = await postDeck(title, tags, accountId)
+      onSaved()
       toast.success("Saved your note and deck!", {
         action: { label: "Open note", onClick: () => navigate(`/notes/${noteId}`) },
       })
-      navigate(`/flashcards/${deck.data.id}`)
+      navigate(`/flashcards/${deck.data.id}`, { state: LEAVE_ANYWAY_STATE })
     } catch (error: unknown) {
       // Stay here so the cards aren't lost. The note is already saved.
       setSavedNoteId(noteId)

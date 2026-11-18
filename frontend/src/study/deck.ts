@@ -35,6 +35,8 @@ export type Deck = {
   study_type?: string | null
   created_at?: string
   updated_at?: string | null
+  /** Goes up by 1 on every saved edit (the deck editor sends it back as expected_version). */
+  version?: number
 }
 
 export type Mastery = "new" | "learning" | "shaky" | "solid"

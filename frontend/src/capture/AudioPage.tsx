@@ -7,7 +7,9 @@ import { NoticeBanner, PageHeader } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import { CaptureError, makeNotes, transcribeAudio } from "./capture-api"
 import type { NotesDraft } from "./capture-api"
+import { DraftOffer } from "../work/DraftOffer"
 import { LimitNudge, NotesWorkbench, WorkingSteps } from "./Workbench"
+import { useCaptureWork } from "./useCaptureWork"
 import { MAX_RECORDING_SECONDS, canRecord, formatClock, useRecorder } from "./useRecorder"
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -37,6 +39,13 @@ export function AudioToNotesPage() {
   const [draft, setDraft] = useState<NotesDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [limit, setLimit] = useState<string | null>(null)
+
+  // The words and notes wait here for the student. A text-only copy stays in this tab (never the sound).
+  const work = useCaptureWork("capture-voice", draft, transcript, () => {
+    setTranscript("")
+    setDraft(null)
+    setStage("capture")
+  })
 
   const live = recorder.state === "recording" || recorder.state === "paused"
   const audioToSend = file
@@ -103,6 +112,7 @@ export function AudioToNotesPage() {
 
   const startOver = () => {
     recorder.reset()
+    work.renewKeys()
     setFile(null)
     setTranscript("")
     setDraft(null)
@@ -131,6 +141,19 @@ export function AudioToNotesPage() {
         description="Upload audio and turn it into text. Then Luma makes notes and flashcards for you."
       />
 
+      {work.offer && !draft && !transcript ? (
+        <DraftOffer
+          text="You have words or notes from earlier in this tab."
+          onUse={() => {
+            const restored = work.takeOffer()
+            if (!restored) return
+            setTranscript(restored.words)
+            setDraft(restored.draft)
+            setStage(restored.draft ? "review" : "transcript")
+          }}
+          onThrowAway={work.dropOffer}
+        />
+      ) : null}
       {limit ? <LimitNudge message={limit} onClose={() => setLimit(null)} /> : null}
       <NoticeBanner notice={error ? { type: "error", text: error } : recorder.error && recorder.state === "error" ? { type: "error", text: recorder.error } : null} />
 
@@ -316,7 +339,19 @@ export function AudioToNotesPage() {
               <p className="field-hint">Free plan: making notes uses 1 notes turn.</p>
             </section>
           ) : null}
-          {stage === "review" && draft ? <NotesWorkbench draft={draft} onChange={setDraft} onStartOver={startOver} /> : null}
+          {stage === "review" && draft ? (
+            <NotesWorkbench
+              draft={draft}
+              onChange={setDraft}
+              onStartOver={startOver}
+              keys={work.keys}
+              onSaved={() => {
+                setDraft(null)
+                setTranscript("")
+                work.renewKeys()
+              }}
+            />
+          ) : null}
           {stage === "capture" && !draft ? (
             <aside className="capture-tip">
               <h2>How it works</h2>
