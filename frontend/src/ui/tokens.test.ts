@@ -253,7 +253,7 @@ describe("the student's color reaches every personal mark", () => {
     const allowed = [
       ".brand img",
       ".auth-brand img",
-      ".hero-mark",
+      ".landing-star",
       ".paper-card.three img",
       ".week-dots li.lit .week-star",
       ".limit-nudge", // a warning
