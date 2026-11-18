@@ -31,19 +31,23 @@ Plain rule: updates add things. They never delete student work.
 
 ## On the day
 
-4. **Get ready, then pause.** Start the "getting ready" phase, so people can finish saving.
-   Wait for the grace time. Turn on maintenance only if the safety check passes. If it does not
-   pass, don't force it: move the break and write down why.
+4. **Get ready.** Start the "getting ready" phase, so people can finish saving. Wait until the
+   grace time is over. From then on every save, AI job and payment webhook is refused, so
+   nothing new can be written.
 
-5. **Fresh backup during the break.** While maintenance is on (nobody can save), run:
+5. **Fresh backup, then pause.** After the grace time ends and *before* pressing Enter
+   maintenance, run:
 
    ```
    python backup_run.py --production
    ```
 
-   The practice restore must pass. Put the backup name (like `20261119T033000Z`) in the
-   maintenance form; database updates need it. Because nobody can save during the break,
-   nothing made after the backup can be lost.
+   The practice restore must pass. Type the backup name (like `20261119T033000Z`) into the
+   maintenance form next to Enter maintenance and tick "restore test passed"; a database update
+   is refused without it (`backup_missing`), and there is nowhere to type it once maintenance is
+   on. Then press Enter maintenance. It turns on only if the safety check passes; if it does not
+   pass, don't force it: move the break and write down why. Because writes were already refused
+   when the backup started, nothing made after the backup can be lost.
 
 6. **Change the database.** The owner pastes the new SQL into the Supabase SQL editor and runs
    it. Then runs the file's VERIFY part and checks the numbers.
