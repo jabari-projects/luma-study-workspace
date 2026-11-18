@@ -48,6 +48,7 @@ from .passwords import (
 from .rate_limits import SlidingWindowLimiter
 from .public_search import router as public_search_router
 from .reports import router as reports_router
+from .feedback import router as feedback_router
 from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
@@ -235,6 +236,16 @@ def _sanitize_error_value(value):
     return _sanitize_error_value(str(value))
 
 
+@app.exception_handler(auth_module.CodedHTTPException)
+async def coded_http_exception_handler(request: Request, exc: auth_module.CodedHTTPException):
+    """{"detail": message, "error_code": code} for errors raised from dependencies."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "error_code": exc.error_code},
+        headers=getattr(exc, "headers", None),
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(request: Request, exc: RequestValidationError):
     """422 without echoing what was sent.
@@ -400,6 +411,7 @@ app.include_router(transcripts_router)
 app.include_router(analytics_router)
 app.include_router(public_search_router)
 app.include_router(reports_router)
+app.include_router(feedback_router)
 app.include_router(capture_router)
 
 

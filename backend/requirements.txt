@@ -20,3 +20,4 @@ certifi==2026.10.23
 lxml-html-clean==0.4.6
 argon2-cffi==25.1.0
 argon2-cffi-bindings==26.1.0
+tzdata==2026.6

@@ -19,6 +19,17 @@ CREDENTIAL_VERSION_CLAIM = "pv"
 logger = logging.getLogger(__name__)
 
 
+class CodedHTTPException(HTTPException):
+    """An HTTPException whose JSON body is {"detail": message, "error_code": code}.
+
+    main.py registers the handler that renders this flat shape.
+    """
+
+    def __init__(self, status_code: int, message: str, error_code: str) -> None:
+        super().__init__(status_code=status_code, detail=message)
+        self.error_code = error_code
+
+
 class CredentialLookupError(Exception):
     """The stored credential could not be read (database problem)."""
 
@@ -221,17 +232,37 @@ def get_current_user_id(user: dict[str, str] = Depends(get_current_user)) -> str
     return user["id"]
 
 
-def require_admin(user_id: str = Depends(get_current_user_id)):
-    result = (
-        get_supabase()
-        .table("users")
-        .select("role")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
+def _user_row(user_id: str, columns: str) -> Optional[dict]:
+    """The users row (selected columns) or None. Raises on database errors."""
+    response = get_supabase().table("users").select(columns).eq("id", user_id).maybe_single().execute()
+    row = getattr(response, "data", None) if response is not None else None
+    return row if isinstance(row, dict) else None
 
-    if not result.data or result.data.get("role") != "admin":
+
+def require_admin(user_id: str = Depends(get_current_user_id)):
+    # maybe_single: a missing users row is a plain 403, not a 500.
+    try:
+        row = _user_row(user_id, "role")
+    except Exception as exc:  # noqa: BLE001 - fail closed on database trouble
+        logger.warning("Admin check failed (%s)", type(exc).__name__)
+        row = None
+    if not row or row.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
+    return user_id
+
+
+VERIFY_EMAIL_DETAIL = "Verify your email to answer the poll."
+
+
+def require_verified_user(user_id: str = Depends(get_current_user_id)) -> str:
+    """Signed in AND email verified. Fails closed: a read error, a missing row or
+    any value other than True is a 403 with error_code email_unverified."""
+    try:
+        row = _user_row(user_id, "email_verified")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Verified-email check failed (%s)", type(exc).__name__)
+        row = None
+    if not row or row.get("email_verified") is not True:
+        raise CodedHTTPException(403, VERIFY_EMAIL_DETAIL, "email_unverified")
     return user_id
