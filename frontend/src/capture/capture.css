@@ -238,6 +238,23 @@
   overflow-wrap: anywhere;
 }
 
+/* Image to notes: the picker, then a small look at the chosen picture. */
+.image-pick {
+  display: grid;
+  gap: 16px;
+}
+
+.image-preview {
+  display: block;
+  justify-self: start;
+  max-width: 100%;
+  max-height: 240px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  object-fit: contain;
+  background: var(--card);
+}
+
 .heard summary {
   font-weight: 700;
   cursor: pointer;

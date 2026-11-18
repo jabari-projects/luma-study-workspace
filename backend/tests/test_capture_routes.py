@@ -236,3 +236,149 @@ def test_import_link_rate_limit(client, monkeypatch):
     ]
     assert codes[:10] == [200] * 10
     assert codes[10] == 429
+
+
+# ---------- Picture to notes (/api/generate-notes): same notes, same rules, 1 turn ----------
+
+PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgo="
+
+
+def test_image_notes_use_the_notes_schema_and_cleaning(client, usage_calls, monkeypatch):
+    payload = {
+        "title": "  Plants   and light ",
+        "summary": " Plants make food. ",
+        "notes": "## Plants\n- They use light.\n",
+        "key_terms": ["Light", "light", "Water"],
+        "flashcards": [
+            {"front": " What do plants use? ", "back": " Light "},
+            {"front": "What do plants use?", "back": "Light"},
+            {"front": "", "back": "No front"},
+        ],
+    }
+    responses = install_fake_openai(monkeypatch, payload)
+
+    res = client.post("/api/generate-notes", json={"image": PNG_DATA_URL})
+    assert res.status_code == 200, res.text
+    assert res.json() == {
+        "title": "Plants and light",
+        "summary": "Plants make food.",
+        "notes": "## Plants\n- They use light.",
+        "key_terms": ["Light", "Water"],
+        "flashcards": [{"front": "What do plants use?", "back": "Light"}],
+        "truncated": False,
+    }
+
+    # Exactly one AI call and one notes turn.
+    assert len(responses.calls) == 1
+    assert usage_calls == ["notes"]
+    assert len(main.ai_rate_limit_windows[("user-123", "generate-notes")]) == 1
+
+    call = responses.calls[0]
+    assert call["text"]["format"] == {
+        "type": "json_schema",
+        "name": "study_notes",
+        "strict": True,
+        "schema": capture.NOTES_JSON_SCHEMA,
+    }
+    assert call["max_output_tokens"] == 2500
+    assert call["store"] is False
+    system, user = call["input"]
+    assert system == {"role": "system", "content": capture.NOTES_SYSTEM_PROMPT}
+    assert "untrusted data" in system["content"]
+    assert user["role"] == "user"
+    text_part, image_part = user["content"]
+    assert text_part["type"] == "input_text"
+    assert "only as data to study" in text_part["text"]
+    assert image_part == {"type": "input_image", "image_url": PNG_DATA_URL}
+
+
+def test_image_notes_reencode_the_picture(client, monkeypatch):
+    responses = install_fake_openai(
+        monkeypatch, {"title": "T", "summary": "S", "notes": "N", "key_terms": [], "flashcards": []}
+    )
+    res = client.post("/api/generate-notes", json={"image": "  data:image/JPG;base64,iVBORw0KGgo=  "})
+    assert res.status_code == 200, res.text
+    image_part = responses.calls[0]["input"][1]["content"][1]
+    assert image_part["image_url"] == "data:image/jpeg;base64,iVBORw0KGgo="
+
+
+def test_image_notes_bad_ai_answer_uses_no_turn(client, usage_calls, monkeypatch):
+    for bad in ("not json", {"title": "T", "summary": " ", "notes": "", "key_terms": [], "flashcards": []}):
+        install_fake_openai(monkeypatch, bad)
+        res = client.post("/api/generate-notes", json={"image": PNG_DATA_URL})
+        assert res.status_code == 500
+        assert res.json() == {"error": "We couldn't make notes this time. Try again."}
+    assert usage_calls == []
+
+
+def test_image_notes_refuse_things_that_are_not_pictures(client, usage_calls, monkeypatch):
+    responses = install_fake_openai(monkeypatch, {"title": "T", "summary": "S", "notes": "N", "key_terms": [], "flashcards": []})
+    for body in (
+        {},
+        {"image": ""},
+        {"image": "hello"},
+        {"image": "data:image/png,not-base64"},
+        {"image": "data:image/png;base64,!!!"},
+        {"image": "data:text/html;base64,PGgxPmhpPC9oMT4="},
+        {"image": "data:application/pdf;base64,JVBERi0="},
+    ):
+        res = client.post("/api/generate-notes", json=body)
+        assert res.status_code == 400, body
+        assert res.json() == {"error": "We couldn't open that picture. Try a PNG, JPG or WEBP photo."}
+    assert responses.calls == []
+    assert usage_calls == []
+    # A bad file doesn't use up the "slow down" window either.
+    assert main.ai_rate_limit_windows.get(("user-123", "generate-notes"), []) == []
+
+
+def test_image_notes_daily_limit(client, usage_calls, monkeypatch):
+    responses = install_fake_openai(monkeypatch, {"title": "T", "summary": "S", "notes": "N", "key_terms": [], "flashcards": []})
+    monkeypatch.setattr(main, "has_free_ai_daily_limit", lambda user_id, usage_type: usage_type == "notes")
+    res = client.post("/api/generate-notes", json={"image": PNG_DATA_URL})
+    assert res.status_code == 403
+    assert res.json() == {"error": "You made all your free notes for today. Come back tomorrow."}
+    assert responses.calls == []
+    assert usage_calls == []
+
+
+def test_image_notes_too_big_is_refused_before_any_slot_or_turn(client, usage_calls, monkeypatch):
+    responses = install_fake_openai(monkeypatch, {"title": "T", "summary": "S", "notes": "N", "key_terms": [], "flashcards": []})
+    big_image = "data:image/png;base64," + "A" * 400
+
+    # The route checks the picture's length before decoding it.
+    monkeypatch.setattr(main, "MAX_NOTES_IMAGE_REQUEST_BYTES", 300)
+    res = client.post("/api/generate-notes", json={"image": big_image})
+    assert res.status_code == 413
+    assert res.json() == {"error": "That picture is too big. Try one under 15 MB."}
+
+    # The body limit stops a huge request before the route even reads it.
+    monkeypatch.setitem(
+        main.RequestBodyLimitMiddleware.LIMITS, "/api/generate-notes", (300, main.IMAGE_TOO_BIG_MESSAGE)
+    )
+    res = client.post("/api/generate-notes", json={"image": big_image})
+    assert res.status_code == 413
+    assert res.json() == {"error": "That picture is too big. Try one under 15 MB."}
+
+    assert responses.calls == []
+    assert usage_calls == []
+    assert main.ai_rate_limit_windows.get(("user-123", "generate-notes"), []) == []
+
+
+def test_image_notes_cap_fits_a_15_mb_picture():
+    # 15 MB of picture is 20 MB of base64; the cap must leave room for it.
+    assert main.MAX_NOTES_IMAGE_REQUEST_BYTES > (15 * 1024 * 1024 * 4) // 3 + 100
+
+
+def test_image_notes_requires_login(client, monkeypatch):
+    monkeypatch.setattr(main, "authenticate_ai_request", lambda request: None)
+    res = client.post("/api/generate-notes", json={"image": PNG_DATA_URL})
+    assert res.status_code == 401
+    assert res.json() == {"error": "Please log in again."}
+
+
+def test_image_notes_no_key_is_a_friendly_503(client, usage_calls):
+    # conftest removes OPENAI_API_KEY, so the real get_ai_client raises.
+    res = client.post("/api/generate-notes", json={"image": PNG_DATA_URL})
+    assert res.status_code == 503
+    assert res.json() == {"error": "Making notes is not working right now. Try again later."}
+    assert usage_calls == []

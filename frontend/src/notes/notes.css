@@ -552,25 +552,10 @@
 
 /* ------------------------------------------------- note editor and sheets */
 
-.note-editor,
-.image-result,
-.image-pick {
+.note-editor {
   display: grid;
   gap: 18px;
   max-width: calc(var(--measure) + 120px);
-}
-
-.image-pick {
-  max-width: 640px;
-}
-
-.image-result h2 {
-  margin: 0;
-  font-size: 1.3rem;
-}
-
-.image-result > p {
-  margin: -10px 0 0;
 }
 
 .editor-title input {

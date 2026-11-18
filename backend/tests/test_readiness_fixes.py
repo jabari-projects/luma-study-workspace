@@ -179,11 +179,11 @@ def test_image_notes_ask_openai_not_to_store(monkeypatch):
 
     def create(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(output_text="Some notes")
+        return SimpleNamespace(output_text='{"title":"t","summary":"s","notes":"Some notes","key_terms":[],"flashcards":[]}')
 
     monkeypatch.setattr(main, "get_ai_client", lambda: SimpleNamespace(responses=SimpleNamespace(create=create)))
     png_data_url = "data:image/png;base64,iVBORw0KGgo="
-    assert main.generate_notes_with_ai(png_data_url) == "Some notes"
+    assert main.generate_notes_with_ai(png_data_url)["notes"] == "Some notes"
     assert calls[0]["store"] is False
 
 

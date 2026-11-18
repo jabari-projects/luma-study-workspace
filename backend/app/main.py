@@ -27,6 +27,7 @@ from openai import APIConnectionError, APIStatusError, AuthenticationError, Open
 from pydantic import BaseModel, EmailStr, Field
 from supabase import Client
 from .analytics import router as analytics_router
+from . import capture
 from .capture import router as capture_router
 from . import account_deletion
 from . import email_codes as email_codes_module
@@ -305,6 +306,10 @@ MAX_TRANSCRIBE_UPLOAD_BYTES = 25 * 1024 * 1024
 # Multipart framing adds a little overhead on top of the audio itself.
 MAX_TRANSCRIBE_REQUEST_BYTES = 26 * 1024 * 1024
 TRANSCRIBE_TOO_BIG_MESSAGE = "That recording is too big. Try one under 25 MB."
+# Pictures arrive as base64 inside JSON. A 15 MB picture is about 20 MB of base64,
+# so the request (and the "image" text) is capped a little above that.
+MAX_NOTES_IMAGE_REQUEST_BYTES = 21 * 1024 * 1024
+IMAGE_TOO_BIG_MESSAGE = "That picture is too big. Try one under 15 MB."
 
 
 # Each HTTP step may take up to the TIMEOUT, but the whole call is also cut off at the
@@ -320,8 +325,9 @@ class _BodyTooLarge(Exception):
     pass
 
 
-class TranscribeBodyLimitMiddleware:
-    """Caps the /api/transcribe request body by counting the bytes actually received.
+class RequestBodyLimitMiddleware:
+    """Caps the /api/transcribe and /api/generate-notes request bodies by counting the
+    bytes actually received.
 
     The Content-Length header is only a fast early check: a client can leave it out
     (chunked upload), so the real limit is enforced on the stream itself.
@@ -329,19 +335,28 @@ class TranscribeBodyLimitMiddleware:
     carries CORS headers.
     """
 
+    LIMITS = {
+        "/api/transcribe": (MAX_TRANSCRIBE_REQUEST_BYTES, TRANSCRIBE_TOO_BIG_MESSAGE),
+        "/api/generate-notes": (MAX_NOTES_IMAGE_REQUEST_BYTES, IMAGE_TOO_BIG_MESSAGE),
+    }
+
     def __init__(self, app_):
         self.app = app_
 
     async def __call__(self, scope, receive, send):
-        if not (scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/api/transcribe"):
+        limit = None
+        if scope["type"] == "http" and scope.get("method") == "POST":
+            limit = self.LIMITS.get(scope.get("path", ""))
+        if limit is None:
             await self.app(scope, receive, send)
             return
+        max_bytes, too_big_message = limit
 
-        too_big_response = JSONResponse(status_code=413, content={"error": TRANSCRIBE_TOO_BIG_MESSAGE})
+        too_big_response = JSONResponse(status_code=413, content={"error": too_big_message})
         for name, value in scope.get("headers", []):
             if name == b"content-length":
                 try:
-                    if int(value) > MAX_TRANSCRIBE_REQUEST_BYTES:
+                    if int(value) > max_bytes:
                         await too_big_response(scope, receive, send)
                         return
                 except ValueError:
@@ -356,7 +371,7 @@ class TranscribeBodyLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > MAX_TRANSCRIBE_REQUEST_BYTES:
+                if received > max_bytes:
                     exceeded = True
                     raise _BodyTooLarge()
             return message
@@ -381,7 +396,7 @@ class TranscribeBodyLimitMiddleware:
                 await too_big_response(scope, receive, send)
 
 
-app.add_middleware(TranscribeBodyLimitMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -722,8 +737,11 @@ class GenerateNotesRequest(BaseModel):
     image: Optional[str] = None
 
 
-class GenerateNotesResponse(BaseModel):
-    notes: str
+class GenerateNotesResponse(capture.NotesFromTextResponse):
+    """Picture to notes answers with the same notes shape as the other note tools.
+
+    "notes" stays a Markdown string, so an older page that only reads it still works.
+    """
 
 
 class TranscribeResponse(BaseModel):
@@ -1913,52 +1931,25 @@ def raise_openai_error(exc: Exception):
     raise exc
 
 
-def generate_notes_with_ai(image_data_url: str):
-    mime_type, decoded_image = decode_base64_data_url(image_data_url)
-    client = get_ai_client()
-    model = get_ai_model()
+# Picture types the AI can read. The page offers PNG, JPG and WEBP.
+NOTES_IMAGE_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")
+IMAGE_NOTES_BAD_PICTURE_MESSAGE = "We couldn't open that picture. Try a PNG, JPG or WEBP photo."
 
-    reencoded_data_url = (
-        f"data:{mime_type};base64,{base64.b64encode(decoded_image).decode('utf-8')}"
-    )
 
-    try:
-        response = run_with_deadline(
-            lambda: client.responses.create(
-            model=model,
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "Analyze this image and turn it into concise study notes. "
-                                "Use short headings and bullet points when helpful. "
-                                "Extract visible text accurately and highlight the key ideas."
-                            ),
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": reencoded_data_url,
-                        },
-                    ],
-                }
-            ],
-            max_output_tokens=700,
-                # Don't keep the student's image and notes at OpenAI as a stored response.
-                store=False,
-            ),
-            AI_NOTES_DEADLINE_SECONDS,
-        )
-    except Exception as exc:
-        raise_openai_error(exc)
+def read_notes_image(image_data_url: Optional[str]) -> str:
+    """Check the picture and return a clean data URL. Raises ValueError if it isn't one."""
+    mime_type, decoded_image = decode_base64_data_url(image_data_url or "")
+    mime_type = mime_type.lower()
+    if mime_type == "image/jpg":
+        mime_type = "image/jpeg"
+    if mime_type not in NOTES_IMAGE_TYPES:
+        raise ValueError("Invalid request")
+    return f"data:{mime_type};base64,{base64.b64encode(decoded_image).decode('utf-8')}"
 
-    notes = (response.output_text or "").strip()
-    if not notes:
-        raise RuntimeError("AI returned an empty notes response")
 
-    return notes
+def generate_notes_with_ai(image_data_url: str) -> dict[str, Any]:
+    """One AI call: title, summary, Markdown notes, key terms and flashcards, cleaned."""
+    return capture.generate_study_notes_from_image(read_notes_image(image_data_url))
 
 
 class AudioTooLargeError(ValueError):
@@ -2271,28 +2262,37 @@ async def stripe_webhook(request: Request):
         400: {"model": BasicApiErrorResponse},
         401: {"model": BasicApiErrorResponse},
         403: {"model": BasicApiErrorResponse},
+        429: {"model": BasicApiErrorResponse},
         503: {"model": BasicApiErrorResponse},
         500: {"model": BasicApiErrorResponse},
     },
 )
 def generate_notes(payload: GenerateNotesRequest, request: Request):
+    """Picture to notes. Same notes shape, cleaning and limits as /api/notes-from-text:
+    one notes turn, counted only when the notes come back."""
     ai_user = authenticate_ai_request(request)
     if not ai_user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": capture.LOGIN_AGAIN_MESSAGE})
 
     gate = ai_email_gate(ai_user)
     if gate is not None:
         return gate
 
-    if not is_valid_base64_data_url(payload.image):
-        return JSONResponse(status_code=400, content={"error": "Invalid request"})
+    # Check the picture before using a turn, so a bad file costs nothing. The size check
+    # is cheap and comes first, so a huge picture is never decoded.
+    if len(payload.image or "") > MAX_NOTES_IMAGE_REQUEST_BYTES:
+        return JSONResponse(status_code=413, content={"error": IMAGE_TOO_BIG_MESSAGE})
+    try:
+        image_data_url = read_notes_image(payload.image)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": IMAGE_NOTES_BAD_PICTURE_MESSAGE})
 
     if not consume_ai_rate_limit_slot(
         ai_user["id"],
         "generate-notes",
         ai_user["subscription_status"],
     ):
-        return JSONResponse(status_code=429, content={"error": RATE_LIMIT_MESSAGE})
+        return JSONResponse(status_code=429, content={"error": capture.SLOW_DOWN_MESSAGE})
 
     with free_ai_turn(ai_user) as my_turn:
         if not my_turn:
@@ -2301,18 +2301,20 @@ def generate_notes(payload: GenerateNotesRequest, request: Request):
             not has_premium_subscription(ai_user["subscription_status"])
             and has_free_ai_daily_limit(ai_user["id"], "notes")
         ):
-            return JSONResponse(status_code=403, content={"error": "You made all your free notes for today. Come back tomorrow."})
+            return JSONResponse(status_code=403, content={"error": capture.DAILY_LIMIT_MESSAGE})
 
+        logger.info("Image to notes request chars=%s", len(image_data_url))
         try:
-            notes = generate_notes_with_ai(payload.image)
+            result = generate_notes_with_ai(image_data_url)
             record_ai_usage(ai_user["id"], "notes")
-            return {"notes": notes}
+            return {**result, "truncated": False}
         except AIServiceUnavailableError as exc:
-            logger.warning("AI note generation unavailable: %s", exc)
-            return JSONResponse(status_code=503, content={"error": str(exc)})
-        except Exception:
-            logger.exception("AI note generation failed")
-            return JSONResponse(status_code=500, content={"error": "AI processing failed"})
+            logger.warning("Image to notes unavailable: %s", type(exc).__name__)
+            return JSONResponse(status_code=503, content={"error": capture.NOTES_UNAVAILABLE_MESSAGE})
+        except Exception as exc:
+            # Exception type only: messages could carry the student's material.
+            logger.warning("Image to notes failed: %s", type(exc).__name__)
+            return JSONResponse(status_code=500, content={"error": capture.NOTES_FAILED_MESSAGE})
 
 
 @app.post(

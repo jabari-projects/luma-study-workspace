@@ -1,6 +1,7 @@
 // Notes: the Notes hub (/notes) with its start links, tabs, "Find in my notes" and row
 // menus; writing and changing a note; deleting with "are you sure?"; making notes from
-// pasted text, Voice to notes (a fake sound file, no microphone) and Image to notes;
+// pasted text, Voice to notes (a fake sound file, no microphone) and Image to notes (a
+// made-up picture onto the same workbench, plus the deck);
 // saved notes at /notes/:id; summaries; old addresses that redirect; the draft kept on
 // this device; and the phone "Create something" (+) sheet. Everything runs against the
 // FAKE API. The seeded demo account is read; new notes always get a unique made-up title.
@@ -10,7 +11,7 @@ import type { Page } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 import type { TestInfo } from "@playwright/test"
 
-import { API, PASSWORD, SEEDED, loginAndWait } from "./helpers"
+import { API, PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait } from "./helpers"
 
 /**
  * Same rules as helpers.expectNoSeriousA11yIssues, but can leave out parts that
@@ -43,6 +44,22 @@ const pageTitle = (page: Page) => page.getByRole("heading", { level: 1 })
 const uniqueTitle = (label: string, info: TestInfo) =>
   `${label} ${info.project.name} ${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 
+/** Signs up a brand-new made-up account (fake email code) and waits for Discover. */
+async function signUpFresh(page: Page, info: TestInfo) {
+  const email = fakeEmail("notes", info)
+  const username = `n${Date.now().toString(36)}${info.project.name.slice(0, 2)}${Math.floor(Math.random() * 1000)}`
+  await page.goto("/signup")
+  await page.getByLabel("Email").fill(email)
+  await page.getByLabel("Username").fill(username)
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD)
+  await page.getByRole("button", { name: /create|sign up|make/i }).click()
+  await expect(page).toHaveURL(/\/verify-email/)
+  const { code } = await latestMail(page, email, "code")
+  await page.getByLabel(/code/i).fill(code!)
+  await page.getByRole("button", { name: /check|verify|confirm/i }).click()
+  await expect(page).toHaveURL(/\/discover$/)
+}
+
 /** Saves a note or summary straight through the fake API for the demo account and returns its id. */
 async function makeItem(page: Page, kind: "notes" | "summaries", title: string, content = "Leaves make food from light.") {
   const login = await page.request.post(`${API}/login`, { data: { email: SEEDED.demo.email, password: PASSWORD } })
@@ -61,6 +78,9 @@ const hubRow = (page: Page, title: string) =>
 
 /** A few made-up bytes that look like a sound file. The fake API never reads them. */
 const fakeAudio = { name: "class-recording.mp3", mimeType: "audio/mpeg", buffer: Buffer.from("ID3 fake audio bytes for a test") }
+
+/** A made-up picture (just the PNG signature). The fake API never looks at it. */
+const fakeImage = { name: "worksheet.png", mimeType: "image/png", buffer: Buffer.from("89504e470d0a1a0a", "hex") }
 
 test.describe("making notes", () => {
   test.beforeEach(async ({ page }) => {
@@ -241,7 +261,7 @@ test.describe("making notes", () => {
     expect(sent).toBe(false)
   })
 
-  test("image to notes: asks for an image, makes notes, and saves them as a note", async ({ page }, info) => {
+  test("image to notes: asks for an image, makes notes and cards on the workbench, and saves a note", async ({ page }, info) => {
     await page.goto("/notes/image")
     await expect(pageTitle(page)).toHaveText("Image to notes")
     await expect(page.getByRole("link", { name: "Back to notes" })).toHaveAttribute("href", "/notes")
@@ -249,35 +269,96 @@ test.describe("making notes", () => {
     await expect(picker).toHaveAttribute("type", "file")
     await expect(picker).toHaveAttribute("accept", /image\/png/)
     await expect(page.getByText(/sends your picture to OpenAI/)).toBeVisible()
+    await expect(page.getByText("Free plan: making notes uses 1 notes turn.")).toBeVisible()
     await expectNoSeriousA11yIssues(page, "image-to-notes", info)
 
     await page.getByRole("button", { name: "Make notes" }).click()
     await expect(page.getByText("Choose an image first.")).toBeVisible()
 
     // A made-up picture goes to the fake /api/generate-notes (no real AI call).
-    await picker.setInputFiles({ name: "worksheet.png", mimeType: "image/png", buffer: Buffer.from("89504e470d0a1a0a", "hex") })
-    await expect(page.getByText("Selected: worksheet.png")).toBeVisible()
+    await picker.setInputFiles(fakeImage)
+    await expect(page.getByText(`Selected: ${fakeImage.name}`)).toBeVisible()
+    await expect(page.getByRole("img", { name: "The image you picked" })).toBeVisible()
     const request = page.waitForRequest((r) => r.url().endsWith("/api/generate-notes"))
     await page.getByRole("button", { name: "Make notes" }).click()
-    expect((await request).postDataJSON().image).toMatch(/^data:image\/png;base64,/)
+    // Only the picture is sent: the file name stays on this device.
+    const sent = (await request).postDataJSON() as Record<string, unknown>
+    expect(Object.keys(sent)).toEqual(["image"])
+    expect(sent.image).toMatch(/^data:image\/png;base64,/)
 
-    const text = page.getByRole("textbox", { name: "Your notes (you can change them)" })
-    await expect(text).toHaveValue(/Photosynthesis/, { timeout: 15_000 })
+    // The same workbench as Import and Voice: title, short version, notes, key words and cards.
     const name = page.getByRole("textbox", { name: "Name your notes" })
-    await expect(name).toHaveValue(/^Notes for [A-Z][a-z]{2} \d{1,2}$/)
-    await expectNoSeriousA11yIssues(page, "image-to-notes-result", info)
+    await expect(name).toHaveValue("Photosynthesis from the board", { timeout: 15_000 })
+    await expect(name).toBeFocused()
+    await expect(page.getByRole("textbox", { name: "Short version" })).toHaveValue(/Plants use sunlight/)
+    const text = page.getByRole("textbox", { name: "Your notes (you can change them)" })
+    await expect(text).toHaveValue(/## Photosynthesis/)
+    await expect(page.getByRole("heading", { name: "Key words" })).toBeVisible()
+    await expect(page.getByText("Keeping 3 of 3")).toBeVisible()
+    await expect(page.getByRole("button", { name: /Save \+ make deck \(3\)/ })).toBeEnabled()
+    await expectNoSeriousA11yIssues(page, "image-to-notes-workbench", info, [".identity", ".mini-card-face"])
+
+    // The picker is one tap away ("Back to my image"); the notes stay.
+    await page.getByRole("button", { name: "Back to my image" }).click()
+    await expect(page.getByText(`Selected: ${fakeImage.name}`)).toBeVisible()
+    await page.getByRole("button", { name: "Back to my notes" }).click()
+    await expect(name).toHaveValue("Photosynthesis from the board")
 
     const myTitle = uniqueTitle("Photo notes", info)
     await name.fill(myTitle)
     await text.fill(`${await text.inputValue()}\nChecked by me.`)
     const saved = page.waitForRequest((r) => r.url() === `${API}/notes` && r.method() === "POST")
-    await page.getByRole("button", { name: "Save as note" }).click()
-    expect((await saved).postDataJSON()).toMatchObject({ title: myTitle, content: expect.stringContaining("Checked by me.") })
+    await page.getByRole("button", { name: "Save note", exact: true }).click()
+    expect((await saved).postDataJSON()).toMatchObject({
+      title: myTitle,
+      content: expect.stringContaining("Checked by me."),
+      tags: ["photosynthesis", "chloroplast"],
+    })
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
     await expect(pageTitle(page)).toHaveText(myTitle)
     const sheet = page.getByRole("article", { name: myTitle })
+    await expect(sheet.getByRole("heading", { name: "Photosynthesis" })).toBeVisible()
     await expect(sheet).toContainText("Plants use sunlight to make food.")
     await expect(sheet).toContainText("Checked by me.")
+    await expect(sheet).toContainText(`Source: Image: ${fakeImage.name}`)
+  })
+
+  test("image to notes: the daily limit shows the friendly nudge and keeps the picture", async ({ page }) => {
+    await page.route(`${API}/api/generate-notes`, (route) =>
+      route.fulfill({ status: 403, json: { error: "You made all your free notes for today. Come back tomorrow." } }),
+    )
+    await page.goto("/notes/image")
+    await page.getByLabel("Choose an image").setInputFiles(fakeImage)
+    await expect(page.getByRole("img", { name: "The image you picked" })).toBeVisible()
+    await page.getByRole("button", { name: "Make notes" }).click()
+    const nudge = page.getByRole("alert").filter({ hasText: "That's all for today!" })
+    await expect(nudge).toContainText("You made all your free notes for today.")
+    await expect(page.getByText(`Selected: ${fakeImage.name}`)).toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Name your notes" })).toHaveCount(0)
+  })
+
+  test("image to notes: after 'Start over' the same picture can be picked again", async ({ page }) => {
+    await page.goto("/notes/image")
+    const picker = page.getByLabel("Choose an image")
+    await picker.setInputFiles(fakeImage)
+    await expect(page.getByRole("img", { name: "The image you picked" })).toBeVisible()
+    // The picker is cleared after each pick, so the same file fires a change again.
+    await expect(picker).toHaveValue("")
+    await page.getByRole("button", { name: "Make notes" }).click()
+    await expect(page.getByRole("textbox", { name: "Name your notes" })).toBeVisible({ timeout: 15_000 })
+
+    await page.getByRole("button", { name: "Start over" }).click()
+    await page.getByRole("button", { name: "Yes", exact: true }).click()
+    await expect(page.getByRole("textbox", { name: "Name your notes" })).toHaveCount(0)
+    await expect(page.getByText(`Selected: ${fakeImage.name}`)).toHaveCount(0)
+    await expect(picker).toHaveValue("")
+
+    await picker.setInputFiles(fakeImage)
+    await expect(page.getByText(`Selected: ${fakeImage.name}`)).toBeVisible()
+    await expect(page.getByRole("img", { name: "The image you picked" })).toBeVisible()
+    await page.getByRole("button", { name: "Make notes" }).click()
+    await expect(page.getByText("Choose an image first.")).toHaveCount(0)
+    await expect(page.getByRole("textbox", { name: "Name your notes" })).toBeVisible({ timeout: 15_000 })
   })
 
   test("Notes hub: four ways to start, then write a note with 'question :: answer' lines", async ({ page }, info) => {
@@ -617,6 +698,40 @@ test.describe("making notes", () => {
   })
 
   // The sidebar and its + New menu (desktop and tablet) are tested in nav.spec.ts.
+})
+
+test.describe("image to notes (fresh account)", () => {
+  test("picture, then the workbench, then 'Save + make deck' makes a note and a deck", async ({ page }, info) => {
+    // A new account, so the new deck doesn't change the seeded decks other tests count.
+    await signUpFresh(page, info)
+    await page.goto("/notes/image")
+    await page.getByLabel("Choose an image").setInputFiles(fakeImage)
+    await expect(page.getByText(`Selected: ${fakeImage.name}`)).toBeVisible()
+    await page.getByRole("button", { name: "Make notes" }).click()
+    await expect(page.getByRole("textbox", { name: "Name your notes" })).toHaveValue("Photosynthesis from the board", { timeout: 15_000 })
+
+    // Toss one card; the deck gets the other two.
+    await page.getByRole("button", { name: "Toss" }).first().click()
+    await expect(page.getByText("Keeping 2 of 3")).toBeVisible()
+    const noteSaved = page.waitForResponse((r) => r.url() === `${API}/notes` && r.request().method() === "POST")
+    const deckSaved = page.waitForResponse((r) => r.url() === `${API}/flashcards` && r.request().method() === "POST")
+    await page.getByRole("button", { name: "Save + make deck (2)" }).click()
+    const note = (await (await noteSaved).json()) as { id: string; title: string; content: string }
+    const deck = (await (await deckSaved).json()) as { id: string; title: string; cards: { front: string; back: string }[] }
+    expect(note.title).toBe("Photosynthesis from the board")
+    expect(note.content).toContain("Plants use sunlight to make food.")
+    expect(deck.title).toBe("Photosynthesis from the board")
+    expect(deck.cards.map((card) => card.front)).toEqual(["What gas do leaves take in?", "Where does photosynthesis happen?"])
+    await expect(page).toHaveURL(new RegExp(`/flashcards/${deck.id}$`))
+
+    // Both are really there: the note in the Notes hub and the deck on its page.
+    await page.goto("/notes")
+    await expect(hubRow(page, "Photosynthesis from the board")).toBeVisible()
+    await page.goto(`/notes/${note.id}`)
+    await expect(pageTitle(page)).toHaveText("Photosynthesis from the board")
+    await page.goto(`/flashcards/${deck.id}`)
+    await expect(pageTitle(page)).toContainText("Photosynthesis from the board")
+  })
 })
 
 test.describe("phone + (Create something) sheet", () => {

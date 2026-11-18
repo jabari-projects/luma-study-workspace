@@ -334,9 +334,25 @@ http
       })
     }
     if (url.pathname === "/api/generate-notes") {
+      // Like the backend: the same notes shape as /api/notes-from-text, 1 notes turn.
       await new Promise((r) => setTimeout(r, 600))
-      if (!/^data:image\/(png|jpeg|webp);base64,/.test(body.image || "")) return send(res, 400, { error: "Invalid request" })
-      return send(res, 200, { notes: "Photosynthesis\n- Plants use sunlight to make food.\n- Leaves take in carbon dioxide.\n- Plants give off oxygen.\nWhere does it happen? :: In the chloroplasts" })
+      if ((body.image || "").length > 21 * 1024 * 1024) return send(res, 413, { error: "That picture is too big. Try one under 15 MB." })
+      if (!/^\s*data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+=*\s*$/i.test(body.image || "")) {
+        return send(res, 400, { error: "We couldn't open that picture. Try a PNG, JPG or WEBP photo." })
+      }
+      if (process.env.LIMIT === "1") return send(res, 403, { error: "You made all your free notes for today. Come back tomorrow." })
+      return send(res, 200, {
+        title: "Photosynthesis from the board",
+        summary: "Plants use sunlight to make food. They give off oxygen.",
+        notes: "## Photosynthesis\n- Plants use sunlight to make food.\n- Leaves take in carbon dioxide.\n- Plants give off oxygen.\n\n## Where does it happen?\n- In the chloroplasts",
+        key_terms: ["photosynthesis", "chloroplast"],
+        flashcards: [
+          { front: "What do plants use to make food?", back: "Sunlight" },
+          { front: "What gas do leaves take in?", back: "Carbon dioxide" },
+          { front: "Where does photosynthesis happen?", back: "In the chloroplasts" },
+        ],
+        truncated: false,
+      })
     }
     if (url.pathname === "/api/import/link") {
       await new Promise((r) => setTimeout(r, 700))
