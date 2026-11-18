@@ -8,7 +8,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
 import { DEFAULT_ACCENT, themeColors } from "../src/ui/themeColors"
-import { PASSWORD, SEEDED, expectFocusRing, loginAndWait, setProfileTheme, setThemeMode } from "./helpers"
+import { API, PASSWORD, SEEDED, clearProfileColor, expectFocusRing, loginAndWait, setProfileTheme, setThemeMode } from "./helpers"
 
 /** Waits for the heading, data, and entrance animations, so the colors axe sees are final. */
 async function settle(page: Page) {
@@ -175,7 +175,8 @@ test("with no saved color, Settings shows Teal picked (not Red) and saving keeps
   const account = SEEDED.lee // orange by default; share-report uses that, so it is put back below
   const orange = themeColors.find((swatch) => swatch.name === "Orange")!.value
   try {
-    await setProfileTheme(page, account.email, { theme_mode: "light", theme_color: null })
+    await setProfileTheme(page, account.email, { theme_mode: "light" })
+    await clearProfileColor(page, account.email)
     await loginAndWait(page, account.email)
     await page.goto("/settings")
     await settle(page)
@@ -219,7 +220,7 @@ test("Settings has a Theme radio group with Light, Dark and Automatic, and the c
     await expect(auto).not.toBeChecked()
     await expect(light).toHaveAccessibleDescription("Cream paper all day.")
     await expect(dark).toHaveAccessibleDescription("Easy on your eyes at night.")
-    await expect(auto).toHaveAccessibleDescription("Light in the day, dark from 7 pm to 7 am.")
+    await expect(auto).toHaveAccessibleDescription(/^Light in the day, dark from 7\spm to 7\sam\.$/)
 
     // Each choice has a tiny page drawn in its own theme's colors.
     const previewOf = (value: string) => group.locator(`label.mode-option:has(input[value="${value}"]) .mode-preview`)
@@ -265,6 +266,42 @@ test("Settings has a Theme radio group with Light, Dark and Automatic, and the c
     await expect(page.getByText(/^Right now: (light|dark)\.$/)).toBeVisible()
   } finally {
     await setThemeMode(page, SEEDED.demo.email, "light")
+  }
+})
+
+test("the saved theme only takes Light, Dark or Automatic, and a turned-away save changes nothing", async ({ page }) => {
+  try {
+    const signIn = await page.request.post(`${API}/login`, { data: { email: SEEDED.demo.email, password: PASSWORD } })
+    expect(signIn.ok()).toBeTruthy()
+    const { access_token } = (await signIn.json()) as { access_token: string }
+    const headers = { authorization: `Bearer ${access_token}` }
+    const savedMode = async () => {
+      const me = await page.request.get(`${API}/me/profile`, { headers })
+      expect(me.ok()).toBeTruthy()
+      return ((await me.json()) as { theme_mode: string | null }).theme_mode
+    }
+
+    for (const mode of ["light", "dark", "auto"] as const) {
+      const put = await page.request.put(`${API}/me/profile`, { data: { theme_mode: mode }, headers })
+      expect(put.status(), mode).toBe(200)
+      expect(await savedMode()).toBe(mode)
+    }
+
+    for (const bad of ["purple", "", "Dark", 1]) {
+      const put = await page.request.put(`${API}/me/profile`, { data: { theme_mode: bad, theme_color: "#7c3aed" }, headers })
+      expect(put.status(), String(bad)).toBe(422)
+    }
+    expect(await savedMode()).toBe("auto")
+
+    // The app still opens on the saved choice.
+    await loginAndWait(page, SEEDED.demo.email)
+    await page.goto("/settings")
+    await settle(page)
+    await expect(page.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Automatic", exact: true })).toBeChecked()
+    // The other fields in a turned-away save were not kept either.
+    await expect.poll(() => accentOf(page)).toBe(DEFAULT_ACCENT)
+  } finally {
+    await setProfileTheme(page, SEEDED.demo.email, { theme_mode: "light", theme_color: DEFAULT_ACCENT })
   }
 })
 

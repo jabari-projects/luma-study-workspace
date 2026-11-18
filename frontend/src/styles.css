@@ -2336,6 +2336,9 @@ input[type="radio"] {
     "preview preview"
     "help help";
   align-items: center;
+  /* The three cards stretch to the tallest one; keep the extra space at the bottom so the
+     radio rows line up across all three. */
+  align-content: start;
   gap: 8px 8px;
   min-height: 44px;
   border: 1.5px solid var(--field-border);

@@ -619,6 +619,23 @@ class AuthSessionResponse(BaseModel):
     access_token: str
 
 
+# Light, Dark or Automatic (light from 7 am to 7 pm). New saves must be one of these.
+ThemeMode = Literal["light", "dark", "auto"]
+THEME_MODES = ("light", "dark", "auto")
+
+
+def read_theme_mode(value) -> Optional[str]:
+    """The saved theme mode as the app should see it.
+
+    Empty stays empty (the app shows Light). Anything else that is not one of the
+    three choices, such as an old or hand-edited value, reads as Light so older
+    profiles keep loading.
+    """
+    if value is None:
+        return None
+    return value if value in THEME_MODES else "light"
+
+
 class ProfileResponse(BaseModel):
     id: str
     email: EmailStr
@@ -628,7 +645,7 @@ class ProfileResponse(BaseModel):
     theme_color: Optional[str] = None
     custom_theme_image_url: Optional[str] = None
     timezone: Optional[str] = None
-    theme_mode: Optional[str] = None
+    theme_mode: Optional[ThemeMode] = None
     phone_number: Optional[str] = None
     birthday: Optional[str] = None
     subscription_status: str = "free"
@@ -644,7 +661,7 @@ class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, min_length=2, max_length=50)
     theme_color: Optional[str] = Field(default=None, max_length=32)
     timezone: Optional[str] = None
-    theme_mode: Optional[str] = None
+    theme_mode: Optional[ThemeMode] = None
     phone_number: Optional[str] = None
     birthday: Optional[str] = None
 
@@ -925,7 +942,7 @@ def build_profile_response(user_id: str):
         "theme_color": profile.get("theme_color"),
         "custom_theme_image_url": profile.get("custom_theme_image_url"),
         "timezone": profile.get("timezone"),
-        "theme_mode": profile.get("theme_mode"),
+        "theme_mode": read_theme_mode(profile.get("theme_mode")),
         "phone_number": profile.get("phone_number"),
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
@@ -2801,7 +2818,7 @@ def get_my_profile(user=Depends(get_current_user)):
         "theme_color": profile.get("theme_color"),
         "custom_theme_image_url": profile.get("custom_theme_image_url"),
         "timezone": profile.get("timezone"),
-        "theme_mode": profile.get("theme_mode"),
+        "theme_mode": read_theme_mode(profile.get("theme_mode")),
         "phone_number": profile.get("phone_number"),
         "birthday": profile.get("birthday"),
         "subscription_status": profile.get("subscription_status") or "free",
@@ -2840,7 +2857,7 @@ def update_my_profile(payload: ProfileUpdateRequest, user=Depends(get_current_us
         "theme_color": updated_profile.get("theme_color"),
         "custom_theme_image_url": updated_profile.get("custom_theme_image_url"),
         "timezone": updated_profile.get("timezone"),
-        "theme_mode": updated_profile.get("theme_mode"),
+        "theme_mode": read_theme_mode(updated_profile.get("theme_mode")),
         "phone_number": updated_profile.get("phone_number"),
         "birthday": updated_profile.get("birthday"),
         "subscription_status": updated_profile.get("subscription_status") or "free",

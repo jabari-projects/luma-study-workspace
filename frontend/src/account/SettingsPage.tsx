@@ -285,7 +285,8 @@ function SignInHelp({
 const THEME_MODE_CHOICES: Array<{ value: ThemeMode; name: string; help: string }> = [
   { value: "light", name: "Light", help: "Cream paper all day." },
   { value: "dark", name: "Dark", help: "Easy on your eyes at night." },
-  { value: "auto", name: "Automatic", help: "Light in the day, dark from 7 pm to 7 am." },
+  // \u00a0 keeps "7 pm" and "7 am" on one line.
+  { value: "auto", name: "Automatic", help: "Light in the day, dark from 7\u00a0pm to 7\u00a0am." },
 ]
 
 /** A tiny page drawn in that theme's own colors (data-theme scopes the color tokens). */

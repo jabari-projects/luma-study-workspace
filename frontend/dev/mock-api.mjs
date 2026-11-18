@@ -14,6 +14,9 @@
 //   POST /__test/expire {"email": "..."}   ends that account's sign-ins, like a password reset elsewhere
 //   TOKEN_TTL_SECONDS=60 npm run mock-api  sign-ins stop working after 60 seconds
 //   GET  /__test/outbox?email=...          the newest fake emails for that address (codes, reset links)
+//   POST /__test/profile {"email": "...", "fields": {...}}  writes saved profile fields as-is, null
+//                                          included (an old profile with no color, say); the real
+//                                          PUT /me/profile cannot clear a field, so neither can ours
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
 import { randomInt, randomUUID } from "node:crypto"
@@ -21,6 +24,7 @@ import { randomInt, randomUUID } from "node:crypto"
 const PORT = Number(process.env.PORT || 8787)
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_SECONDS || 0) * 1000
 const profiles = new Map() // account id -> saved profile fields (theme etc.)
+const THEME_MODES = ["light", "dark", "auto"]
 
 // ---------- fake accounts ----------
 const accounts = new Map() // email -> account
@@ -162,6 +166,13 @@ http
       if (!a) return send(res, 404, { detail: "No fake account with that email." })
       a.version += 1 // every token for this account stops working
       console.log(`[TEST] sign-ins ended for ${a.email}`)
+      return send(res, 200, { success: true })
+    }
+
+    if (url.pathname === "/__test/profile" && req.method === "POST") {
+      const a = accounts.get(String(body.email || "").trim().toLowerCase())
+      if (!a) return send(res, 404, { detail: "No fake account with that email." })
+      profiles.set(a.id, { ...profiles.get(a.id), ...(body.fields || {}) })
       return send(res, 200, { success: true })
     }
 
@@ -411,8 +422,19 @@ http
     if (url.pathname === "/me/profile") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Session expired. Please log in again." })
-      if (req.method === "PUT") profiles.set(a.id, { ...profiles.get(a.id), ...body })
-      return send(res, 200, { ...profiles.get(a.id), ...publicUser(a), subscription_status: "free", is_admin: a.id === "u1" })
+      if (req.method === "PUT") {
+        // Like the real API: the theme is "light", "dark" or "auto", and a field left out or sent
+        // as null keeps what is saved (null never clears it; tests use /__test/profile for that).
+        if (body.theme_mode != null && !THEME_MODES.includes(body.theme_mode)) {
+          return send(res, 422, { detail: [{ loc: ["body", "theme_mode"], msg: "Input should be 'light', 'dark' or 'auto'", type: "literal_error" }] })
+        }
+        const changes = Object.fromEntries(Object.entries(body).filter(([, value]) => value != null))
+        profiles.set(a.id, { ...profiles.get(a.id), ...changes })
+      }
+      const profile = profiles.get(a.id)
+      // An unknown saved theme reads as Light; an empty one stays empty.
+      const theme_mode = profile.theme_mode == null ? null : THEME_MODES.includes(profile.theme_mode) ? profile.theme_mode : "light"
+      return send(res, 200, { ...profile, theme_mode, ...publicUser(a), subscription_status: "free", is_admin: a.id === "u1" })
     }
     // Study plans: create, list, open, change and delete, each account only its own.
     if (parts[0] === "study-sessions") {

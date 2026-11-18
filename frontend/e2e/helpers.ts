@@ -65,7 +65,7 @@ export type ThemeMode = "light" | "dark" | "auto"
 export async function setProfileTheme(
   page: Page,
   email: string,
-  fields: { theme_mode?: ThemeMode; theme_color?: string | null },
+  fields: { theme_mode?: ThemeMode; theme_color?: string },
 ) {
   const res = await page.request.post(`${API}/login`, { data: { email, password: PASSWORD } })
   expect(res.ok()).toBeTruthy()
@@ -75,6 +75,15 @@ export async function setProfileTheme(
     headers: { authorization: `Bearer ${access_token}` },
   })
   expect(put.ok()).toBeTruthy()
+}
+
+/**
+ * Makes an account look like an old profile with no saved color. The real API (and so the fake
+ * one) keeps a field sent as null, so this goes through the fake API's local test hook.
+ */
+export async function clearProfileColor(page: Page, email: string) {
+  const res = await page.request.post(`${API}/__test/profile`, { data: { email, fields: { theme_color: null } } })
+  expect(res.ok()).toBeTruthy()
 }
 
 /** Sets the saved theme mode (light, dark or automatic) for an account. */
