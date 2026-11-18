@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!-- Template only. register_tasks.ps1 fills in the placeholders and registers it ONLY with -Register,
+     after the owner approves the times. -->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Luma: checks that the newest backup is recent and worked. Shows a message if not.</Description>
+    <URI>\Luma\LumaBackup-Check</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>__USER__</UserId>
+      <Delay>PT2M</Delay>
+    </LogonTrigger>
+    <CalendarTrigger>
+      <StartBoundary>__DATE__T__CHECK_TIME__:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>__USER__</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>__PYTHON__</Command>
+      <Arguments>-B -m luma_backup.check_status --notify</Arguments>
+      <WorkingDirectory>__OPS_DIR__</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
