@@ -25,6 +25,17 @@ Database (Supabase Postgres, service-role client):
   notifications      user_id (FK users, cascade) -> deleted.
                      actor_user_id on OTHER students' notifications
                      -> anonymized (set to null).
+  feedback_responses user_id (FK users, on delete set null), comment, voter_key
+                     (monthly feedback poll ballots; owner decision 2026-11-17)
+                     -> ANSWERS kept in the totals without the name (user_id set
+                     to null); the COMMENT and its urgent flags are cleared and
+                     its theme links deleted. voter_key (a keyed hash of the
+                     normalized email, never the email) stays only while that
+                     poll is open, so a re-created account with the same email
+                     can't vote twice in it; once the poll has closed it is
+                     cleared (here for closed polls, lazily after close for
+                     open ones), so the answers can't be traced to the email.
+  feedback_skips     user_id (FK users, cascade) -> deleted.
   billing_accounts / billing_subscriptions  user_id (FK users, cascade):
                      Stripe customer/subscription ids and status
                      -> removed with the users row (see Payment provider).
@@ -104,6 +115,7 @@ CHILD_TABLES = (
     "summaries",
     "transcripts",
     "email_codes",
+    "feedback_skips",
 )
 
 # Older tables that exist in the live database but that today's code no longer uses.
@@ -133,6 +145,10 @@ RETAINED_ALLOWANCE = (
     "so the free AI limit can't be reset by deleting and making a new account"
 )
 RETAINED_REPORTS = "Reports you sent about shared content stay for safety review, without your name"
+RETAINED_FEEDBACK = (
+    "Your answers to monthly feedback polls stay in the totals, without your name. "
+    "Your poll comments are deleted."
+)
 
 
 @dataclass
@@ -176,7 +192,14 @@ class DeletionReport:
 
     @property
     def retained(self) -> list[str]:
-        return [RETAINED_PAYMENTS, RETAINED_AI, RETAINED_BACKUPS, RETAINED_ALLOWANCE, RETAINED_REPORTS]
+        return [
+            RETAINED_PAYMENTS,
+            RETAINED_AI,
+            RETAINED_BACKUPS,
+            RETAINED_ALLOWANCE,
+            RETAINED_REPORTS,
+            RETAINED_FEEDBACK,
+        ]
 
 
 class _StepFailed(Exception):
@@ -461,6 +484,46 @@ def step_anonymize_reports(user_id: str, deps: DeletionDeps) -> StepResult:
     return StepResult(name, ANONYMIZED if count else NOTHING_FOUND, count=count)
 
 
+def step_anonymize_feedback(user_id: str, deps: DeletionDeps) -> StepResult:
+    """Monthly feedback ballots: keep the answers in the totals, drop the name and the comment.
+
+    Theme links for the comment go first, then the ballot loses its user id,
+    comment and urgent flags. The answers (yes/no rows) stay, unlinked. The
+    voter_key (keyed hash of the email) stays only while the poll is open, so the
+    same email can't vote twice in it; for polls that have closed it is cleared
+    right away. Safe to re-run; re-checks that nothing still names the user.
+    """
+    name = "feedback_responses_anonymize"
+    db = deps.db
+    try:
+        rows = _rows(db.table("feedback_responses").select("id").eq("user_id", user_id).execute())
+    except Exception as exc:  # noqa: BLE001
+        if _is_missing_table(exc):
+            return StepResult(name, NOTHING_FOUND, reason="table not present")
+        raise
+    if not rows:
+        return StepResult(name, NOTHING_FOUND)
+    for row in rows:
+        try:
+            db.table("feedback_theme_members").delete().eq("response_id", row["id"]).execute()
+        except Exception as exc:  # noqa: BLE001
+            if not _is_missing_table(exc):
+                raise
+    db.table("feedback_responses").update(
+        {"user_id": None, "comment": None, "urgent_flags": [], "urgent_set_by_admin": False}
+    ).eq("user_id", user_id).execute()
+    remaining = _rows(db.table("feedback_responses").select("id").eq("user_id", user_id).limit(1).execute())
+    if remaining:
+        raise _StepFailed("feedback ballots still linked after anonymizing")
+    try:
+        # Closed polls no longer need the email key on anonymous ballots: clear it now.
+        db.rpc("feedback_forget_voter_keys", {}).execute()
+    except Exception as exc:  # noqa: BLE001
+        if not _is_missing_table(exc):
+            logger.warning("Feedback voter key cleanup failed (%s)", type(exc).__name__)
+    return StepResult(name, ANONYMIZED, count=len(rows))
+
+
 def step_delete_legacy_subscriptions(user_id: str, deps: DeletionDeps) -> StepResult:
     """Remove this user's rows from the old public.subscriptions table.
 
@@ -534,6 +597,7 @@ def delete_account_data(user_id: str, deps: DeletionDeps) -> DeletionReport:
     plan.append(("notifications_actor", lambda: step_anonymize_actor(uid, deps)))
     plan.append(("table_email_codes_pending", lambda: step_delete_pending_signups(uid, deps)))
     plan.append(("content_reports_reporter", lambda: step_anonymize_reports(uid, deps)))
+    plan.append(("feedback_responses_anonymize", lambda: step_anonymize_feedback(uid, deps)))
     for table in CHILD_TABLES:
         plan.append((f"table_{table}", lambda t=table: step_delete_rows(uid, deps, t)))
     for table in LEGACY_TOKEN_TABLES:

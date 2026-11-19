@@ -10,7 +10,9 @@
 // What it does:
 //  (a) builds the live replica (same builder as check_live_migration.mjs: live shape fixture,
 //      Supabase stubs, the search triggers assumed live) and seeds synthetic rows;
-//  (b) applies the migrations that come before this one (2026_11_15 .. 2026_11_17);
+//  (b) applies the migrations already live (2026_11_15 .. 2026_11_17), then this release's
+//      files that come before this one in name order (2026_11_18 feedback, 2026_11_19
+//      maintenance), each twice, and checks every production row is unchanged;
 //  (c) applies this file twice;
 //  (d) checks every pre-existing row and value is unchanged, and the new columns hold
 //      their defaults (version 1, create_key null, progress_rev 0);
@@ -47,10 +49,13 @@ for (const p of [shapePath, migrationPath]) {
 }
 const shape = JSON.parse(readFileSync(shapePath, "utf8")).tables
 const migration = readFileSync(migrationPath, "utf8")
-// Everything already written before this file (2026_11_15 .. 2026_11_17), in name order.
-const earlier = readdirSync(MIGRATIONS_DIR)
-  .filter((name) => name.endsWith(".sql") && name < "2026_11_18")
-  .sort()
+// Release order is name order. `earlier`: already applied to production (2026_11_15 ..
+// 2026_11_17). `releaseBefore`: this release's files that run before this one (2026_11_18
+// feedback, then 2026_11_19 maintenance), proven here on the live replica too.
+const LIVE_BEFORE = "2026_11_18"
+const sqlFiles = readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith(".sql")).sort()
+const earlier = sqlFiles.filter((name) => name < LIVE_BEFORE)
+const releaseBefore = sqlFiles.filter((name) => name >= LIVE_BEFORE && name < FILE_NAME)
 
 // ---------------------------------------------------------------- reporting
 const results = []
@@ -191,6 +196,15 @@ async function buildReplica() {
   return db
 }
 
+/** This release's files before this one, in order, each run twice (all are safe to repeat). */
+async function applyReleaseBefore(db) {
+  for (const name of releaseBefore) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), "utf8")
+    await db.exec(sql)
+    await db.exec(sql)
+  }
+}
+
 const STUDENT_TABLES = ["notes", "summaries", "flashcards", "study_sessions"]
 const NEW_COLUMNS = ["version", "create_key", "progress_rev"]
 
@@ -254,6 +268,12 @@ async function update(db, table, values, where) {
 // ================================================================= main
 const db = await buildReplica()
 info(`replica built from ${shapePath.split(/[\\/]/).pop()}, then ${earlier.join(", ")}`)
+// (b2) the release's earlier files on top of production's schema: no production row changes
+const liveColumns = await columnsNow(db)
+const liveData = await dataSnapshot(db, liveColumns)
+check("the release files before this one start with 2026_11_18 feedback", releaseBefore.length > 0 && releaseBefore[0].startsWith("2026_11_18"), releaseBefore.join(","))
+await step(`apply the release files before this one, each twice: ${releaseBefore.join(", ")}`, () => applyReleaseBefore(db))
+check("every production row and value is unchanged after the earlier release files", same(liveData, await dataSnapshot(db, liveColumns)))
 const columnsBefore = await columnsNow(db)
 check("no student table has the new columns yet", STUDENT_TABLES.every((t) => NEW_COLUMNS.every((c) => !columnsBefore[t].includes(c))))
 const beforeData = await dataSnapshot(db, columnsBefore)
@@ -347,6 +367,7 @@ check("a deck save that read progress_rev 0 changes nothing after progress moved
 
 // (f) a failure mid-file leaves everything as it was
 const fresh = await buildReplica()
+await applyReleaseBefore(fresh)
 const freshBefore = await schemaSnapshot(fresh)
 const broken = migration.replace(/create unique index if not exists flashcards_user_create_key_uidx/, "select 1/0; create unique index if not exists flashcards_user_create_key_uidx")
 check("failure injection found its anchor", broken !== migration)

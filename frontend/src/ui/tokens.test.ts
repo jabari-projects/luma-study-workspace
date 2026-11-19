@@ -14,6 +14,7 @@ const cssFiles: Record<string, string> = {
   "capture/capture.css": read("../capture/capture.css"),
   "notes/notes.css": read("../notes/notes.css"),
   "study/study.css": read("../study/study.css"),
+  "feedback/feedback.css": read("../feedback/feedback.css"),
 }
 
 type Tokens = Record<string, string>
@@ -259,6 +260,8 @@ describe("the student's color reaches every personal mark", () => {
       ".limit-nudge", // a warning
       ".limit-nudge svg",
       ".status-chip.reviewing", // a report status
+      ".feedback-lint", // a warning on the admin poll page ("Save your questions first.")
+      ".feedback-needs", // a warning: what a draft poll still needs
     ]
     for (const rule of rules) {
       if (!/var\(--star(-ink)?\)/.test(rule.body)) continue

@@ -34,6 +34,20 @@ export async function latestMail(page: Page, email: string, kind: "code" | "rese
   return found!
 }
 
+/** Makes a verified made-up account through the fake API (signup, emailed code, verify) and returns its token. */
+export async function makeAccount(page: Page, info: TestInfo, label = "acct") {
+  const email = fakeEmail(label, info)
+  const username = `${label.slice(0, 4)}${Date.now().toString(36)}${info.project.name.slice(0, 2)}${Math.floor(Math.random() * 1000)}`
+  const signup = await page.request.post(`${API}/signup`, { data: { email, username, password: PASSWORD } })
+  expect(signup.status()).toBe(202)
+  const { ticket } = (await signup.json()) as { ticket: string }
+  const { code } = await latestMail(page, email, "code")
+  const verified = await page.request.post(`${API}/auth/verify-email`, { data: { ticket, email, code } })
+  expect(verified.ok()).toBe(true)
+  const { access_token } = (await verified.json()) as { access_token: string }
+  return { email, username, token: access_token }
+}
+
 export async function login(page: Page, email: string, password = PASSWORD) {
   await page.goto("/login")
   await page.getByLabel("Email").fill(email)

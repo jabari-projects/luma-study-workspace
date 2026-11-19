@@ -1,4 +1,4 @@
-"""Runs the three PGlite migration checkers as part of a normal pytest run, so a migration
+"""Runs the four PGlite migration checkers as part of a normal pytest run, so a migration
 that loses or changes rows fails here, not only when someone remembers to run them by hand.
 
 Each checker builds a throwaway in-memory Postgres (PGlite) shaped like the live database,
@@ -18,7 +18,12 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-CHECKERS = ["check_live_migration.mjs", "check_student_work_migration.mjs", "check_maintenance_migration.mjs"]
+CHECKERS = [
+    "check_live_migration.mjs",
+    "check_feedback_migration.mjs",
+    "check_maintenance_migration.mjs",
+    "check_student_work_migration.mjs",
+]
 
 
 def _pglite_dir() -> str | None:

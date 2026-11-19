@@ -47,10 +47,11 @@ test("What stays list opens and lists what is kept", async ({ page }, info) => {
   await expect(list).toBeHidden()
   await panel.getByText("What stays after you delete?").click()
   await expect(list).toBeVisible()
-  await expect(list.getByRole("listitem")).toHaveCount(5)
+  await expect(list.getByRole("listitem")).toHaveCount(6)
   await expect(list).toContainText(/payment records stay with Stripe/i)
   await expect(list).toContainText(/backups/i)
   await expect(list).toContainText(/scrambled code/i)
+  await expect(list).toContainText("Your answers to monthly feedback polls stay in the totals, without your name. Your poll comments are deleted.")
 })
 
 test("Settings with the delete panel open has no serious a11y issues", async ({ page }, info) => {

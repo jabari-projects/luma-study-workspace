@@ -1,0 +1,677 @@
+/* Monthly feedback poll in the "Margins" style: type, thin rules and space.
+   No stamp shadow here (Home keeps only the next-step card and its button stamped). Tokens only. */
+
+/* ------------------------------------------------------------ Home note */
+
+.feedback-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  background: var(--card);
+}
+
+.feedback-note-star {
+  width: 36px;
+  height: 36px;
+  margin-top: 2px;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--scribble) 60%, transparent));
+}
+
+.feedback-note-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.feedback-note .next-label {
+  margin-bottom: 0;
+}
+
+.feedback-note h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.feedback-note p {
+  margin: 0;
+}
+
+.feedback-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 6px;
+}
+
+/* ------------------------------------------------------------ poll page */
+
+.feedback-page {
+  display: grid;
+  gap: 22px;
+  max-width: 820px;
+  min-width: 0;
+}
+
+.feedback-page .page-head {
+  margin-bottom: 0;
+}
+
+.feedback-privacy {
+  display: grid;
+  gap: 6px;
+  border-left: 3px solid var(--scribble);
+  padding: 2px 0 2px 14px;
+}
+
+.feedback-privacy p {
+  margin: 0;
+  max-width: var(--measure);
+}
+
+.feedback-skip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.feedback-skip p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.feedback-skip .feedback-skip-error,
+.feedback-note .feedback-note-error {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
+.feedback-form {
+  display: grid;
+  gap: 22px;
+}
+
+.feedback-questions {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-questions > li {
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+}
+
+.feedback-question {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.feedback-question legend {
+  margin-bottom: 12px;
+  padding: 0;
+  font-size: 1.08rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+/* Plain numerals (the hand font's 1 and 7 are hard to read); the hand font stays for accents. */
+.feedback-number {
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-variant-numeric: lining-nums;
+}
+
+.feedback-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.feedback-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: var(--card);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.feedback-choice.active {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+  background: var(--accent-soft);
+}
+
+/* A round radio in the theme's own colors. */
+.feedback-choice input {
+  flex: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  border: 2px solid var(--field-border);
+  border-radius: 50%;
+  padding: 0;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.feedback-choice input:checked {
+  border-color: var(--ink);
+  background: radial-gradient(circle, var(--ink) 0 38%, var(--card) 44%);
+}
+
+.feedback-choice input:focus {
+  border-color: var(--ink);
+}
+
+@media (forced-colors: active) {
+  .feedback-choice input {
+    appearance: auto;
+  }
+}
+
+.feedback-clear {
+  justify-self: start;
+}
+
+@media (max-width: 480px) {
+  .feedback-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.feedback-comment {
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-comment > label {
+  font-size: 1.02rem;
+}
+
+.feedback-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.feedback-count.over,
+.feedback-error {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.feedback-comment textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+/* Review, success, skipped, closed */
+
+.feedback-review,
+.feedback-done,
+.feedback-empty {
+  display: grid;
+  gap: 14px;
+}
+
+.feedback-review h2,
+.feedback-done h2,
+.feedback-empty h2 {
+  margin: 0;
+}
+
+.feedback-done p,
+.feedback-empty p,
+.feedback-review p {
+  margin: 0;
+}
+
+.feedback-subhead {
+  margin: 8px 0 0;
+  font-size: 1rem;
+}
+
+.feedback-summary {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-summary > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.feedback-summary-a {
+  text-align: right;
+}
+
+@media (max-width: 560px) {
+  .feedback-summary > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feedback-summary-a {
+    text-align: left;
+  }
+}
+
+.feedback-text {
+  margin: 0;
+  max-width: var(--measure);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.feedback-final {
+  font-weight: 700;
+}
+
+.feedback-verify {
+  margin: 0;
+}
+
+.feedback-lead {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+/* ------------------------------------------------------------ results */
+
+.feedback-results {
+  display: grid;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-result {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+
+.feedback-result p {
+  margin: 0;
+}
+
+.feedback-result-label {
+  font-weight: 700;
+}
+
+.feedback-result-line {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-bar {
+  height: 10px;
+  overflow: hidden;
+  border: 1.5px solid var(--field-border);
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+
+.poll-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.feedback-doing {
+  display: grid;
+  gap: 10px;
+}
+
+.feedback-updates {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-updates > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.feedback-updates p {
+  margin: 0;
+}
+
+.feedback-update-title {
+  font-weight: 700;
+}
+
+/* Status chips for polls and for the admin's update. .open stays the report style elsewhere. */
+.status-chip.planned,
+.status-chip.scheduled {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.status-chip.keeping,
+.status-chip.draft {
+  border-color: var(--field-border);
+  color: var(--muted);
+}
+
+.status-chip.done,
+.status-chip.closed {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.status-chip.missed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* An open poll is good news, not a problem to fix. */
+.feedback-admin .status-chip.open,
+.feedback-poll-list .status-chip.open {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* ------------------------------------------------------------ admin */
+
+.feedback-admin {
+  display: grid;
+  gap: 8px;
+  max-width: 900px;
+  min-width: 0;
+}
+
+.feedback-admin .page-head .lede .status-chip {
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.feedback-admin-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.feedback-admin-toc a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.feedback-admin-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding: 22px 0;
+}
+
+.feedback-admin-section h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  scroll-margin-top: 80px;
+}
+
+.feedback-admin-section h3 {
+  margin: 8px 0 0;
+  font-size: 1.05rem;
+}
+
+.feedback-admin-section p {
+  margin: 0;
+}
+
+.feedback-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 12px 16px;
+}
+
+.feedback-dates .button-row {
+  grid-column: 1 / -1;
+}
+
+.feedback-admin-questions {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-admin-questions.read-only {
+  padding-left: 22px;
+  list-style: decimal;
+}
+
+.feedback-row-tools {
+  margin-top: 4px;
+}
+
+.feedback-lint {
+  margin: 4px 0 0;
+  color: var(--star-ink);
+  font-weight: 700;
+}
+
+.feedback-checks {
+  display: grid;
+  gap: 4px;
+}
+
+.feedback-urgent {
+  border: 2px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  background: var(--danger-soft);
+}
+
+.feedback-urgent h3 {
+  margin-top: 0;
+  color: var(--danger);
+}
+
+.feedback-comment-list {
+  display: grid;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-comment-list > li {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+/* "Set flag" and "Clear flag" both sit on the left, at their own width. */
+.feedback-comment-list > li > .ghost-button,
+.feedback-comment-list > li > .feedback-flag-menu {
+  justify-self: start;
+}
+
+.feedback-themes-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.feedback-theme-list {
+  display: grid;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-theme {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.feedback-theme summary,
+.feedback-flag-menu summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+
+.feedback-theme summary::-webkit-details-marker,
+.feedback-flag-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A chevron shows these open; it turns when they are open. */
+.feedback-theme summary::after,
+.feedback-flag-menu summary::after {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.feedback-theme details[open] > summary::after,
+.feedback-flag-menu[open] > summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+/* "Set flag" looks like Luma's other small ghost buttons. */
+.feedback-flag-menu summary {
+  width: fit-content;
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.feedback-flag-menu summary:hover {
+  background: var(--paper-2);
+}
+
+.feedback-flag-menu[open] > .button-row {
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-theme summary::after,
+  .feedback-flag-menu summary::after {
+    transition: none;
+  }
+}
+
+.feedback-needs {
+  margin: 4px 0 0;
+  color: var(--star-ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.feedback-theme-name {
+  margin-right: 4px;
+}
+
+.feedback-theme-body {
+  display: grid;
+  gap: 12px;
+  border-left: 2px solid var(--line);
+  padding: 4px 0 8px 12px;
+}
+
+.feedback-theme-tools,
+.feedback-merge {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 10px;
+}
+
+.feedback-theme-tools > label,
+.feedback-merge > label {
+  grid-column: 1 / -1;
+}
+
+.feedback-theme-tools .ghost-button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.feedback-merge {
+  margin-top: 12px;
+}
+
+.feedback-update-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-update-row {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+
+.feedback-update-fields {
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-update-fields .check-row {
+  margin-top: 4px;
+}
+
+.feedback-update-add {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.feedback-update-add h3 {
+  margin: 0;
+}

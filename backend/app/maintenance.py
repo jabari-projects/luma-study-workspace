@@ -705,6 +705,15 @@ def writes_paused() -> bool:
     return (not runtime.state_known) or runtime.state["phase"] in ("active", "checking")
 
 
+def ordinary_writes_allowed() -> bool:
+    """True only when the gate would let an ordinary write (OTHER_WRITE) through right now.
+    A read that also tidies up (the feedback poll's monthly drafts and voter-key cleanup) checks
+    it, so a read never writes once writes are refused: after the grace time, during the break,
+    or before this process could read the break state. Cached state only: no database call."""
+    runtime = get_runtime()
+    return runtime.state_known and decide(runtime.state, OTHER_WRITE, None, runtime.clock()) is None
+
+
 # ------------------------------------------------------------------ the gate
 
 

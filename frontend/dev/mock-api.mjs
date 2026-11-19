@@ -24,9 +24,12 @@
 //   POST /__test/edit-elsewhere {"kind": "notes", "id": "...", "fields": {...}}  another tab saves (version + 1)
 //   POST /__test/maintenance, /__test/maintenance/jobs  set the fake maintenance break (see "maintenance (fake)")
 // Fake admin for maintenance: admin@example.test / demo-password (demo@luma.test is a fake admin too).
+//   POST /__test/clock, /__test/feedback   fake clock and monthly poll scenarios (see dev/mock-feedback.mjs)
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
 import { randomInt, randomUUID } from "node:crypto"
+
+import { FEEDBACK_RETAINED, forgetFeedbackUser, handleFeedback } from "./mock-feedback.mjs"
 
 const PORT = Number(process.env.PORT || 8787)
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_SECONDS || 0) * 1000
@@ -45,16 +48,18 @@ function deliver(email, message) {
   list.push({ ...message, at: Date.now() })
   outbox.set(email, list.slice(-10))
 }
-function addAccount(email, username, password, verified, id = randomUUID(), theme_color = "#0f766e") {
-  const account = { id, email, username, password, email_verified: verified, code: null, lastSent: 0, version: 1 }
+function addAccount(email, username, password, verified, id = randomUUID(), theme_color = "#0f766e", role = "user") {
+  const account = { id, email, username, password, email_verified: verified, code: null, lastSent: 0, version: 1, role }
   accounts.set(email, account)
   profiles.set(id, { theme_color, theme_mode: process.env.MODE || "light" })
   return account
 }
-addAccount("demo@luma.test", "jabari", "demo-password", true, "u1", "#0f766e")
+addAccount("demo@luma.test", "jabari", "demo-password", true, "u1", "#0f766e", "admin")
 addAccount("second@luma.test", "sam", "demo-password", true, "u2", "#7c3aed")
 addAccount("third@luma.test", "lee", "demo-password", true, "u3", "#ea580c")
 addAccount("unverified@luma.test", "new_student", "demo-password", false, randomUUID(), "#db2777")
+/** Like users.role = 'admin' on the real server. The demo account and admin@example.test are fake admins. */
+const isAdmin = (a) => Boolean(a && a.role === "admin")
 const byId = (id) => [...accounts.values()].find((a) => a.id === id)
 const publicUser = (a) => ({ id: a.id, email: a.email, username: a.username, email_verified: a.email_verified })
 function newSession(account) {
@@ -181,10 +186,9 @@ const summaries = [
 const studyPlans = []
 
 // --- maintenance (fake) helpers: the same rules as backend/app/maintenance.py, in memory ---
-// Fake admins for the maintenance routes: admin@example.test, plus the demo account, which
-// is already the fake admin for reports (the real server checks the admin role, not an email).
-const MAINT_ADMIN = addAccount("admin@example.test", "luma_admin", "demo-password", true, "uadmin", "#2563eb")
-const isFakeAdmin = (a) => Boolean(a && (a.id === "u1" || a.id === MAINT_ADMIN.id))
+// A second fake admin for the maintenance routes, beside the demo account (role "admin", like
+// users.role on the real server, which checks the role, not an email).
+addAccount("admin@example.test", "luma_admin", "demo-password", true, "uadmin", "#2563eb", "admin")
 const MAINT_FIELDS = { start_at: null, estimated_end_at: null, drain_started_at: null, grace_ends_at: null, activated_at: null, backup_ref: null, counts_at_activation: null, checks: null, checks_passed_at: null }
 const maint = { phase: "none", rev: 1, reason: "", note: "", reopened_at: null, ...MAINT_FIELDS, jobs: 0, failChecks: [] }
 const maintLog = []
@@ -212,7 +216,8 @@ const MAINT_OPEN_GETS = ["/maintenance/status", "/health", "/health/ready", "/ro
 const MAINT_CONTENT = ["notes", "summaries", "flashcards", "study-sessions", "transcripts"]
 function maintGroup(method, path, parts) {
   const read = method === "GET" || method === "HEAD"
-  if (method === "OPTIONS" || path === "/admin/maintenance" || path.startsWith("/admin/maintenance/")) return "open"
+  // Test hooks (the feedback poll's fake clock and scenarios) are never part of the break.
+  if (method === "OPTIONS" || path === "/admin/maintenance" || path.startsWith("/admin/maintenance/") || path.startsWith("/__test/")) return "open"
   if ((read && MAINT_OPEN_GETS.includes(path)) || (method === "POST" && path === "/login")) return "open"
   if (method === "POST" && path === "/maintenance/edit-session") return "edit"
   if (method === "POST" && MAINT_AI.includes(path)) return "long"
@@ -223,7 +228,11 @@ function maintGroup(method, path, parts) {
 }
 /** null to let the request through, else [error_code, message, retry_after]. */
 function maintGate(req, path, parts) {
-  const group = maintGroup(req.method, path, parts)
+  return maintDecide(maintGroup(req.method, path, parts), req.headers["x-luma-edit-session"])
+}
+/** Like ordinary_writes_allowed() on the server: would an ordinary write pass right now? */
+const maintWritesAllowed = () => maintDecide("write") === null
+function maintDecide(group, editHeader) {
   if (group === "open" || maint.phase === "none" || maint.phase === "announced") return null
   if (maint.phase === "active" || maint.phase === "checking") return ["maintenance_active", MAINT_ACTIVE, group === "webhook" ? 600 : maintRetryAfter()]
   const graceOver = Date.now() >= (msOf(maint.grace_ends_at) ?? 0)
@@ -233,7 +242,7 @@ function maintGate(req, path, parts) {
   if (group === "webhook") return Date.now() >= (msOf(maint.grace_ends_at) ?? 0) - 60_000 ? draining : null
   if (group === "long" || group === "edit") return draining
   if (group === "write") return graceOver ? draining : null
-  const issued = editSessions.get(String(req.headers["x-luma-edit-session"] || ""))
+  const issued = editSessions.get(String(editHeader || ""))
   if (!graceOver && issued !== undefined && issued <= (msOf(maint.drain_started_at) ?? 0)) return null
   return draining
 }
@@ -486,7 +495,7 @@ http
     if (url.pathname === "/admin/maintenance" || url.pathname.startsWith("/admin/maintenance/")) {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
-      if (!isFakeAdmin(a)) return send(res, 403, { detail: "Admin access required" })
+      if (!isAdmin(a)) return send(res, 403, { detail: "Admin access required" })
       if (req.method === "GET" && parts.length === 2) return send(res, 200, maintView())
       if (req.method !== "POST" || parts.length !== 3) return send(res, 404, { detail: "Not Found" })
       const changed = () => send(res, 409, { detail: "Someone else changed the break just now. Look at the page again before you try.", error_code: "maintenance_changed", phase: maint.phase, rev: maint.rev })
@@ -528,6 +537,21 @@ http
         maintMove("reopen", { ...MAINT_FIELDS, phase: "none", reopened_at: isoZ(Date.now()) })
       }
       return send(res, 200, maintView())
+    }
+    // --- monthly feedback poll (fake) and its test clock ---
+    if (url.pathname.startsWith("/__test/clock") || url.pathname.startsWith("/__test/feedback") || parts[0] === "feedback" || (parts[0] === "admin" && parts[1] === "feedback")) {
+      const account = accountFor(req)
+      let handled
+      try {
+        handled = handleFeedback({
+          method: req.method, pathname: url.pathname, parts, searchParams: url.searchParams, body, account, isAdmin: isAdmin(account),
+          writesAllowed: maintWritesAllowed(),
+        })
+      } catch (error) {
+        console.error("[FAKE FEEDBACK] route failed:", error)
+        return send(res, 500, { detail: "The fake feedback route failed." })
+      }
+      if (handled) return send(res, handled[0], handled[1])
     }
 
     // --- accounts (fake) ---
@@ -622,7 +646,7 @@ http
     }
     if (parts[0] === "admin" && parts[1] === "reports") {
       const a = accountFor(req)
-      if (!a || a.id !== "u1") return send(res, 403, { detail: "Admin access required" })
+      if (!isAdmin(a)) return send(res, 403, { detail: "Admin access required" })
       const strip = ({ reporter, ...rest }) => rest
       if (req.method === "PATCH" && parts[2]) {
         const r = reports.find((x) => x.id === parts[2])
@@ -641,12 +665,14 @@ http
       const refused = checkPassword(a, body.current_password)
       if (refused) return send(res, ...refused)
       accounts.delete(a.email)
+      forgetFeedbackUser(a)
       return send(res, 200, { success: true, message: "Your account and study data were deleted.", retained: [
         "If you paid for Premium, payment records stay with Stripe because tax law requires them",
         "Copies already sent to our AI providers follow their own deletion rules",
         "Database backups age out on our hosting provider's schedule",
         "A scrambled code made from your email (not the email itself) stays for a few days, so the free AI limit can't be reset by deleting and making a new account",
         "Reports you sent about shared content stay for safety review, without your name",
+        FEEDBACK_RETAINED,
       ] })
     }
 
@@ -869,7 +895,7 @@ http
       const profile = profiles.get(a.id)
       // An unknown saved theme reads as Light; an empty one stays empty.
       const theme_mode = profile.theme_mode == null ? null : THEME_MODES.includes(profile.theme_mode) ? profile.theme_mode : "light"
-      return send(res, 200, { ...profile, theme_mode, ...publicUser(a), subscription_status: "free", is_admin: isFakeAdmin(a) })
+      return send(res, 200, { ...profile, theme_mode, ...publicUser(a), subscription_status: "free", is_admin: isAdmin(a) })
     }
     // Study plans: create, list, open, change and delete, each account only its own.
     if (parts[0] === "study-sessions") {

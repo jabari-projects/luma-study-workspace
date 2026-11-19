@@ -50,7 +50,16 @@ Plain rule: updates add things. They never delete student work.
    when the backup started, nothing made after the backup can be lost.
 
 6. **Change the database.** The owner pastes the new SQL into the Supabase SQL editor and runs
-   it. Then runs the file's VERIFY part and checks the numbers.
+   it. Then runs the file's VERIFY part and checks the numbers. With more than one file, run
+   them one at a time in name order. For this release (live today: up to
+   `2026_11_17_content_reports.sql`), that is:
+   1. `2026_11_18_monthly_feedback.sql` (the monthly feedback poll: new `feedback_*` tables only)
+   2. `2026_11_19_maintenance_state.sql` (the maintenance break tables)
+   3. `2026_11_19_student_work_versions.sql` (new columns on notes, summaries, flashcards and
+      study plans)
+
+   All three only add things; each is safe to run twice. The practice run in step 2
+   (`--after 2026_11_17`) runs exactly these three, in this order.
 
 7. **Update the backend first** (Render), **then the website** (Vercel). The new backend works
    with both the old and the new website, so the order is safe. The database change (step 6)

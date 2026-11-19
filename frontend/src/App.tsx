@@ -46,6 +46,9 @@ import { ImportPage } from "./capture/ImportPage"
 import { MaintenanceNotice } from "./maintenance/MaintenanceNotice"
 import { StatusPage } from "./maintenance/StatusPage"
 import { AdminMaintenancePage } from "./maintenance/AdminMaintenancePage"
+import { FeedbackPage } from "./feedback/FeedbackPage"
+import { FeedbackArchivePage, FeedbackResultsPage } from "./feedback/FeedbackResultsPage"
+import { AdminFeedbackPage, AdminPollPage } from "./feedback/AdminFeedbackPage"
 
 function LoadingScreen({ message }: { message: string }) {
   return (
@@ -222,6 +225,11 @@ function AppLayout() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin/reports" element={<AdminReportsPage />} />
           <Route path="/admin/maintenance" element={<AdminMaintenancePage />} />
+          <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/feedback/results" element={<FeedbackArchivePage />} />
+          <Route path="/feedback/results/:pollId" element={<FeedbackResultsPage />} />
+          <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+          <Route path="/admin/feedback/:pollId" element={<AdminPollPage />} />
           <Route path="/profile" element={<Navigate to="/settings" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

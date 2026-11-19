@@ -10,7 +10,7 @@
 // What it does:
 //  (a) builds the live replica (same builder as check_live_migration.mjs: live shape fixture,
 //      Supabase stubs, the search triggers assumed live) and seeds synthetic rows;
-//  (b) applies the migrations that come before this one (2026_11_15 .. 2026_11_17);
+//  (b) applies the migrations that come before this one (2026_11_15 .. 2026_11_18);
 //  (c) applies this file twice;
 //  (d) checks every pre-existing table, row and value is unchanged, the singleton row exists
 //      (phase none, rev 1), RLS is on and anon/authenticated have no access;
@@ -46,9 +46,10 @@ for (const p of [shapePath, migrationPath]) {
 }
 const shape = JSON.parse(readFileSync(shapePath, "utf8")).tables
 const migration = readFileSync(migrationPath, "utf8")
-// Everything already written before this file (2026_11_15 .. 2026_11_17), in name order.
+// Everything that runs before this file, in name order (the release order): the live ones
+// (2026_11_15 .. 2026_11_17), then this release's 2026_11_18 monthly feedback.
 const earlier = readdirSync(MIGRATIONS_DIR)
-  .filter((name) => name.endsWith(".sql") && name < "2026_11_18")
+  .filter((name) => name.endsWith(".sql") && name < FILE_NAME)
   .sort()
 
 // ---------------------------------------------------------------- reporting

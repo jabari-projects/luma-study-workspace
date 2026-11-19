@@ -17,6 +17,9 @@ export const APP_PAGES = [
   { path: "/discover", label: "discover" },
   { path: "/settings", label: "settings" },
   { path: "/admin/reports", label: "admin-reports" },
+  { path: "/feedback", label: "feedback-poll" },
+  { path: "/feedback/results", label: "feedback-results" },
+  { path: "/admin/feedback", label: "admin-feedback" },
 ] as const
 
 export const PUBLIC_PAGES = [

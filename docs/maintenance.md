@@ -78,6 +78,13 @@ There is no usage history yet (only 2 analytics events), so this is a reasonable
 - Code: `backend/app/maintenance.py`. Database change: `backend/app/schemas/migrations/2026_11_19_maintenance_state.sql`
   (additive: four new tables, RLS on, no access for `anon`/`authenticated`). PGlite check:
   `PGLITE_DIR=J:/LumaOps/pglite node backend/scripts/check_maintenance_migration.mjs`.
+- Release order (name order): `2026_11_18_monthly_feedback.sql`, then
+  `2026_11_19_maintenance_state.sql`, then `2026_11_19_student_work_versions.sql`. The PGlite
+  checkers apply them in that order on top of the live shape, and the backup rehearsal does the
+  same on Postgres 17.
+- The monthly feedback poll's writes (ballots, skips, admin changes) are ordinary writes for the
+  gate. Its reads that tidy up (new drafts, the voter-key cleanup) write nothing while writes are
+  refused (`ordinary_writes_allowed()`).
 - One row (`maintenance_state`, id 1) holds the phase for every server. Each change is a
   compare-and-swap on `rev` and writes one `maintenance_log` row (codes and counts only).
 - Each server process keeps a 5-second copy of that row and reads it again only when a request
@@ -130,6 +137,8 @@ Assumed, not tested here:
 
 ## Approvals needed
 
-1. Applying `2026_11_19_maintenance_state.sql` to production (after a verified backup).
+1. Applying this release's database files to production (after a verified backup), in order:
+   `2026_11_18_monthly_feedback.sql`, `2026_11_19_maintenance_state.sql`,
+   `2026_11_19_student_work_versions.sql`.
 2. Deploying the backend, then the frontend.
 3. The maintenance window, and each actual break.

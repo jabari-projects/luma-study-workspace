@@ -853,6 +853,7 @@ function DeleteAccountForm({ setNotice }: { setNotice: (notice: Notice | null) =
             can't be reset by making a new account.
           </li>
           <li>Reports you sent about shared content stay for safety review, without your name.</li>
+          <li>Your answers to monthly feedback polls stay in the totals, without your name. Your poll comments are deleted.</li>
         </ul>
       </details>
       <div className="field">

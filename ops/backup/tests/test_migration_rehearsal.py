@@ -64,6 +64,12 @@ def check(result, name):
 def test_later_migrations_keep_every_row(live_set):
     later = synthetic.migration_files(after=synthetic.LIVE_MIGRATIONS_UPTO)
     assert later, "there are migrations after the live ones"
+    # This release's files, in the order the owner runs them (docs/deployment-checklist.md).
+    assert [p.name for p in later if p.name >= "2026_11_18"] == [
+        "2026_11_18_monthly_feedback.sql",
+        "2026_11_19_maintenance_state.sql",
+        "2026_11_19_student_work_versions.sql",
+    ]
     result = rehearse(live_set, later)
     assert result["passed"], result
     assert result["counts"]["changed_or_missing"] == 0

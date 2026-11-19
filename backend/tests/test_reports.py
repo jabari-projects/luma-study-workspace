@@ -127,3 +127,7 @@ def test_deletion_explains_every_kept_record():
     kept = account_deletion.DeletionReport().retained
     assert any("free AI limit" in line for line in kept)
     assert any("Reports you sent" in line for line in kept)
+    assert (
+        "Your answers to monthly feedback polls stay in the totals, without your name. Your poll comments are deleted."
+        in kept
+    )

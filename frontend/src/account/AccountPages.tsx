@@ -944,7 +944,7 @@ export function AccountDeletedPage() {
           <h2 id="kept-heading">A few records stay, and here is why</h2>
           <ul>
             {kept.map((line) => (
-              <li key={line}>{line}.</li>
+              <li key={line}>{/[.!?]$/.test(line) ? line : `${line}.`}</li>
             ))}
           </ul>
         </section>

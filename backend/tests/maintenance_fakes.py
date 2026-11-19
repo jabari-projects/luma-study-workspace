@@ -85,7 +85,8 @@ class _Query:
         self.order_by = (column, desc)
         return self
 
-    def single(self):
+    def maybe_single(self):
+        # Like supabase-py: one row as a dict, or None when nothing matched.
         self.single_row = True
         return self
 
