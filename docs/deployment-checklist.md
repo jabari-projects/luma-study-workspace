@@ -23,8 +23,12 @@ Plain rule: updates add things. They never delete student work.
    ```
 
    (Run it in `ops\backup`.) It must say "Rehearsal passed." That means every old row is still
-   there and unchanged, and each change ran twice without trouble. The PGlite checkers for the
-   new migration files must pass too.
+   there and unchanged (a checksum per row over every column it had), no table gained or lost
+   rows, no column was removed or changed type, new columns hold their defaults on old rows, and
+   each change ran twice without trouble. It also lists each table's row count before and after.
+   `ops/backup/tests/test_migration_rehearsal.py` runs the same practice on a fake database
+   shaped like production and compares every row with that database before the backup.
+   The PGlite checkers for the new migration files must pass too.
 
 3. **Pick a break time** (only for risky database changes), inside the approved maintenance
    window. Tell students at least 48 hours ahead.

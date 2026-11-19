@@ -14,7 +14,7 @@ Scheduler). PostgreSQL 17 tools come from `J:/LumaOps/postgres/pgsql/bin`, gpg 2
 | `python setup_credentials.py --check` | owner | tests the saved keys, prints OK lines only |
 | `python backup_run.py --production` | owner / scheduled task | one full backup, restore test, status |
 | `python restore_test_run.py --stamp <stamp>` | owner | practice restore of an existing set on 127.0.0.1 |
-| `python rehearse_migrations.py --stamp <stamp> --after <name>` | owner, before a migration | restore + apply pending migrations twice + compare rows |
+| `python rehearse_migrations.py --stamp <stamp> --after <name>` | owner, before a migration | restore + apply pending migrations in order, twice + per-row checksums, row counts, column types, defaults |
 | `python -m luma_backup.check_status [--notify]` | owner / scheduled task | 0 OK, 1 warning, 2 failed |
 | `python -m luma_backup.prune [--apply]` | owner, after retention is approved | dry run unless `--apply` |
 | `python -m luma_backup.copy_second --dest E:/LumaBackups2` | owner | second copy, SHA-256 checked |

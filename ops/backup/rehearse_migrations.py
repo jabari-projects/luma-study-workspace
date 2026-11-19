@@ -3,8 +3,9 @@
     python rehearse_migrations.py --stamp 20261119T033000Z --after 2026_11_17
     python rehearse_migrations.py --stamp 20261119T033000Z --migration path/to/file.sql [...]
 
-It restores the backup into a throwaway database on 127.0.0.1, runs each migration file twice,
-and checks every existing row is still there and unchanged. It prints counts and pass/fail only.
+It restores the backup into a throwaway database on 127.0.0.1, runs the migration files in order, twice,
+and checks every existing row is still there and unchanged (per-row checksums) and that no table
+gained or lost rows. It prints table names, counts and pass/fail only.
 Nothing here can reach the live database.
 """
 
@@ -61,6 +62,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for check in result["checks"]:
         print(f"{'PASS' if check['ok'] else 'FAIL'}  {check['name']}  {check['detail']}".rstrip())
+    for table, n in sorted(result.get("tables", {}).items()):
+        print(f"rows  {table}  before={n['rows_before']} after={n['rows_after']}")
+    for table, info in sorted(result.get("new_schema", {}).items()):
+        if info["new_table"]:
+            print(f"new table  {table}  rows={info['rows']} columns={len(info['columns'])}")
+        else:
+            print(f"new columns  {table}  {', '.join(info['columns'])}")
     if result.get("error"):
         print(result["error"])
     print("Rehearsal passed." if result["passed"] else "Rehearsal FAILED. Do not run these migrations on Luma.")
