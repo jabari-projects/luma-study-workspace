@@ -84,23 +84,26 @@ def lock_folders() -> None:
     print("Your backup folders on J: are now readable only by you.")
 
 
-def collect() -> dict:
+def collect(prefill: dict | None = None) -> dict:
+    """Ask for the logins. Non-secret values (host, user, project URL) may come prefilled from the
+    command line so the owner only pastes the two secrets; secrets are always typed, hidden."""
+    prefill = prefill or {}
     print("Open Supabase > your project > Connect > Session pooler. Copy each value when asked.")
-    host = ask("Host (ends with .pooler.supabase.com): ")
+    host = prefill.get("host") or ask("Host (ends with .pooler.supabase.com): ")
     if host.endswith(".supabase.co") and host.startswith("db."):
         raise SystemExit("That is the direct address. It does not work from home internet on the free plan. "
                          "Use the Session pooler host instead.")
     if not host.endswith(".pooler.supabase.com"):
         raise SystemExit("The host must end with .pooler.supabase.com.")
-    port = ask("Port (5432): ") or "5432"
+    port = "5432" if prefill.get("host") else (ask("Port (5432): ") or "5432")
     if port != "5432":
         raise SystemExit("Use port 5432 (Session pooler). Port 6543 can't make backups.")
-    user = ask("User (looks like postgres.<project-id>): ")
+    user = prefill.get("user") or ask("User (looks like postgres.<project-id>): ")
     if not user.startswith("postgres."):
         raise SystemExit("The user must look like postgres.<project-id>.")
-    dbname = ask("Database (postgres): ") or "postgres"
+    dbname = "postgres" if prefill.get("host") else (ask("Database (postgres): ") or "postgres")
     password = ask("Database password (hidden): ", secret=True)
-    url = ask("Project URL (https://<project-id>.supabase.co): ").rstrip("/")
+    url = (prefill.get("url") or ask("Project URL (https://<project-id>.supabase.co): ")).rstrip("/")
     check_storage_url(url, production=True)
     key = ask("Secret key (sb_secret_... or the service_role key) (hidden): ", secret=True)
     if not key.startswith("sb_secret_") and jwt_role(key) != "service_role":
@@ -114,14 +117,14 @@ def collect() -> dict:
             "storage": {"url": url, "service_key": key}}
 
 
-def setup() -> None:
+def setup(prefill: dict | None = None) -> None:
     existing: dict = {}
     if SECRETS_FILE.is_file():
         try:
             existing = secrets_store.load(SECRETS_FILE).to_dict()
         except secrets_store.SecretsUnavailable:
             existing = {}
-    data = collect()
+    data = collect(prefill)
     if existing.get("passphrase"):
         # Keep the passphrase so older backups still open with the same one.
         data.update({k: existing[k] for k in ("passphrase", "passphrase_id", "old_passphrases")})
@@ -183,6 +186,10 @@ def main() -> int:
     group.add_argument("--check", action="store_true")
     group.add_argument("--rotate-passphrase", action="store_true")
     group.add_argument("--show-passphrase", metavar="ID")
+    # Non-secret values only; the password and key are always typed (hidden) by the owner.
+    parser.add_argument("--host", help="Session pooler host, e.g. aws-0-us-east-2.pooler.supabase.com")
+    parser.add_argument("--user", help="Database user, e.g. postgres.<project-id>")
+    parser.add_argument("--project-url", help="https://<project-id>.supabase.co")
     args = parser.parse_args()
     if not sys.stdin.isatty():
         print("Run this yourself in a terminal window. It asks for keys and must not be run by a script.")
@@ -195,7 +202,7 @@ def main() -> int:
         elif args.show_passphrase:
             show(args.show_passphrase)
         else:
-            setup()
+            setup({"host": args.host, "user": args.user, "url": args.project_url})
         return 0
     except secrets_store.SecretsUnavailable as exc:
         print(exc)
