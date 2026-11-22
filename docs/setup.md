@@ -30,6 +30,10 @@ Start the client:
 npm run dev
 ```
 
+## Without a database (fake API)
+
+For most work you do not need Supabase. `npm run mock-api` in `frontend/` starts an in-memory fake API on port 8787 with seeded test accounts; set `VITE_API_BASE_URL=http://127.0.0.1:8787` before `npm run dev`. Tests: `npm test`, `npm run e2e` (frontend) and `python -m pytest -q` (backend). See `CLAUDE.md` for the full list.
+
 ## Backend
 
 From `backend/`, create and activate a virtual environment, then install dependencies:
@@ -89,10 +93,10 @@ uvicorn main:app --env-file .env --reload --host 127.0.0.1 --port 8000
 
 ## Database schemas
 
-Apply the SQL files in `backend/app/schemas/` to the Supabase project as appropriate for the features you intend to run. They cover the data structures used by notes, flashcards, summaries, transcripts, study sessions, profiles, subscriptions, analytics, notifications, AI usage, and related account flows.
+Apply the SQL files in `backend/app/schemas/` to the Supabase project as appropriate for the features you intend to run. Changes after the first schemas are dated, add-only files in `backend/app/schemas/migrations/`; apply them in date order. They cover the data structures used by notes, flashcards, summaries, transcripts, study sessions, profiles, subscriptions, analytics, notifications, AI usage, and related account flows.
 
 ## Security and deployment
 
 Never commit actual service keys, webhook secrets, or populated environment files. The checked-in `.env.example` files contain placeholders only. All `VITE_*` values are included in the public browser bundle, so keep Supabase service-role, OpenAI, Deepgram, Stripe, JWT, email, and webhook secrets on the backend/deployment platform.
 
-For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY` (at least 32 characters), and your frontend origin settings explicitly. `render.yaml`, `backend/railway.json`, `frontend/vercel.json`, and `frontend/netlify.toml` are included as deployment integration files. Changing these repository files does not configure credentials in a hosting account.
+For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY` (at least 32 characters), and your frontend origin settings explicitly. Production uses `frontend/vercel.json` (Vercel) and `render.yaml` (Render). `backend/railway.json` and `frontend/netlify.toml` are leftovers for hosts that are not used. Changing these repository files does not configure credentials in a hosting account.

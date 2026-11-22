@@ -52,6 +52,13 @@ npm run build
 
 The app includes notes, flashcards, summaries, study sessions, public study materials, image-to-notes, and audio transcription. AI tools need the relevant provider credentials. Subscriptions need Stripe configuration. The AI Tutor screen is still in progress and does not yet have a connected tutoring endpoint.
 
+## For contributors and AI agents
+
+- Start with [CLAUDE.md](CLAUDE.md) (other coding agents: [AGENTS.md](AGENTS.md)).
+- Current status and next steps: [docs/handoff/HANDOFF.md](docs/handoff/HANDOFF.md).
+- Tools and services: [docs/handoff/TOOLS.md](docs/handoff/TOOLS.md).
+- Working alongside other agents: [docs/agents/PROTOCOL.md](docs/agents/PROTOCOL.md).
+
 ## More documentation
 
 - [Features](docs/features.md)
