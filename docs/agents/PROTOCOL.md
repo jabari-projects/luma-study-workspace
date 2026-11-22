@@ -2,10 +2,12 @@
 
 How several agents (on one or more Claude accounts) work on Luma at the same time without overwriting each other.
 
+**Public repo: follow `CLAUDE.md` section 5. Private or security details go only in the vault.**
+
 ## 1. One task, one branch, one worktree
 
 - Name the branch `claude/<short-task>` (for example `claude/help-desk`).
-- Make a worktree for it on the J: drive, never on the C: drive:
+- Make a worktree for it on the J: drive, never on the C: drive (on another PC: a sibling folder next to your checkout, off the system drive):
   ```powershell
   git fetch origin
   git worktree add -b claude/<task> J:/LumaPilot/wt-<task> origin/main
@@ -34,7 +36,7 @@ The claim row lives on your branch. Other agents only see it once it is on `main
 | File | Who writes | How |
 |---|---|---|
 | `docs/agents/ACTIVE.md` | each agent, own row only | add, change your own row; never touch others' rows |
-| `docs/agents/LOG.md` | every agent | append at the bottom only; never edit or delete earlier lines |
+| `docs/agents/LOG.md` | every agent | append at the bottom only; never edit or delete earlier lines (only the owner may redact a line that leaked private info) |
 | `docs/handoff/HANDOFF.md` | every agent | change only the rows and sections your work changed |
 | `docs/handoff/TOOLS.md` | any agent that adds or drops a tool | same commit as the change |
 | `CLAUDE.md`, `PROTOCOL.md` | only with the owner's OK | these are the rules |
@@ -63,7 +65,7 @@ If you must stop before you finish:
 2. Set your `ACTIVE.md` row to `paused`.
 3. Append to `LOG.md` a **Remaining plan** entry:
    ```
-   - 2026-11-21 | claude-xyz | claude/<task> | PAUSED. Done: ... Left: 1) ... 2) ... Files: ... Test with: ... Watch out for: ...
+   - 2026-11-21 | claude-xyz | claude/<task> | PAUSED. Done: ... Left: 1) ... 2) ... Files: ... Test with: ... Watch out for (public-safe only): ...
    ```
 4. If the vault is reachable, copy the same note into the vault with any private details.
 

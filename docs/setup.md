@@ -22,7 +22,7 @@ For a fresh checkout, copy `frontend/.env.example` to `frontend/.env.local`. Kee
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-The TypeScript environment declarations also reserve `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Set them only if the client code/configuration you are running requires them; the current API client itself requires `VITE_API_BASE_URL`.
+`VITE_API_BASE_URL` is the only setting the website needs. The browser never talks to Supabase directly. The `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` names still in `src/vite-env.d.ts` and `.env.example` are unused leftovers; leave them unset.
 
 Start the client:
 
@@ -32,7 +32,7 @@ npm run dev
 
 ## Without a database (fake API)
 
-For most work you do not need Supabase. `npm run mock-api` in `frontend/` starts an in-memory fake API on port 8787 with seeded test accounts; set `VITE_API_BASE_URL=http://127.0.0.1:8787` before `npm run dev`. Tests: `npm test`, `npm run e2e` (frontend) and `python -m pytest -q` (backend). See `CLAUDE.md` for the full list.
+For most work you do not need Supabase. `npm run mock-api` in `frontend/` starts an in-memory fake API on port 8787 with seeded test accounts; set `VITE_API_BASE_URL=http://127.0.0.1:8787` before `npm run dev`. Tests: `npm test`, `npm run e2e` (frontend) and `python -m pytest -q` (backend, after `pip install pytest==9.2.0` in the backend venv; see below). See `CLAUDE.md` for the full list.
 
 ## Backend
 
@@ -43,6 +43,8 @@ python -m venv .venv
 # PowerShell
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# Test tools are not in requirements.txt; add pytest to run the backend tests
+pip install pytest==9.2.0
 ```
 
 For a fresh checkout, copy `backend/.env.example` to `backend/.env` and fill in your values. You can also set the variables directly in your shell or deployment provider. Required values for normal authenticated/data-backed operation are:

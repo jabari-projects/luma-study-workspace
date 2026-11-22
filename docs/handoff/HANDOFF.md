@@ -21,10 +21,10 @@ Product rules: study material is private until the student shares it. Luma is a 
 | Part | What | Where it runs |
 |---|---|---|
 | Website | React 19 + TypeScript + Vite in `frontend/` | Vercel, https://lumastudyhub.com, auto-deploys from `main` |
-| API | FastAPI (Python) in `backend/` | Render free plan (`luma-0kjc.onrender.com`), auto-deploy is **off**, deploys are started by hand |
-| Database and files | Postgres + Storage | Supabase (free plan, no automatic backups) |
+| API | FastAPI (Python) in `backend/` | Render free plan (API host is in the vault), auto-deploy is **off**, deploys are started by hand |
+| Database and files | Postgres + Storage | Supabase (free plan; backups: see the vault) |
 | Email | Sign-up codes, resets, email-change notices | Resend, from the lumastudyhub.com domain |
-| DNS | Domain, DNS, help@ forwarding | Cloudflare (DNS-only to Vercel) |
+| DNS | Domain, DNS, help@ forwarding | Cloudflare (registrar, DNS, email routing) |
 | AI | Image to Notes, speech to text | OpenAI (Deepgram is the second speech path in code) |
 | Payments | Stripe code exists, payments are **off** | (not active) |
 
@@ -47,7 +47,7 @@ Status words: `built` / `fake-tested` / `real-tested` / `deployed` (see CLAUDE.m
 | Feature | Status | What was really checked live |
 |---|---|---|
 | Email-code sign-up and verify, log in, password reset | deployed | A real reset email reached the owner's inbox (2026-11-17). |
-| Email change and account deletion (both ask for the password) | deployed | fake-tested only; not tried live while signed in. |
+| Email change and account deletion (both ask for the password) | deployed | fake-tested; live check pending (see the vault). |
 | Up to 3 accounts per device, switch from the account menu | deployed | fake-tested; switching between two real accounts not tried live. |
 | Notes, decks with FSRS study, quizzes, study plans | deployed | fake-tested; live checks were mostly signed-out smoke tests. |
 | Import, Voice and Image to Notes | deployed | fake-tested. No paid real AI call has been made in testing. |
@@ -68,11 +68,12 @@ Test files on `main`: 25 backend test files, 16 Playwright specs, 13 unit test f
 
 | Branch | Pushed? | What it holds | Status |
 |---|---|---|---|
-| `claude/student-work` | yes | Autosave with version checks and conflict notices, drafts kept in the tab only, retry-safe creates, flashcard progress merge, maintenance mode, encrypted backup tools (`ops/backup/`), deployment checklist. Migrations `2026_11_19_student_work_versions.sql` and `2026_11_19_maintenance_state.sql`. | built, fake-tested (counts recorded in the vault, not re-run for this page) |
+| `claude/student-work` | yes | Autosave with version checks and conflict notices, drafts kept in the tab only, retry-safe creates, flashcard progress merge, maintenance mode, encrypted backup tools (`ops/backup/`), deployment checklist. Also holds the `landing-fix` merge (`4f72de7`). Migrations `2026_11_19_student_work_versions.sql` and `2026_11_19_maintenance_state.sql`. | built, fake-tested (counts recorded in the vault, not re-run for this page) |
 | `claude/feedback-poll` | yes | Monthly feedback poll: backend, migration `2026_11_18_monthly_feedback.sql`, student and admin pages, fake API, e2e. 5 commits behind `main`. | built, fake-tested |
 | `claude/release-1` | **no, local only** (worktree `J:/LumaPilot/wt-release`) | `student-work` + `feedback-poll` merged, plus a release rehearsal tool. | **in progress** in another workflow. Do not edit it. |
 | `claude/backup-tools`, `claude/maintenance` | yes | Single commits that are already inside `student-work`. | superseded by `student-work` |
 | `claude/handoff-docs` | not yet | This handoff system (CLAUDE.md, AGENTS.md, `docs/handoff/`, `docs/agents/`). | built |
+| `claude/secondary-work` | **no, local only** (worktree `J:/LumaPilot/wt-secondary`) | Nothing yet; it sits at `7b602b9`. Reserved for the second Claude account. | not started (reserved) |
 
 Already merged into `main` (safe to ignore): `polish-a`, `polish-b`, `security-gaps`, `theme-color`, `landing-fix`, `domain-cors`, `finish-website`, `log-privacy-fix`, `multi-account`, `luma-learning-platform-b6d3c1`.
 
@@ -80,9 +81,17 @@ Not on any branch yet: admin help desk, smart study reminders, the AI tutor.
 
 ## 6. What's next, in order
 
-1. **First real backup.** Owner step: the owner adds two new secrets on their own PC, then runs the backup tool once. A second copy goes to a USB drive. (Details in the vault.)
-2. **Deploy release-1** after that backup. Needs the owner's OK: apply the 3 add-only migrations, then deploy the API on Render, then the website.
-3. **Safety approvals** (7 owner decisions: backup schedule and retention, maintenance window, privacy text, and more; listed in the vault).
+1. **Backup step** (owner; details in the vault). It is done only when the backup's restore test passes **and** `ops/backup/rehearse_migrations.py` has passed on that real backup with `--after 2026_11_17_content_reports` (run from `ops/backup` on `claude/student-work` or `claude/release-1`).
+2. **Deploy release-1**, only after step 1, only once the release workflow has finished the branch, and only with the owner's OK. Follow `docs/deployment-checklist.md` on `claude/release-1`, section "First release only" (being written now; use it once it is committed). In short, stop at the first thing that is not exactly as written:
+   1. Real backup, restore test and migration rehearsal passed (step 1).
+   2. Turn auto-deploy **off** on Render **and Vercel** before anything is merged. Merging to `main` while Vercel auto-deploys would ship the new website onto the old API. Never run the new website on the old API.
+   3. Apply the 3 add-only SQL files by hand, one at a time, in this order: `2026_11_18_monthly_feedback.sql`, then `2026_11_19_maintenance_state.sql`, then `2026_11_19_student_work_versions.sql`.
+   4. Run each file's VERIFY part. This is a hard stop: if any number is off, do not go on.
+   5. Merge `claude/release-1` into `main` and push. Nothing deploys yet, because auto-deploy is off. (Render's deploy tool has no commit setting, so the release must be on `main` first.)
+   6. Deploy the API on Render by hand. Wait until `/health/ready` and `/maintenance/status` both answer 200, then do one test save.
+   7. Only then deploy the website on Vercel by hand. Then turn auto-deploy back on for both.
+   8. If something goes wrong: roll back Vercel first, then Render. Never restore the database.
+3. **Owner safety approvals** (list in the vault).
 4. **Admin help desk** (planned; plan is in the vault).
 5. **Smart study reminders** (opt-in, Luma data only, with caps).
 6. **AI tutor**, last (Premium only).
@@ -91,8 +100,9 @@ Small clean-ups any agent may pick up (on their own branch, after claiming):
 
 - Remove the unused host configs `backend/railway.json` and `frontend/netlify.toml` (production is Vercel + Render).
 - Make `render.yaml` match the live service (auto-deploy off, health check path, Python version).
-- Remove the leftover `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` declarations in `frontend/src/vite-env.d.ts` (the frontend no longer uses Supabase directly).
-- Refresh `README.md` "Current status" (it still talks about the AI Tutor screen and Stripe setup) and `docs/roadmap.md` (an August plan).
+- Remove the leftover `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` declarations in `frontend/src/vite-env.d.ts` and the commented-out lines in `frontend/.env.example` (the frontend no longer uses Supabase directly; `docs/setup.md` already says so).
+- Add a dev requirements file with a pinned pytest, so a fresh venv can run the tests without a hand install.
+- Refresh `docs/roadmap.md` (an August plan). (`README.md` "Current status" was fixed on `claude/handoff-docs`.)
 
 ## 7. Known bugs and rough edges (non-sensitive)
 

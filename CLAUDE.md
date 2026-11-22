@@ -4,6 +4,8 @@ Luma is a simple study app for students (notes, smart flashcards, quizzes, Voice
 
 **This repo is PUBLIC.** Read the privacy rules (section 5) before you write anything.
 
+**Paths in these docs** (`J:/...`, `G:/...`, PGlite, PostgreSQL 17, the Edge browser, the ready-made venvs) are on the owner's PC. On another PC: put worktrees in a sibling folder next to your checkout, not on the system drive; install the tools yourself (section 3) or skip the checks that need them and say so in `docs/agents/LOG.md`. If the vault is not reachable, see section 5.
+
 ## 1. Read first (before any code)
 
 1. `docs/handoff/HANDOFF.md`: what is live, what is on branches, what to do next.
@@ -23,7 +25,7 @@ Luma is a simple study app for students (notes, smart flashcards, quizzes, Voice
 - **No endless polling.** Push, don't poll. Wait on a real signal.
 - **No fallback or duplicate code.** No "v2" copies. Replace the old code and delete it.
 - **Database changes only ADD** (new tables, new columns, new indexes). Never drop or rewrite data.
-- **Back up before any risky database change.** Backups are encrypted and live under `G:/LumaBackups`.
+- **Back up before any risky database change.** Backups are encrypted and kept off the repo (location in the vault).
 - **Never restore production automatically.** A restore is always a hand-checked owner step.
 - **Deploy approvals:** small, reversible fixes may ship. The owner must approve launch, anything paid, production migrations, anything destructive, and big merges.
 - **Status words** (use exactly these, never blur them):
@@ -54,27 +56,33 @@ npm test             # node --test unit tests
 npm run e2e          # Playwright on Edge: desktop, tablet, phone. Starts its own fake API (8788) and vite (5174)
 ```
 
-Backend, from `backend/` (make a venv first: `python -m venv .venv` then `.venv/Scripts/python.exe -m pip install -r requirements.txt`):
+Backend, from `backend/`. `requirements.txt` has no test tools, so install pytest yourself:
 
 ```powershell
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip install pytest==9.2.0
 .venv/Scripts/python.exe -m pytest -q -p no:cacheprovider
 ```
 
 `tests/conftest.py` clears every provider key and sets `APP_ENV=test`, so tests never reach a real service.
 
-Migration checks run on PGlite (installed outside the repo):
+Migration checks run on PGlite, installed outside the repo (`J:/LumaOps/pglite` on the owner's PC):
 
 ```powershell
 $env:PGLITE_DIR="J:/LumaOps/pglite"; node backend/scripts/check_live_migration.mjs
 ```
 
+On another PC, make a folder outside the repo, run `npm install @electric-sql/pglite@0.5.16` in it, and point `PGLITE_DIR` at that folder.
+
 The real backend (`uvicorn main:app --env-file .env` from `backend/`) needs Supabase and a JWT secret. You should rarely need it. See `docs/setup.md`.
 
 ## 4. Documentation workflow (do this every task)
 
-1. **Before you start:** add one line to `docs/agents/ACTIVE.md` with your agent id, branch, files or areas, and start date. Make one branch and one worktree per task (worktrees go on `J:/LumaPilot/wt-<task>`). Never edit files another agent has claimed.
+1. **Before you start:** claim your work in `docs/agents/ACTIVE.md` and make one branch and one worktree per task, as `docs/agents/PROTOCOL.md` sections 1 and 2 say. Never edit files another agent has claimed.
 2. **While you work:** keep commits small. Use the status words above.
 3. **After each task or big change:**
+   - Privacy check first: read your diff and remove anything section 5 lists.
    - Update `docs/handoff/HANDOFF.md` (status table, branches, next steps). Change only the rows your work touched.
    - Add a line to the bottom of `docs/agents/LOG.md`. It is append-only. Never edit or delete other lines.
    - If the vault is reachable, update `00 Home/Luma Handoff.md` and the vault's Session Log or Task Board with the private details.
@@ -89,10 +97,13 @@ Never put these in the repo, in commit messages, or in PR text:
 - secrets or where their values are stored beyond "owner's dashboard" or "local DPAPI file";
 - personal data (names, emails, student data, account counts);
 - private business info (money, budgets, legal questions, vendor accounts);
-- security weaknesses that are not fixed yet;
-- service IDs, project refs and dashboard links.
+- security weaknesses that are not fixed yet, including missing protections (no backup, no firewall, security flows not checked live);
+- service IDs, project refs, dashboard links, hostnames and origin URLs of services;
+- local paths of backups or credential stores;
+- the owner's real name, personal email or other projects;
+- screenshots or files with real user data.
 
-Those go only in the Obsidian vault on G:. If you are not sure, put it in the vault.
+Those go only in the Obsidian vault on G:. If you are not sure, put it in the vault. If the vault is not reachable, tell the owner in chat; never fall back to the repo.
 
 ## 6. Git habits
 
@@ -100,4 +111,6 @@ Those go only in the Obsidian vault on G:. If you are not sure, put it in the va
 - Do not push or deploy unless the task says so and the rules in section 2 allow it.
 - The `gh` CLI is not installed on the owner's PC. Use plain `git`.
 - Never use bare `git stash` (the stash is shared by all worktrees). Use a WIP commit.
+- Do not change git config. Never put real names or personal emails in commit messages, docs or PR text. Which git identity agents commit as is the owner's choice.
+- Do not commit the local `.codex/` or `.agents/` folders, or stray screenshots, without the owner's OK.
 - End commit messages with the co-author line your session gives you.
