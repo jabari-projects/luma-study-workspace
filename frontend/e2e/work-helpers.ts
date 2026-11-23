@@ -38,8 +38,11 @@ export async function slowNext(page: Page, path: string, ms: number, times = 1) 
   expect((await page.request.post(`${API}/__test/slow`, { data: { path, ms, times } })).ok()).toBeTruthy()
 }
 
-/** The next `times` saves to `path` fail: a 500, or the connection is cut before or after the save. */
-export async function failNext(page: Page, path: string, mode: "500" | "drop-after-commit" | "drop-before-commit", times = 1) {
+/**
+ * The next `times` requests to `path` fail: a 500, or the connection is cut before or after the save,
+ * or (AI routes) the daily free limit (403) or "one AI task at a time" (429).
+ */
+export async function failNext(page: Page, path: string, mode: "500" | "drop-after-commit" | "drop-before-commit" | "limit" | "busy", times = 1) {
   expect((await page.request.post(`${API}/__test/fail`, { data: { path, mode, times } })).ok()).toBeTruthy()
 }
 

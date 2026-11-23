@@ -77,6 +77,9 @@ test("a new deck whose answer is lost makes one deck", async ({ page }, info) =>
   await page.getByRole("textbox", { name: "Title" }).fill(title)
   await page.getByRole("textbox", { name: "Question 1" }).fill("SYNTH Q")
   await page.getByRole("textbox", { name: "Answer 1" }).fill("SYNTH A")
+  // An empty card stops "Save deck", so remove the second starting row.
+  await page.getByRole("button", { name: "Remove card 2" }).click()
+  await expect(page.getByRole("textbox", { name: "Question 2" })).toHaveCount(0)
   await failNext(page, "/flashcards", "drop-after-commit")
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[0-9a-f-]{36}\/edit$/, { timeout: 15_000 })

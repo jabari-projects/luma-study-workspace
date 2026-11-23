@@ -190,3 +190,61 @@ export function normalizeDeck(raw: Partial<Deck> & { id: string }): Deck {
     cards,
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Cards that aren't filled in                                        */
+/* ------------------------------------------------------------------ */
+
+/** A deck can hold this many cards (the server says the same). */
+export const MAX_CARDS_PER_DECK = 500
+
+/** One card with an empty side. `front`/`back` are true when that side is empty. */
+export type CardProblem = { id: string; index: number; front: boolean; back: boolean; blank: boolean }
+
+type CardWords = { id: string; front: string; back: string }
+
+const hasWords = (text: string) => text.trim().length > 0
+
+/** Every card with an empty question or answer, in order. `index` counts from 0. */
+export function cardProblems(cards: CardWords[]): CardProblem[] {
+  const problems: CardProblem[] = []
+  cards.forEach((card, index) => {
+    const front = !hasWords(card.front)
+    const back = !hasWords(card.back)
+    if (front || back) problems.push({ id: card.id, index, front, back, blank: front && back })
+  })
+  return problems
+}
+
+/** "1 card isn't filled in." / "2 cards aren't filled in." */
+export function problemSummary(problems: CardProblem[]): string {
+  const count = problems.length
+  return count === 1 ? "1 card isn't filled in." : `${count} cards aren't filled in.`
+}
+
+/** "Card 3: answer", "Card 3: question", "Card 3: question and answer". */
+export function problemLabel(problem: CardProblem): string {
+  const side = problem.blank ? "question and answer" : problem.front ? "question" : "answer"
+  return `Card ${problem.index + 1}: ${side}`
+}
+
+/** The cards that have at least one word on either side. */
+export function withoutBlankCards<T extends { front: string; back: string }>(cards: T[]): T[] {
+  return cards.filter((card) => hasWords(card.front) || hasWords(card.back))
+}
+
+/** "Remove 2 empty cards" / "Toss 1 empty card". */
+export function emptyCardsLabel(verb: "Remove" | "Toss", count: number): string {
+  return `${verb} ${count} empty card${count === 1 ? "" : "s"}`
+}
+
+/** A suggested card in a Keep/Toss list. */
+export type ReviewCard = { id: string; front: string; back: string; keep: boolean }
+
+/** The box id of one side of a card in a Keep/Toss list, for focusing it. */
+export const reviewFieldId = (idPrefix: string, index: number, side: "front" | "back") => `${idPrefix}-card-${index + 1}-${side}`
+
+/** Kept cards with an empty side. `index` is the card's place in the whole list. */
+export function keptCardProblems(cards: ReviewCard[]): CardProblem[] {
+  return cardProblems(cards).filter((problem) => cards[problem.index]?.keep)
+}

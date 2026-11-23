@@ -2,7 +2,17 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
-import { NEW_PER_SESSION, buildSession, deckStats } from "./deck.ts"
+import {
+  NEW_PER_SESSION,
+  buildSession,
+  cardProblems,
+  deckStats,
+  emptyCardsLabel,
+  keptCardProblems,
+  problemLabel,
+  problemSummary,
+  withoutBlankCards,
+} from "./deck.ts"
 import type { Deck, DeckCard } from "./deck.ts"
 
 const now = new Date("2026-03-10T12:00:00Z")
@@ -66,5 +76,60 @@ describe("deckStats due count", () => {
     const deck = deckOf([seenCard("future", "2026-03-20T12:00:00Z")])
     assert.equal(deckStats(deck, now).due, 0)
     assert.equal(buildSession(deck, { now }).length, 0)
+  })
+})
+
+describe("cards that aren't filled in", () => {
+  const cards = [
+    { id: "a", front: "Good", back: "Card" },
+    { id: "b", front: "Half", back: "" },
+    { id: "c", front: "", back: "" },
+    { id: "d", front: "   ", back: "\n\t" },
+    { id: "e", front: "", back: "Only an answer" },
+  ]
+
+  it("finds half-filled, blank and whitespace-only cards, in order", () => {
+    assert.deepEqual(cardProblems(cards), [
+      { id: "b", index: 1, front: false, back: true, blank: false },
+      { id: "c", index: 2, front: true, back: true, blank: true },
+      { id: "d", index: 3, front: true, back: true, blank: true },
+      { id: "e", index: 4, front: true, back: false, blank: false },
+    ])
+    assert.deepEqual(cardProblems([{ id: "x", front: "Q", back: "A" }]), [])
+  })
+
+  it("says how many in plain words", () => {
+    const problems = cardProblems(cards)
+    assert.equal(problemSummary(problems.slice(0, 1)), "1 card isn't filled in.")
+    assert.equal(problemSummary(problems), "4 cards aren't filled in.")
+  })
+
+  it("names the card and the empty side", () => {
+    assert.deepEqual(cardProblems(cards).map(problemLabel), [
+      "Card 2: answer",
+      "Card 3: question and answer",
+      "Card 4: question and answer",
+      "Card 5: question",
+    ])
+  })
+
+  it("removes only fully blank cards and keeps half-filled ones", () => {
+    assert.deepEqual(withoutBlankCards(cards).map((card) => card.id), ["a", "b", "e"])
+  })
+})
+
+describe("cards to keep or toss", () => {
+  it("only kept cards count, and the card number is its place in the whole list", () => {
+    const problems = keptCardProblems([
+      { id: "a", front: "", back: "", keep: false },
+      { id: "b", front: "Q", back: "", keep: true },
+      { id: "c", front: "", back: "", keep: true },
+    ])
+    assert.deepEqual(problems.map(problemLabel), ["Card 2: answer", "Card 3: question and answer"])
+  })
+
+  it("names the empty-card button", () => {
+    assert.equal(emptyCardsLabel("Remove", 1), "Remove 1 empty card")
+    assert.equal(emptyCardsLabel("Toss", 3), "Toss 3 empty cards")
   })
 })

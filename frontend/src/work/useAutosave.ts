@@ -118,6 +118,8 @@ export type AutosaveOptions<C, Row extends SavedRow> = {
   /** The student's words, for "Copy my text". */
   textOf: (content: C) => string
   rowHas?: (row: Row, content: C) => boolean
+  /** A reason these words can't be saved yet ("Not saved yet. Finish card 3."), or null. Nothing is sent meanwhile. */
+  hold?: (content: C) => string | null
   merge?: (older: C, newer: C) => C
   /** Keep a copy in this tab while unsaved (text only). */
   draft?: { kind: DraftKind; data: (content: C) => unknown } | null
@@ -165,6 +167,7 @@ export function useAutosave<C, Row extends SavedRow>(options: AutosaveOptions<C,
     version: options.version,
     current: null,
     message: null,
+    held: null,
     hasPending: false,
   }))
   const [draftProblem, setDraftProblem] = useState<string | null>(null)
@@ -212,6 +215,7 @@ export function useAutosave<C, Row extends SavedRow>(options: AutosaveOptions<C,
       autosave: initial.autosave,
       merge: initial.merge,
       rowHas: (row, content) => optionsRef.current.rowHas?.(row, content) ?? true,
+      hold: (content) => optionsRef.current.hold?.(content) ?? null,
       send: (request) =>
         optionsRef.current.send(request, {
           lumaAccountId: accountId ?? undefined,

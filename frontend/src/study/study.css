@@ -373,3 +373,196 @@
     padding-inline: 12px;
   }
 }
+
+/* ------------------------------------------------ Cards not filled in */
+
+/* The box above the cards: how many, a link to each one, and "Remove empty cards". */
+.card-problems {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  border: 2px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  color: var(--ink);
+  background: var(--danger-soft);
+}
+
+.card-problems-icon {
+  color: var(--danger);
+}
+
+.card-problems-body {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.card-problems-title {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 800;
+}
+
+.card-problems-line {
+  margin: 0;
+}
+
+.card-problems-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card-problems-list .link-button {
+  min-height: 44px;
+  padding-inline: 2px;
+}
+
+/* Red words under an empty box. */
+.field-problem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.editor-field,
+.card-side {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.card-editor-row.has-problem,
+.mini-card.has-problem {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  border-left: 4px solid var(--danger);
+}
+
+.sticky-problem {
+  color: var(--danger);
+}
+
+/* ------------------------------------------- Make cards from my notes */
+
+.make-cards {
+  gap: 14px;
+}
+
+.make-cards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.make-cards-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.make-cards-head h2 svg {
+  color: var(--accent-ink);
+}
+
+.make-cards-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.make-cards-choice {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.make-cards-choice .small-print {
+  margin: 0;
+}
+
+.make-cards-pick {
+  display: grid;
+  gap: 10px;
+}
+
+.make-cards-notes {
+  display: grid;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  list-style: none;
+}
+
+.make-cards-notes li + li {
+  border-top: 1px solid var(--line);
+}
+
+.make-cards-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  padding: 8px 14px;
+  color: var(--ink);
+  background: var(--card);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.make-cards-note:hover {
+  background: var(--paper-2);
+}
+
+.make-cards-note span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.make-cards-note small {
+  flex: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.make-cards-picked {
+  display: grid;
+  gap: 8px;
+}
+
+.make-cards-picked-title,
+.make-cards-pick-error {
+  margin: 0;
+}
+
+.make-cards-preview {
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+  border-left: 3px solid var(--line);
+  padding-left: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.make-cards-review {
+  border-top: 1px solid var(--line);
+}

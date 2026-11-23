@@ -19,7 +19,7 @@
 //                                          PUT /me/profile cannot clear a field, so neither can ours
 //   POST /__test/skip-code-wait {"email": "..."}  ends that account's 60 s wait between codes
 //   POST /__test/slow {"path": "/notes", "ms": 4000, "times": 1}  the next saves to that path wait first
-//   POST /__test/fail {"path": "/notes", "mode": "500" | "drop-after-commit" | "drop-before-commit", "times": 1}
+//   POST /__test/fail {"path": "/notes", "mode": "500" | "drop-after-commit" | "drop-before-commit" | "limit" | "busy", "times": 1}
 //                                          "drop-after-commit" saves, then cuts the connection (a lost answer)
 //   POST /__test/edit-elsewhere {"kind": "notes", "id": "...", "fields": {...}}  another tab saves (version + 1)
 //   POST /__test/maintenance, /__test/maintenance/jobs  set the fake maintenance break (see "maintenance (fake)")
@@ -412,7 +412,7 @@ http
       return send(res, 200, { success: true })
     }
     if (url.pathname === "/__test/fail" && req.method === "POST") {
-      const mode = ["500", "drop-after-commit", "drop-before-commit"].includes(body.mode) ? body.mode : "500"
+      const mode = ["500", "drop-after-commit", "drop-before-commit", "limit", "busy"].includes(body.mode) ? body.mode : "500"
       faults.push({ path: String(body.path || "/"), ms: 0, mode, times: Number(body.times) || 1 })
       return send(res, 200, { success: true })
     }
@@ -428,6 +428,9 @@ http
     const fault = takeFault(req.method, url.pathname)
     if (fault?.ms) await sleep(fault.ms)
     if (fault?.mode === "500") return send(res, 500, { detail: "Internal Server Error" })
+    // AI routes, like the backend: the daily free limit (403) and one AI task at a time (429).
+    if (fault?.mode === "limit") return send(res, 403, { error: "You made all your free notes for today. Come back tomorrow." })
+    if (fault?.mode === "busy") return send(res, 429, { error: "One AI task at a time. Try again in a moment." })
     // The answer starts, then the connection is cut. (Cutting it before any answer would let the
     // browser quietly send the request again by itself, which is not what we want to test.)
     const cutAnswer = () => {

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react"
-import type { CSSProperties } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
-import { ArrowCounterClockwise, Cards, Check, FloppyDisk, MoonStars, Plus, Sparkle, X } from "@phosphor-icons/react"
+import { ArrowCounterClockwise, Cards, FloppyDisk, MoonStars, Sparkle, X } from "@phosphor-icons/react"
 
 import { getErrorMessage, getTabAccountId } from "../api"
-import { newCardId } from "../study/deck"
+import { ProblemBox } from "../study/CardProblems"
+import { CardReviewList } from "../study/CardReviewList"
+import { emptyCardsLabel, keptCardProblems, newCardId, problemLabel, problemSummary, reviewFieldId } from "../study/deck"
+import { useFocusField } from "../study/useFocusField"
+import type { CardProblem } from "../study/deck"
 import { createWithApi } from "../work/apiCreate"
 import { sameCards, sameText } from "../work/createOnce"
 import { LEAVE_ANYWAY_STATE } from "../work/leave"
@@ -108,7 +110,12 @@ export function NotesWorkbench({
   const [editing, setEditing] = useState<string | null>(null)
   // If the note saved but the deck didn't, remember the note so we only retry the deck.
   const [savedNoteId, setSavedNoteId] = useState<string | null>(null)
-  const kept = draft.cards.filter((card) => card.keep && card.front.trim() && card.back.trim())
+  // Kept cards go in the deck. One with an empty side stops "Save + make deck" and is marked.
+  const kept = draft.cards.filter((card) => card.keep)
+  const problems = keptCardProblems(draft.cards)
+  const [showProblems, setShowProblems] = useState(false)
+  const shownProblems = showProblems && problems.length > 0 ? problems : null
+  const focusField = useFocusField()
   // Saves send the maintenance edit-session headers, like the other editors.
   const { headers: sessionHeaders } = useEditSession()
 
@@ -121,9 +128,23 @@ export function NotesWorkbench({
     title.scrollIntoView({ block: "center" })
   }, [])
 
-  const update = (patch: Partial<NotesDraft>) => onChange({ ...draft, ...patch })
-  const updateCard = (id: string, patch: Partial<DraftCard>) =>
-    update({ cards: draft.cards.map((card) => (card.id === id ? { ...card, ...patch } : card)) })
+  const update = (patch: Partial<NotesDraft>) => {
+    const next = { ...draft, ...patch }
+    if (showProblems && keptCardProblems(next.cards).length === 0) setShowProblems(false)
+    onChange(next)
+  }
+
+  const goToProblem = (problem: CardProblem) => {
+    setEditing(problem.id)
+    focusField(reviewFieldId("wb", problem.index, problem.front ? "front" : "back"))
+  }
+
+  const blankKept = problems.filter((problem) => problem.blank)
+  const tossBlank = () => {
+    const blankIds = new Set(blankKept.map((problem) => problem.id))
+    update({ cards: draft.cards.map((card) => (blankIds.has(card.id) ? { ...card, keep: false } : card)) })
+    toast.success(blankKept.length === 1 ? "Tossed 1 empty card." : `Tossed ${blankKept.length} empty cards.`)
+  }
 
   const postDeck = async (title: string, tags: string[], accountId: string | undefined) => {
     const body = {
@@ -144,6 +165,12 @@ export function NotesWorkbench({
     const title = draft.title.trim() || "My notes"
     if (!draft.notes.trim() && !draft.summary.trim()) {
       toast.error("Your notes are empty.")
+      return
+    }
+    if (withDeck && problems.length > 0) {
+      // Nothing is saved until every kept card has a question and an answer.
+      setShowProblems(true)
+      goToProblem(problems[0])
       return
     }
     setSaving(withDeck ? "both" : "note")
@@ -269,82 +296,23 @@ export function NotesWorkbench({
             </p>
           </div>
           <p className="muted small-text">Keep the good ones. Toss the rest. Tap a card to change it.</p>
-          <ul className="mini-card-grid" role="list">
-            <AnimatePresence initial={false}>
-              {draft.cards.map((card, index) => (
-                <motion.li
-                  key={card.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className={card.keep ? "mini-card" : "mini-card tossed"}
-                  style={{ "--tilt": `${[-1, 0.8, -0.5, 1.2][index % 4]}deg` } as CSSProperties}
-                  aria-label={`Card ${index + 1} of ${draft.cards.length}, ${card.keep ? "kept" : "tossed"}`}
-                >
-                  {editing === card.id ? (
-                    <div className="mini-card-edit">
-                      <label>
-                        Question
-                        <textarea rows={2} maxLength={4000} value={card.front} onChange={(event) => updateCard(card.id, { front: event.target.value })} />
-                      </label>
-                      <label>
-                        Answer
-                        <textarea rows={2} maxLength={4000} value={card.back} onChange={(event) => updateCard(card.id, { back: event.target.value })} />
-                      </label>
-                      <button type="button" className="secondary-button small" onClick={() => setEditing(null)}>
-                        Done
-                      </button>
-                    </div>
-                  ) : (
-                    <button type="button" className="mini-card-face" onClick={() => setEditing(card.id)}>
-                      {/* Named by the card's own words (WCAG 2.5.3); the hidden text says what a tap does. */}
-                      <span className="mini-q">{card.front || "Add a question"}</span>
-                      <span className="mini-a">{card.back || "Add an answer"}</span>
-                      <span className="sr-only">. Change card {index + 1}</span>
-                    </button>
-                  )}
-                  <div className="mini-card-actions">
-                    <button
-                      type="button"
-                      className={card.keep ? "keep-button on" : "keep-button"}
-                      aria-pressed={card.keep}
-                      onClick={() => updateCard(card.id, { keep: true })}
-                    >
-                      <Check weight="bold" aria-hidden="true" /> Keep
-                    </button>
-                    <button
-                      type="button"
-                      className={!card.keep ? "toss-button on" : "toss-button"}
-                      aria-pressed={!card.keep}
-                      onClick={() => updateCard(card.id, { keep: false })}
-                    >
-                      <X weight="bold" aria-hidden="true" /> Toss
-                    </button>
-                  </div>
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-          <div className="tray-actions">
-            <button
-              type="button"
-              className="ghost-button small"
-              onClick={() => {
-                const card = newDraftCard()
-                update({ cards: [...draft.cards, card] })
-                setEditing(card.id)
-              }}
-            >
-              <Plus weight="bold" aria-hidden="true" /> Add a card
-            </button>
-            <button type="button" className="ghost-button small" onClick={() => update({ cards: draft.cards.map((card) => ({ ...card, keep: true })) })}>
-              Keep all
-            </button>
-            <button type="button" className="ghost-button small" onClick={() => update({ cards: draft.cards.map((card) => ({ ...card, keep: false })) })}>
-              Toss all
-            </button>
-          </div>
+          {shownProblems ? (
+            <ProblemBox
+              lines={[problemSummary(shownProblems)]}
+              jumps={shownProblems.map((problem) => ({ key: problem.id, label: problemLabel(problem), onJump: () => goToProblem(problem) }))}
+              removeLabel={blankKept.length > 0 ? emptyCardsLabel("Toss", blankKept.length) : null}
+              onRemove={tossBlank}
+            />
+          ) : null}
+          <CardReviewList
+            cards={draft.cards}
+            onChange={(cards: DraftCard[]) => update({ cards })}
+            editing={editing}
+            onEditing={setEditing}
+            idPrefix="wb"
+            problems={shownProblems}
+            newCard={newDraftCard}
+          />
         </aside>
       </div>
 

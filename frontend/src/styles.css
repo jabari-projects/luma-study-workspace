@@ -1715,11 +1715,6 @@ input[type="radio"] {
   gap: 10px;
 }
 
-.paste-panel textarea {
-  font-family: "Cascadia Code", ui-monospace, Consolas, monospace;
-  font-size: 0.92rem;
-}
-
 .sticky-save {
   position: sticky;
   bottom: 16px;
@@ -3145,7 +3140,7 @@ input[type="radio"] {
     grid-template-columns: 28px minmax(0, 1fr) 40px;
   }
 
-  .card-editor-row label:nth-of-type(2) {
+  .card-editor-row .card-side + .card-side {
     grid-column: 2;
   }
 
@@ -3382,7 +3377,8 @@ input[type="radio"] {
   text-wrap: pretty;
 }
 
-input[aria-invalid="true"] {
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] {
   border-color: var(--danger);
 }
 

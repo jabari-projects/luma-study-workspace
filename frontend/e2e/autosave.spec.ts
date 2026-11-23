@@ -121,7 +121,7 @@ test("a new note never saves by itself; leaving asks first and nothing half-done
   expect(posts.count).toBe(0)
 })
 
-test("the deck editor saves by itself and keeps cards with only one side out of the save", async ({ page }, info) => {
+test("the deck editor saves by itself and waits (without failing) while a card has only one side", async ({ page }, info) => {
   const title = uniqueTitle("Autosave deck", info)
   const deck = await apiCreate(page, SEEDED.demo.email, "flashcards", { title, cards: [{ id: "a1", front: "Q one", back: "A one" }] })
   await page.goto(`/flashcards/${deck.id}/edit`)
@@ -132,13 +132,20 @@ test("the deck editor saves by itself and keeps cards with only one side out of 
   expect(body.cards[0]).toMatchObject({ id: "a1", back: "A one, fixed" })
   expect(body.version).toBe(2)
 
-  // A card with only a question can't be saved yet: it says so and keeps it.
+  // A card with only a question can't be saved yet: autosave waits, says which card, and sends nothing.
+  const puts = countRequests(page, (r) => r.method() === "PUT" && r.url().endsWith(`/flashcards/${deck.id}`))
   await page.getByRole("button", { name: "Add card" }).click()
   await page.getByRole("textbox", { name: "Question 2" }).fill("Only a question")
-  await expect(saveLine(page)).toContainText("Couldn't save. Your words are still here.", { timeout: 10_000 })
-  await expect(page.locator(".save-status")).toContainText("Some cards are missing a question or an answer.")
+  await expect(saveLine(page)).toHaveText("Not saved yet. Finish card 2.", { timeout: 10_000 })
+  await page.waitForTimeout(2500)
+  expect(puts.count).toBe(0)
+  await expect(page.locator(".save-status")).toHaveAttribute("data-state", "dirty")
+  // No red marks until the student presses Save.
+  await expect(page.getByText("Not filled in")).toHaveCount(0)
+  expect(await warnsBeforeLeaving(page)).toBe(true)
   await page.getByRole("textbox", { name: "Answer 2" }).fill("Now an answer")
   await expect(saveLine(page)).toHaveText(/^Saved at/, { timeout: 10_000 })
+  expect(puts.count).toBe(1)
   // The seeded demo account's deck list is counted by other tests: remove this made-up deck.
   await page.goto("/flashcards")
   await apiDelete(page, SEEDED.demo.email, `/flashcards/${deck.id}`)

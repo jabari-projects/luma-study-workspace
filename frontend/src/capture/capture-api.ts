@@ -9,14 +9,16 @@ export type { DraftCard, DraftSourceKind, NotesDraft, SourceKind } from "./draft
 
 export type LinkImport = { title: string; text: string; site_name: string; url: string; truncated: boolean }
 
-/** A friendly error that also says whether it was the daily free limit. */
+/** A friendly error that also says whether it was the daily free limit, and the HTTP status (if any). */
 export class CaptureError extends Error {
   readonly limitReached: boolean
   readonly code?: string
-  constructor(message: string, limitReached = false, code?: string) {
+  readonly status?: number
+  constructor(message: string, limitReached = false, code?: string, status?: number) {
     super(message)
     this.limitReached = limitReached
     this.code = code
+    this.status = status
   }
 }
 
@@ -24,7 +26,7 @@ function toCaptureError(error: unknown, fallback: string): CaptureError {
   if (error instanceof CaptureError) return error
   if (error instanceof AxiosError && error.response) {
     const data = error.response.data as { code?: string } | undefined
-    return new CaptureError(getErrorMessage(error, fallback), error.response.status === 403, data?.code)
+    return new CaptureError(getErrorMessage(error, fallback), error.response.status === 403, data?.code, error.response.status)
   }
   return new CaptureError(getErrorMessage(error, fallback))
 }

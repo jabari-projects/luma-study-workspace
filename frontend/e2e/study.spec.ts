@@ -302,15 +302,20 @@ test.describe("make a deck (fresh account)", () => {
     await page.getByRole("link", { name: "New deck" }).click()
     await expect(page).toHaveURL(/\/flashcards\/new$/)
 
-    // Checks before saving.
+    // Checks before saving: the box above the cards says what is missing, and focus goes there.
+    const problems = page.locator(".card-problems")
     await page.getByRole("button", { name: "Save deck" }).click()
-    await expect(page.getByText("Give your deck a title.")).toBeVisible()
+    await expect(problems).toContainText("Add at least one card with a question and an answer.")
+    await expect(problems).toContainText("Give your deck a title.")
+    await expect(field(page, "Title")).toBeFocused()
     await field(page, "Title").fill("Made Up Facts")
+    await expect(problems).not.toContainText("Give your deck a title.")
     await page.getByRole("button", { name: "Save deck" }).click()
-    await expect(page.getByText("Add at least one card with a question and an answer.")).toBeVisible()
+    await expect(field(page, "Question 1")).toBeFocused()
     await field(page, "Question 1").fill("Half a card")
     await page.getByRole("button", { name: "Save deck" }).click()
-    await expect(page.getByText("Some cards are missing a question or an answer.")).toBeVisible()
+    await expect(problems).toContainText("2 cards aren't filled in.")
+    await expect(field(page, "Answer 1")).toBeFocused()
     await expect(page).toHaveURL(/\/flashcards\/new$/)
 
     // Fill it properly: two typed cards, one removed row, plus a pasted list.
@@ -322,11 +327,12 @@ test.describe("make a deck (fresh account)", () => {
     await page.getByRole("button", { name: "Remove card 3" }).click()
     await expect(field(page, "Question 3")).toHaveCount(0)
 
-    const paste = page.getByRole("button", { name: "Paste a list" })
-    await paste.click()
-    await expect(paste).toHaveAttribute("aria-expanded", "true")
-    await page.getByLabel(/One card per line/).fill("Capital of Spain - Madrid\nnot a card line\nThree squared - Nine")
-    await page.getByRole("button", { name: "Add these cards" }).click()
+    const make = page.getByRole("button", { name: "Make cards from my notes", exact: true })
+    await make.click()
+    await expect(make).toHaveAttribute("aria-expanded", "true")
+    await page.getByRole("textbox", { name: "Your notes" }).fill("Capital of Spain - Madrid\nnot a card line\nThree squared - Nine")
+    await page.getByRole("button", { name: "Find cards for free" }).click()
+    await page.getByRole("button", { name: "Add 2 cards" }).click()
     await expect(page.getByText("Added 2 cards.")).toBeVisible()
     await expect(page.getByText("4 cards ready")).toBeVisible()
     await field(page, "Tags").fill("#trivia, math")

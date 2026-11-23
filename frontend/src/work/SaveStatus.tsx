@@ -10,7 +10,7 @@ function savedAtText(savedAt: number): string {
 function statusText(snapshot: SaveSnapshot<unknown>): string {
   switch (snapshot.state) {
     case "dirty":
-      return "Not saved yet"
+      return snapshot.held ?? "Not saved yet"
     case "saving":
       return snapshot.slow ? "Still saving..." : "Saving..."
     case "saved":

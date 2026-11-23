@@ -74,6 +74,7 @@ Test files on `main`: 25 backend test files, 16 Playwright specs, 13 unit test f
 | `claude/backup-tools`, `claude/maintenance` | yes | Single commits that are already inside `student-work`. | superseded by `student-work` |
 | `claude/handoff-docs` | not yet | This handoff system (CLAUDE.md, AGENTS.md, `docs/handoff/`, `docs/agents/`). | built |
 | `claude/secondary-work` | **no, local only** (worktree `J:/LumaPilot/wt-secondary`) | Nothing yet; it sits at `7b602b9`. Reserved for the second Claude account. | not started (reserved) |
+| `claude/subjects-search` | **no, local only** (worktree `J:/LumaPilot/wt-subjects`, from `main` `98d10f0`) | Part A of the subjects plan: deck editor errors for cards not filled in (box, red marks, focus, remove empty cards; autosave waits instead of failing), the same in the Import/Voice/Image workbench, and "Make cards from my notes" (AI or free list finder, review before adding) in place of "Paste a list". No backend or database change. | built, fake-tested |
 
 Already merged into `main` (safe to ignore): `polish-a`, `polish-b`, `security-gaps`, `theme-color`, `landing-fix`, `domain-cors`, `finish-website`, `log-privacy-fix`, `multi-account`, `luma-learning-platform-b6d3c1`.
 

@@ -95,6 +95,30 @@ for (const theme of ["light", "dark"] as const) {
       await expect(sheet).toBeHidden()
     })
 
+    test(`deck editor with empty-card errors and Make cards open has no serious axe issues (${theme})`, async ({ page }, info) => {
+      await setThemeMode(page, SEEDED.demo.email, theme)
+      await loginAndWait(page, SEEDED.demo.email)
+      // A new deck that is never saved: nothing changes on the demo account.
+      await page.goto("/flashcards/new")
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+      await settle(page)
+      await page.getByRole("textbox", { name: "Question 1", exact: true }).fill("Half a card")
+      await page.getByRole("button", { name: "Save deck" }).click()
+      await expect(page.locator(".card-problems")).toContainText("2 cards aren't filled in.")
+      await page.getByRole("button", { name: "Make cards from my notes", exact: true }).click()
+      const panel = page.getByRole("region", { name: "Make cards from my notes" })
+      await panel.getByRole("textbox", { name: "Your notes" }).fill("Sun - a star\nMoon - goes around Earth\nMars - the red planet")
+      await panel.getByRole("button", { name: "Find cards for free" }).click()
+      await expect(panel.getByText("Keeping 3 of 3")).toBeVisible()
+      // An emptied suggestion shows the same red marks inside the panel.
+      await panel.locator(".mini-card-face").first().click()
+      await panel.getByRole("textbox", { name: "Answer", exact: true }).fill("")
+      await panel.getByRole("button", { name: "Add 3 cards" }).click()
+      await expect(panel.locator(".card-problems")).toContainText("1 card isn't filled in.")
+      await page.waitForTimeout(500) // card animations
+      await expectNoSeriousA11yIssuesExceptKnown(page, `deck-errors-${theme}`, info)
+    })
+
     test(`+ New menu open has no serious axe issues (${theme})`, async ({ page }, info) => {
       test.skip(info.project.name === "phone", "Phones use the + sheet (tested above)")
       await setThemeMode(page, SEEDED.demo.email, theme)

@@ -17,7 +17,6 @@ import {
   Plus,
   Sparkle,
   Trash,
-  UploadSimple,
 } from "@phosphor-icons/react"
 
 import { api, getErrorMessage, getTabAccountId } from "../api"
@@ -35,16 +34,24 @@ import type { Draft } from "../work/drafts"
 import { newCreateKey, toReply, useAutosave } from "../work/useAutosave"
 import {
   buildSession,
+  cardProblems,
+  emptyCardsLabel,
   deckStats,
   gradeCard,
   masteryOf,
   newCardId,
   normalizeDeck,
   previewIntervals,
+  problemLabel,
+  problemSummary,
   ratingChoices,
   shuffle,
+  withoutBlankCards,
 } from "./deck"
-import type { Deck, DeckCard, Mastery } from "./deck"
+import type { CardProblem, Deck, DeckCard, Mastery } from "./deck"
+import { FieldProblem, ProblemBox } from "./CardProblems"
+import { useFocusField } from "./useFocusField"
+import { MakeCardsPanel } from "./MakeCardsPanel"
 import { GlowBar, GlowChip, GlowLegend } from "./glow"
 import { celebrate, recordStudy } from "./celebrate"
 import { useDeck, useDecks, useProgressSaver } from "./useDecks"
@@ -287,21 +294,6 @@ function emptyCard(): DraftCard {
   return { id: newCardId(), front: "", back: "", review: null }
 }
 
-function parsePastedCards(text: string): DraftCard[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line): DraftCard | null => {
-      const match = line.split(/\s*(?:\t|::| - | — |: )\s*/)
-      if (match.length < 2) return null
-      const [front, ...rest] = match
-      const back = rest.join(" ").trim()
-      return front && back ? { id: newCardId(), front, back, review: null } : null
-    })
-    .filter((card): card is DraftCard => card !== null)
-}
-
 type DeckFields = { title: string; tags: string; cards: DraftCard[] }
 
 /** Autosave waits this long after the last change (B.4). */
@@ -329,17 +321,38 @@ function isDeckFields(value: unknown): value is DeckFields {
   )
 }
 
-/** Why this deck can't be saved yet, or null. */
-function deckProblem(fields: DeckFields): string | null {
-  if (!fields.title.trim()) return "Give your deck a title."
-  if (fields.cards.some((card) => Boolean(card.front.trim()) !== Boolean(card.back.trim()))) {
-    return "Some cards are missing a question or an answer."
-  }
-  if (!fields.cards.some((card) => card.front.trim() && card.back.trim())) {
-    return "Add at least one card with a question and an answer."
-  }
+const NO_CARDS = "Add at least one card with a question and an answer."
+const NO_TITLE = "Give your deck a title."
+
+/**
+ * What stops "Save deck": an empty title and every card with an empty side. Fully empty cards
+ * count too (the student can remove them with one tap). A deck with no words on any card shows
+ * one line and marks the first card.
+ */
+function deckCheck(fields: DeckFields): { titleMissing: boolean; noCards: boolean; problems: CardProblem[]; ok: boolean } {
+  const titleMissing = !fields.title.trim()
+  const all = cardProblems(fields.cards)
+  const noCards = withoutBlankCards(fields.cards).length === 0
+  const problems = noCards ? all.slice(0, 1) : all
+  return { titleMissing, noCards, problems, ok: !titleMissing && problems.length === 0 }
+}
+
+/**
+ * Why autosave waits (a saved deck), or null. Fully empty cards are skipped, not a reason: the
+ * student may have just tapped "Add card".
+ */
+function deckHoldReason(fields: DeckFields): string | null {
+  if (!fields.title.trim()) return NO_TITLE
+  const half = fields.cards.findIndex((card) => Boolean(card.front.trim()) !== Boolean(card.back.trim()))
+  if (half >= 0) return `Finish card ${half + 1}.`
+  if (withoutBlankCards(fields.cards).length === 0) return NO_CARDS
   return null
 }
+
+// By card id, not place: a removed row can stay on screen a moment while it fades out.
+const cardFieldId = (cardId: string, side: "front" | "back") => `deck-card-${cardId.replace(/[^\w-]/g, "_")}-${side}`
+const TITLE_ID = "deck-title"
+const SAVE_BUTTON_ID = "deck-save"
 
 /** What the server stores: cards with words only. Review progress is never sent from here. */
 function deckBody(fields: DeckFields) {
@@ -482,8 +495,10 @@ function DeckForm({
   const navigate = useNavigate()
   const [fields, setFields] = useState<DeckFields>(initial)
   const { title, tags, cards } = fields
-  const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteText, setPasteText] = useState("")
+  const [makeOpen, setMakeOpen] = useState(false)
+  // The red marks show after "Save deck" was pressed, until everything is filled in.
+  const [showProblems, setShowProblems] = useState(false)
+  const focusField = useFocusField()
   const [notice, setNotice] = useState<Notice | null>(null)
   const [saving, setSaving] = useState(false)
   const [mine, setMine] = useState<string | null>(null)
@@ -513,9 +528,11 @@ function DeckForm({
       return stored.title === deckBody(sent).title && JSON.stringify(stored.cards.map(({ id, front, back }) => ({ id, front, back }))) === JSON.stringify(words)
     },
     draft: { kind: "deck", data: deckDraftData },
+    hold: (content) => {
+      const why = deckHoldReason(content)
+      return why ? `Not saved yet. ${why}` : null
+    },
     send: (request, config) => {
-      const why = deckProblem(request.content)
-      if (why) return Promise.resolve({ kind: "http", status: 422, data: { detail: why }, retryAfterHeader: null })
       if (request.mode === "create") {
         return toReply(() =>
           api.post<Deck>("/flashcards", deckBody(request.content), {
@@ -533,23 +550,49 @@ function DeckForm({
   const showConflict = snapshot.state === "conflict" || snapshot.state === "gone" || draftConflict !== null
   const conflictDeck = snapshot.state === "conflict" ? snapshot.current : draftConflict ? (currentDeck ?? null) : null
 
+  const check = deckCheck(fields)
+  const shown = showProblems && !check.ok ? check : null
+  const problemFor = new Map((shown?.problems ?? []).map((problem) => [problem.id, problem]))
+  const blankCount = shown && !shown.noCards ? shown.problems.filter((problem) => problem.blank).length : 0
+
   const update = (next: DeckFields) => {
+    if (showProblems && deckCheck(next).ok) setShowProblems(false)
     setFields(next)
     autosave.change(next)
   }
   const updateCard = (id: string, side: "front" | "back", value: string) =>
     update({ ...fields, cards: cards.map((card) => (card.id === id ? { ...card, [side]: value } : card)) })
 
-  const addPasted = () => {
-    const parsed = parsePastedCards(pasteText)
-    if (parsed.length === 0) {
-      setNotice({ type: "error", text: "Put one card on each line, like: Question - Answer" })
-      return
-    }
-    update({ ...fields, cards: [...cards.filter((card) => card.front.trim() || card.back.trim()), ...parsed] })
-    setPasteText("")
-    setPasteOpen(false)
-    setNotice({ type: "success", text: `Added ${parsed.length} card${parsed.length === 1 ? "" : "s"}.` })
+  const goToProblem = (problem: CardProblem) => focusField(cardFieldId(problem.id, problem.front ? "front" : "back"))
+
+  /** Shows the red marks and moves to the first thing to fill in. True when the deck can be saved. */
+  const checkBeforeSave = (): boolean => {
+    if (check.ok) return true
+    setShowProblems(true)
+    if (check.titleMissing) focusField(TITLE_ID)
+    else goToProblem(check.problems[0])
+    return false
+  }
+
+  const removeEmptyCards = () => {
+    const kept = withoutBlankCards(cards)
+    const removed = cards.length - kept.length
+    const next = { ...fields, cards: kept.length > 0 ? kept : [emptyCard()] }
+    update(next)
+    toast.success(removed === 1 ? "Removed 1 empty card." : `Removed ${removed} empty cards.`)
+    const left = deckCheck(next)
+    if (left.titleMissing) focusField(TITLE_ID)
+    else if (left.problems[0]) goToProblem(left.problems[0])
+    else focusField(SAVE_BUTTON_ID)
+  }
+
+  const addMadeCards = (made: { front: string; back: string }[], aiTitle: string | null) => {
+    const kept = withoutBlankCards(cards)
+    const added = made.map((card): DraftCard => ({ id: newCardId(), front: card.front, back: card.back, review: null }))
+    update({ ...fields, title: fields.title.trim() || !aiTitle ? fields.title : aiTitle.slice(0, 200), cards: [...kept, ...added] })
+    setMakeOpen(false)
+    toast.success(added.length === 1 ? "Added 1 card." : `Added ${added.length} cards.`)
+    if (added[0]) focusField(cardFieldId(added[0].id, "front"))
   }
 
   // Leaving the form (not just moving between its fields) saves right away.
@@ -561,11 +604,8 @@ function DeckForm({
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setNotice(null)
-    const why = deckProblem(fields)
-    if (why) {
-      setNotice({ type: "error", text: why })
-      return
-    }
+    // Nothing is sent until every card is filled in (the box above the cards says which).
+    if (!checkBeforeSave()) return
     setSaving(true)
     if (isNew) autosave.change(fields)
     const saved = await autosave.flush({ allowCreate: true })
@@ -584,8 +624,9 @@ function DeckForm({
 
   const saveMineAsNew = async () => {
     const words = draftConflict ?? fields
-    if (deckProblem(words)) {
-      setNotice({ type: "error", text: deckProblem(words)! })
+    const why = deckHoldReason(words)
+    if (why) {
+      setNotice({ type: "error", text: `We can't save a copy yet. ${why}` })
       return
     }
     setCopyBusy(true)
@@ -678,82 +719,131 @@ function DeckForm({
       ) : null}
       <form className="deck-editor" onSubmit={save} onBlur={onBlur}>
         <section className="editor-head">
-          <label>
-            Title
-            <input value={title} onChange={(event) => update({ ...fields, title: event.target.value })} placeholder="Title" maxLength={200} />
-          </label>
+          <div className="editor-field">
+            <label>
+              Title
+              <input
+                id={TITLE_ID}
+                value={title}
+                onChange={(event) => update({ ...fields, title: event.target.value })}
+                placeholder="Title"
+                maxLength={200}
+                aria-invalid={shown?.titleMissing || undefined}
+                aria-describedby={shown?.titleMissing ? `${TITLE_ID}-problem` : undefined}
+              />
+            </label>
+            {shown?.titleMissing ? <FieldProblem id={`${TITLE_ID}-problem`} /> : null}
+          </div>
           <label>
             Tags
             <input value={tags} onChange={(event) => update({ ...fields, tags: event.target.value })} placeholder="Add tags (optional)" />
           </label>
         </section>
 
+        {shown ? (
+          <ProblemBox
+            lines={[
+              shown.noCards ? NO_CARDS : shown.problems.length > 0 ? problemSummary(shown.problems) : null,
+              shown.titleMissing ? NO_TITLE : null,
+            ].filter((line): line is string => line !== null)}
+            jumps={[
+              ...(shown.titleMissing ? [{ key: "title", label: "Title", onJump: () => focusField(TITLE_ID) }] : []),
+              ...shown.problems.map((problem) => ({ key: problem.id, label: problemLabel(problem), onJump: () => goToProblem(problem) })),
+            ]}
+            removeLabel={blankCount > 0 ? emptyCardsLabel("Remove", blankCount) : null}
+            onRemove={removeEmptyCards}
+          />
+        ) : null}
+
         <ol className="card-editor-list" ref={listRef}>
-          {cards.map((card, index) => (
-            <li className="card-editor-row" key={card.id}>
-              <span className="card-number" aria-hidden="true">
-                {index + 1}
-              </span>
-              <label>
-                <span className="sr-only">Question {index + 1}</span>
-                <textarea
-                  value={card.front}
-                  onChange={(event) => updateCard(card.id, "front", event.target.value)}
-                  placeholder="Question"
-                  rows={2}
-                />
-              </label>
-              <label>
-                <span className="sr-only">Answer {index + 1}</span>
-                <textarea
-                  value={card.back}
-                  onChange={(event) => updateCard(card.id, "back", event.target.value)}
-                  placeholder="Answer"
-                  rows={2}
-                />
-              </label>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Remove card ${index + 1}`}
-                onClick={() => update({ ...fields, cards: cards.length > 1 ? cards.filter((c) => c.id !== card.id) : [emptyCard()] })}
-              >
-                <Trash aria-hidden="true" />
-              </button>
-            </li>
-          ))}
+          {cards.map((card, index) => {
+            const problem = problemFor.get(card.id)
+            const frontId = cardFieldId(card.id, "front")
+            const backId = cardFieldId(card.id, "back")
+            return (
+              <li className={problem ? "card-editor-row has-problem" : "card-editor-row"} key={card.id}>
+                <span className="card-number" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <div className="card-side">
+                  <label>
+                    <span className="sr-only">Question {index + 1}</span>
+                    <textarea
+                      id={frontId}
+                      value={card.front}
+                      onChange={(event) => updateCard(card.id, "front", event.target.value)}
+                      placeholder="Question"
+                      rows={2}
+                      aria-invalid={problem?.front || undefined}
+                      aria-describedby={problem?.front ? `${frontId}-problem` : undefined}
+                    />
+                  </label>
+                  {problem?.front ? <FieldProblem id={`${frontId}-problem`} /> : null}
+                </div>
+                <div className="card-side">
+                  <label>
+                    <span className="sr-only">Answer {index + 1}</span>
+                    <textarea
+                      id={backId}
+                      value={card.back}
+                      onChange={(event) => updateCard(card.id, "back", event.target.value)}
+                      placeholder="Answer"
+                      rows={2}
+                      aria-invalid={problem?.back || undefined}
+                      aria-describedby={problem?.back ? `${backId}-problem` : undefined}
+                    />
+                  </label>
+                  {problem?.back ? <FieldProblem id={`${backId}-problem`} /> : null}
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Remove card ${index + 1}`}
+                  onClick={() => update({ ...fields, cards: cards.length > 1 ? cards.filter((c) => c.id !== card.id) : [emptyCard()] })}
+                >
+                  <Trash aria-hidden="true" />
+                </button>
+              </li>
+            )
+          })}
         </ol>
 
         <div className="editor-tools">
           <button type="button" className="secondary-button" onClick={() => setFields({ ...fields, cards: [...cards, emptyCard()] })}>
             <Plus weight="bold" aria-hidden="true" /> Add card
           </button>
-          <button type="button" className="ghost-button" onClick={() => setPasteOpen((open) => !open)} aria-expanded={pasteOpen}>
-            <UploadSimple weight="bold" aria-hidden="true" /> Paste a list
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => setMakeOpen((open) => !open)}
+            aria-expanded={makeOpen}
+            aria-controls={makeOpen ? "make-cards" : undefined}
+          >
+            <Sparkle weight="fill" aria-hidden="true" /> Make cards from my notes
           </button>
         </div>
 
-        {pasteOpen ? (
-          <section className="ruled-block paste-panel">
-            <label>
-              One card per line, like <code>Question - Answer</code>
-              <textarea
-                value={pasteText}
-                onChange={(event) => setPasteText(event.target.value)}
-                rows={6}
-                placeholder={"Capital of France - Paris\n2 x 8 - 16"}
-              />
-            </label>
-            <button type="button" className="secondary-button" onClick={addPasted}>
-              Add these cards
-            </button>
-          </section>
+        {makeOpen ? (
+          <MakeCardsPanel accountId={accountId} deckCards={withoutBlankCards(cards)} onAdd={addMadeCards} onClose={() => setMakeOpen(false)} />
         ) : null}
 
         <div className="sticky-save">
-          <span>{cards.filter((card) => card.front.trim() && card.back.trim()).length} cards ready</span>
+          {shown ? (
+            <span className="sticky-problem">
+              {shown.problems.length === 0
+                ? "Your deck needs a title"
+                : `${shown.problems.length} card${shown.problems.length === 1 ? " needs" : "s need"} words`}
+            </span>
+          ) : (
+            <span>{cards.filter((card) => card.front.trim() && card.back.trim()).length} cards ready</span>
+          )}
           <SaveStatus snapshot={snapshot} onRetry={autosave.retry} accountId={accountId} draftProblem={autosave.draftProblem} />
-          <button type="submit" className="primary-button" disabled={saving || showConflict || (isNew && Boolean(autosave.editBlocked))}>
+          <button
+            type="submit"
+            id={SAVE_BUTTON_ID}
+            className="primary-button"
+            disabled={saving || showConflict || (isNew && Boolean(autosave.editBlocked))}
+          >
             {saving ? "Saving..." : "Save deck"}
           </button>
         </div>

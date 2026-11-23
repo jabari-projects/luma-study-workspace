@@ -58,6 +58,8 @@ export type SaveSnapshot<Row> = {
   current: Row | null
   /** A short reason for "failed" (from the server's detail when it is plain words). */
   message: string | null
+  /** Why the words wait instead of saving ("dirty" only), like "Not saved yet. Finish card 3." */
+  held: string | null
   /** Changes that are not confirmed by the server yet (typed, in flight or waiting to retry). */
   hasPending: boolean
 }
@@ -87,6 +89,11 @@ type Options<C, Row> = {
   merge?: (older: C, newer: C) => C
   /** After a create replay: false when the returned row lacks the words we sent (so a PUT follows). */
   rowHas?: (row: Row, content: C) => boolean
+  /**
+   * A reason these words can't be saved yet (like a half-filled card), or null. Nothing is sent
+   * while it gives a reason: the words wait as "dirty" with that reason, and the next change tries again.
+   */
+  hold?: (content: C) => string | null
   onChange?: (snapshot: SaveSnapshot<Row>) => void
   /** Called after every confirmed save, with the stored row and the words that were sent. */
   onSaved?: (row: Row, content: C) => void
@@ -128,6 +135,7 @@ export class SaveClient<C, Row extends SavedRow> {
   private createKey: string | null
   private current: Row | null = null
   private message: string | null = null
+  private held: string | null = null
   /** Words not sent yet. */
   private pending: C | null = null
   /** Words in flight, or that failed and wait for a retry. */
@@ -162,6 +170,7 @@ export class SaveClient<C, Row extends SavedRow> {
       version: this.version,
       current: this.current,
       message: this.message,
+      held: this.state === "dirty" ? this.held : null,
       hasPending: this.pending !== null || this.unconfirmed !== null,
     }
   }
@@ -303,7 +312,8 @@ export class SaveClient<C, Row extends SavedRow> {
   /** Resolves flush() callers once nothing is in flight (patient ones: once no retry is waiting either). */
   private settle(): void {
     if (this.inFlight) return
-    const waiting = this.state === "dirty" && this.pending !== null && this.retryTimer === null && !this.retryPaused
+    // Words waiting on `hold` are not about to be sent: callers get their answer (not saved) now.
+    const waiting = this.state === "dirty" && this.pending !== null && this.retryTimer === null && !this.retryPaused && this.held === null
     if (waiting) return
     const retrying = !this.disposed && (this.retryTimer !== null || this.retryPaused)
     const saved = this.isSafe()
@@ -354,6 +364,16 @@ export class SaveClient<C, Row extends SavedRow> {
       this.settle()
       return
     }
+    const held = this.opts.hold?.(this.pending) ?? null
+    if (held !== null) {
+      // Not sendable yet: keep the words here, say why, and send nothing.
+      this.held = held
+      this.state = "dirty"
+      this.emit()
+      this.settle()
+      return
+    }
+    this.held = null
     const content = this.pending
     this.pending = null
     this.unconfirmed = content

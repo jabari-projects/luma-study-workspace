@@ -492,3 +492,47 @@ describe("SaveClient against the OLD backend (no version field): never run the n
     assert.ok(made >= 2, "on a backend that ignores Idempotency-Key, each try makes another copy")
   })
 })
+
+describe("SaveClient: words that can't be saved yet wait instead of failing", () => {
+  function holdingClient(answers: Answer[]) {
+    const clock = fakeEnv()
+    const server = fakeServer(answers)
+    const client = new SaveClient<string, Row>({
+      send: server.send,
+      env: clock.env,
+      debounceMs: 1500,
+      itemId: "n1",
+      version: 1,
+      createKey: null,
+      autosave: true,
+      hold: (content) => (content.includes("?") ? "Not saved yet. Finish card 2." : null),
+    })
+    return { client, clock, server, last: () => client.getSnapshot() }
+  }
+
+  it("sends nothing, says why, and saves once the words are ready", async () => {
+    const { client, clock, server, last } = holdingClient([ok(2)])
+    client.change("half?")
+    await clock.advance(1500)
+    assert.equal(server.requests.length, 0)
+    assert.equal(last().state, "dirty")
+    assert.equal(last().held, "Not saved yet. Finish card 2.")
+    assert.equal(last().hasPending, true)
+    // Waiting is not an error, and no retry timer runs.
+    assert.equal(clock.pendingTimers(), 0)
+    client.change("whole")
+    await clock.advance(1500)
+    assert.equal(server.requests.length, 1)
+    assert.equal(server.requests[0].content, "whole")
+    assert.equal(last().state, "saved")
+    assert.equal(last().held, null)
+  })
+
+  it("answers a flush right away with not saved (leaving keeps the words in this tab)", async () => {
+    const { client, server, last } = holdingClient([ok(2)])
+    client.change("half?")
+    assert.equal(await client.flush(), false)
+    assert.equal(server.requests.length, 0)
+    assert.equal(last().held, "Not saved yet. Finish card 2.")
+  })
+})
