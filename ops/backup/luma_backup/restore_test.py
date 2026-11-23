@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .crypto import CryptoFailure, Gpg, sha256_file
 from .errors import BackupError
+from .redact import redact
 from .pgtools import LocalCluster, PgFailure, PgTools, free_port, inspect
 from .storage_export import safe_extract
 
@@ -49,6 +50,13 @@ create schema if not exists auth;
 create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
 create or replace function auth.role() returns text language sql stable as $$ select null::text $$;
 create or replace function auth.jwt() returns jsonb language sql stable as $$ select null::jsonb $$;
+-- Supabase database webhooks call supabase_functions.http_request() from triggers. The restore copy
+-- gets a do-nothing stand-in, so restoring works and a restored copy can never send a web request.
+create schema if not exists supabase_functions;
+create or replace function supabase_functions.http_request() returns trigger language plpgsql as $$
+begin
+  return coalesce(new, old);
+end $$;
 """
 
 ALLOWED_RESTORE_ERRORS = (re.compile(r'schema "public" already exists'), re.compile(r"COMMENT ON EXTENSION"))
@@ -117,7 +125,16 @@ def prepare_cluster(tools: PgTools, cluster: LocalCluster) -> dict:
 def restore_dump(tools: PgTools, target: dict, dump: Path) -> tuple[int, int]:
     proc = tools.run([tools.exe("pg_restore"), "--no-owner", "--no-privileges", "-d", RESTORE_DB, str(dump)],
                      conn=target, timeout=3600)
-    return split_restore_errors(proc.stderr)
+    allowed, unexpected = split_restore_errors(proc.stderr)
+    if unexpected:
+        # Keep the raw messages on this PC only (J:, never the G: logs): they can name rows.
+        note = Path("J:/LumaOps/restore-work/last-restore-errors.txt")
+        try:
+            note.parent.mkdir(parents=True, exist_ok=True)
+            note.write_text(redact(proc.stderr)[:20000], encoding="utf-8")
+        except OSError:
+            pass
+    return allowed, unexpected
 
 
 def open_set(set_dir: Path, manifest: dict, names: tuple[str, ...], passphrase: str, gpg: Gpg, work: Path,
