@@ -26,4 +26,6 @@ npm run preview
 
 `npm run build` checks TypeScript and writes the production build to `dist/`. The preview command serves that build locally; it does not start the backend.
 
-The AI Tutor screen is a work in progress. Its presence in navigation does not mean interactive tutoring is implemented.
+The AI Tutor is not built yet. Its route only sends you to the dashboard.
+
+For tests, also run `npm test` (unit tests) and `npm run e2e` (Playwright, uses the fake API in `dev/mock-api.mjs`).

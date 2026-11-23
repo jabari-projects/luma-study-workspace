@@ -2,7 +2,7 @@
 
 LUMA brings notes, flashcards, summaries, and study sessions into one workspace. You can keep your study materials private or publish them for others to use.
 
-The app uses React and TypeScript for the frontend and FastAPI for the backend. It also includes AI-assisted study tools. Development is ongoing, including work on the AI Tutor.
+The app uses React and TypeScript for the frontend and FastAPI for the backend. It also includes AI-assisted study tools. Development is ongoing. An AI tutor is planned for last and is not built yet.
 
 ## Project layout
 
@@ -50,7 +50,14 @@ npm run build
 
 ## Current status
 
-The app includes notes, flashcards, summaries, study sessions, public study materials, image-to-notes, and audio transcription. AI tools need the relevant provider credentials. Subscriptions need Stripe configuration. The AI Tutor screen is still in progress and does not yet have a connected tutoring endpoint.
+The app includes notes, flashcards, summaries, study sessions, public study materials, image-to-notes, and audio transcription. AI tools need the relevant provider credentials. Subscription code exists, but payments are off. The AI tutor is not built yet; its routes send you to the dashboard. For the full, current status see [docs/handoff/HANDOFF.md](docs/handoff/HANDOFF.md).
+
+## For contributors and AI agents
+
+- Start with [CLAUDE.md](CLAUDE.md) (other coding agents: [AGENTS.md](AGENTS.md)).
+- Current status and next steps: [docs/handoff/HANDOFF.md](docs/handoff/HANDOFF.md).
+- Tools and services: [docs/handoff/TOOLS.md](docs/handoff/TOOLS.md).
+- Working alongside other agents: [docs/agents/PROTOCOL.md](docs/agents/PROTOCOL.md).
 
 ## More documentation
 

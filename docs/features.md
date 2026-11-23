@@ -13,7 +13,9 @@
 
 ## Discovery and account experience
 
-- **Public search** — Search public notes, flashcards, and summaries by topic or browse users who have published material.
+- **Discover** — Signed-in students can search study sets other students chose to share. Shared items show only the username and topic.
+- **Summary from a note** — Make a short summary from one of your notes (`/api/summarize`).
+- **Reports** — Students can report a shared item; admins review reports on the admin reports page.
 - **Authentication and account management** — Sign up, log in, verify email, request and reset passwords, update profile information, and delete an account.
 - **Multiple accounts and the AI chat account** — A student can stay signed in to up to 3 accounts on one device and switch from the account menu (sidebar name, phone avatar, or Settings → Accounts on this device). Each browser tab keeps its own account, and each request carries only that account's token. AI notes and Voice to Notes work in every account. The future AI tutor chat will work for one account per device: the first one signed in, which keeps that role until it signs out (an expired sign-in or a password reset does not move it); then the next-oldest account gets it. Today this is worked out on the device only (`frontend/src/accounts.ts`), and the chat badge stays hidden until the chat ships (`AI_CHAT_UI_ENABLED` in `frontend/src/config.ts`). The server will need to enforce it when the chat ships.
 - **Profiles and themes** — Manage display details, color/theme preferences, avatar images, and custom theme images.
@@ -23,8 +25,8 @@
 
 - **Image to Notes** — Upload a PNG, JPEG, or WebP image and use the implemented OpenAI integration to generate notes.
 - **Voice Input** — Covered by Voice to Notes. Audio is turned into text with OpenAI speech-to-text, or Deepgram when no OpenAI key is set.
-- **Subscription flow** — Start a Stripe Checkout subscription session; the Stripe webhook links the verified Stripe customer and subscription ids to the account (`billing_schema.sql`) and keeps the subscription status in sync. Subscriptions from before the link tables are not linked automatically and must be linked by hand after checking Stripe.
-- **AI Tutor interface** — Provides the current chat and file-selection UI. The UI explicitly indicates that its interactive tutoring behavior is still in progress, so it is not documented as a completed AI chat feature.
+- **Subscription flow (backend only, payments off)** — Start a Stripe Checkout subscription session; the Stripe webhook links the verified Stripe customer and subscription ids to the account (`billing_schema.sql`) and keeps the subscription status in sync. Subscriptions from before the link tables are not linked automatically and must be linked by hand after checking Stripe.
+- **AI Tutor** — Not built yet. The `/ai-tutor`, `/subscribe` and `/transcripts` routes only send you to `/dashboard`, and `AI_CHAT_UI_ENABLED` is `false`. The tutor is planned last.
 
 ## Operational support
 

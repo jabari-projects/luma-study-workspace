@@ -1,5 +1,7 @@
 # Roadmap
 
+> **Out of date (August 2026 plan).** The current order of work is in [docs/handoff/HANDOFF.md](handoff/HANDOFF.md#6-whats-next-in-order). The text below is kept for history.
+
 This roadmap is limited to the direction already visible in the repository; it does not propose unrelated product features.
 
 1. **Complete the current AI Tutor workflow.** The interface currently renders a chat form and accepts audio/image selections, but its send action has no connected tutoring endpoint. The existing notes, image-to-notes, transcription, authentication, and usage-limit foundations show the intended study-assistance direction.

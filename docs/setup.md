@@ -22,13 +22,17 @@ For a fresh checkout, copy `frontend/.env.example` to `frontend/.env.local`. Kee
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-The TypeScript environment declarations also reserve `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Set them only if the client code/configuration you are running requires them; the current API client itself requires `VITE_API_BASE_URL`.
+`VITE_API_BASE_URL` is the only setting the website needs. The browser never talks to Supabase directly. The `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` names still in `src/vite-env.d.ts` and `.env.example` are unused leftovers; leave them unset.
 
 Start the client:
 
 ```bash
 npm run dev
 ```
+
+## Without a database (fake API)
+
+For most work you do not need Supabase. `npm run mock-api` in `frontend/` starts an in-memory fake API on port 8787 with seeded test accounts; set `VITE_API_BASE_URL=http://127.0.0.1:8787` before `npm run dev`. Tests: `npm test`, `npm run e2e` (frontend) and `python -m pytest -q` (backend, after `pip install pytest==9.2.0` in the backend venv; see below). See `CLAUDE.md` for the full list.
 
 ## Backend
 
@@ -39,6 +43,8 @@ python -m venv .venv
 # PowerShell
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# Test tools are not in requirements.txt; add pytest to run the backend tests
+pip install pytest==9.2.0
 ```
 
 For a fresh checkout, copy `backend/.env.example` to `backend/.env` and fill in your values. You can also set the variables directly in your shell or deployment provider. Required values for normal authenticated/data-backed operation are:
@@ -89,10 +95,10 @@ uvicorn main:app --env-file .env --reload --host 127.0.0.1 --port 8000
 
 ## Database schemas
 
-Apply the SQL files in `backend/app/schemas/` to the Supabase project as appropriate for the features you intend to run. They cover the data structures used by notes, flashcards, summaries, transcripts, study sessions, profiles, subscriptions, analytics, notifications, AI usage, and related account flows.
+Apply the SQL files in `backend/app/schemas/` to the Supabase project as appropriate for the features you intend to run. Changes after the first schemas are dated, add-only files in `backend/app/schemas/migrations/`; apply them in date order. They cover the data structures used by notes, flashcards, summaries, transcripts, study sessions, profiles, subscriptions, analytics, notifications, AI usage, and related account flows.
 
 ## Security and deployment
 
 Never commit actual service keys, webhook secrets, or populated environment files. The checked-in `.env.example` files contain placeholders only. All `VITE_*` values are included in the public browser bundle, so keep Supabase service-role, OpenAI, Deepgram, Stripe, JWT, email, and webhook secrets on the backend/deployment platform.
 
-For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY` (at least 32 characters), and your frontend origin settings explicitly. `render.yaml`, `backend/railway.json`, `frontend/vercel.json`, and `frontend/netlify.toml` are included as deployment integration files. Changing these repository files does not configure credentials in a hosting account.
+For a deployed backend, set `APP_ENV=production`, a stable private `JWT_SECRET_KEY` (at least 32 characters), and your frontend origin settings explicitly. Production uses `frontend/vercel.json` (Vercel) and `render.yaml` (Render). `backend/railway.json` and `frontend/netlify.toml` are leftovers for hosts that are not used. Changing these repository files does not configure credentials in a hosting account.

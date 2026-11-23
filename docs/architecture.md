@@ -4,11 +4,11 @@ LUMA is split into a browser client in `frontend/` and an API service in `backen
 
 ## Frontend
 
-`frontend/` is a Vite application built with React 19, TypeScript, React Router, Axios, and the Supabase JavaScript package. `src/App.tsx` contains the routed UI for landing and account pages, the dashboard, note/flashcard/summary/study-session collections, public search, image-to-notes, voice input, subscription, and settings. `src/api.ts` centralizes the API base URL, bearer-token attachment, local session storage, and client-side error handling; `AuthContext.tsx` supplies authentication state to protected routes.
+`frontend/` is a Vite application built with React 19, TypeScript, React Router, and Axios. It does not talk to Supabase directly; every request goes through the API. `src/App.tsx` holds the routes, and the screens live in folders by area: `src/account/` (sign-in, settings, reports), `src/capture/` (Import, Voice and Image to Notes), `src/notes/`, `src/study/`, `src/discover/` and `src/ui/`. `src/api.ts` centralizes the API base URL, bearer-token attachment, local session storage, and client-side error handling; `AuthContext.tsx` supplies authentication state to protected routes.
 
 ## Backend
 
-`backend/` is a FastAPI application. `app/main.py` owns application setup, CORS, authentication and profile routes, the health check, file-based AI tools, Stripe checkout/webhook handling, notifications, and the authenticated WebSocket endpoint. Feature routers keep CRUD and search concerns separate in `notes.py`, `flashcards.py`, `study_sessions.py`, `summaries.py`, `transcripts.py`, `analytics.py`, and `public_search.py`.
+`backend/` is a FastAPI application. `app/main.py` owns application setup, CORS, authentication and profile routes, the health check, file-based AI tools, Stripe checkout/webhook handling, notifications, and the authenticated WebSocket endpoint. Feature routers keep CRUD and search concerns separate in `notes.py`, `flashcards.py`, `study_sessions.py`, `summaries.py`, `transcripts.py`, `analytics.py`, and `public_search.py`. Other modules cover sign-in and accounts (`auth.py`, `email_codes.py`, `passwords.py`, `account_deletion.py`), capture and import (`capture.py`, `link_import.py`), sharing and moderation (`publishing.py`, `reports.py`), billing (`billing.py`), and limits (`rate_limits.py`, `ai_allowance.py`).
 
 ## Data and integrations
 
@@ -16,4 +16,4 @@ LUMA is split into a browser client in `frontend/` and an API service in `backen
 
 ## Deployment boundaries
 
-The repository includes `render.yaml` for a Render backend deployment, `backend/railway.json` for Railway, and Vercel/Netlify configuration under `frontend/`. Environment-specific URLs, CORS origins, and credentials are supplied through environment variables rather than source code.
+Production runs the website on Vercel (`frontend/vercel.json`) and the API on Render (`render.yaml`). `backend/railway.json` and `frontend/netlify.toml` are leftovers for hosts that are not used. Environment-specific URLs, CORS origins, and credentials are supplied through environment variables rather than source code.
