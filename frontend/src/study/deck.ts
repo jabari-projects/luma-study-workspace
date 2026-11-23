@@ -29,6 +29,9 @@ export type Deck = {
   back?: string
   cards: DeckCard[]
   tags: string[]
+  /** From the subject list (GET /subjects), or null. */
+  subject_slug?: string | null
+  subtopic_slug?: string | null
   is_public?: boolean
   published_at?: string | null
   published_by?: string | null

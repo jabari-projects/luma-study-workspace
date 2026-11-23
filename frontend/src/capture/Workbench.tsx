@@ -13,6 +13,9 @@ import { createWithApi } from "../work/apiCreate"
 import { sameCards, sameText } from "../work/createOnce"
 import { LEAVE_ANYWAY_STATE } from "../work/leave"
 import { useEditSession } from "../work/useAutosave"
+import { markJustMade } from "../ui/shareAsk"
+import { SubjectPicker } from "../subjects/SubjectPicker"
+import { NO_SUBJECT, choiceFrom, subjectBody } from "../subjects/subjects"
 import { newDraftCard } from "./capture-api"
 import type { DraftCard, NotesDraft } from "./capture-api"
 import type { CaptureKeys } from "./useCaptureWork"
@@ -146,10 +149,14 @@ export function NotesWorkbench({
     toast.success(blankKept.length === 1 ? "Tossed 1 empty card." : `Tossed ${blankKept.length} empty cards.`)
   }
 
+  // One subject for the note and its deck.
+  const subject = choiceFrom(draft.subject?.subject, draft.subject?.subtopic)
+
   const postDeck = async (title: string, tags: string[], accountId: string | undefined) => {
     const body = {
       title,
       tags,
+      ...subjectBody(subject),
       cards: kept.map((card) => ({ id: newCardId(), front: card.front.trim(), back: card.back.trim(), review: null })),
     }
     return createWithApi<{ id: string; version: number; title?: string; cards?: unknown }>(
@@ -180,7 +187,7 @@ export function NotesWorkbench({
     let noteId = savedNoteId
     try {
       if (!noteId) {
-        const body = { title, content: noteContent(draft), tags }
+        const body = { title, content: noteContent(draft), tags, ...subjectBody(subject) }
         const note = await createWithApi<{ id: string; version: number; title?: string; content?: string }>(
           "/notes",
           body,
@@ -205,6 +212,7 @@ export function NotesWorkbench({
     if (!withDeck || kept.length === 0) {
       setSaving(null)
       onSaved()
+      markJustMade(accountId, "note", noteId)
       toast.success("Saved your note!")
       // Saved and confirmed, so leaving needs no "are you sure?".
       navigate(`/notes/${noteId}`, { state: LEAVE_ANYWAY_STATE })
@@ -214,6 +222,7 @@ export function NotesWorkbench({
     try {
       const deck = await postDeck(title, tags, accountId)
       onSaved()
+      markJustMade(accountId, "flashcards", deck.id)
       toast.success("Saved your note and deck!", {
         action: { label: "Open note", onClick: () => navigate(`/notes/${noteId}`) },
       })
@@ -250,6 +259,10 @@ export function NotesWorkbench({
               onChange={(event) => update({ title: event.target.value })}
             />
           </label>
+
+          <div className="wb-subject">
+            <SubjectPicker value={subject} onChange={(next) => update({ subject: next.subject ? next : NO_SUBJECT })} />
+          </div>
 
           {draft.summary ? (
             <label>

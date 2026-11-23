@@ -152,7 +152,8 @@ OTHER_WRITE = "other_write"
 READ = "read"
 EDIT_SESSION = "edit_session"
 
-ALWAYS_OPEN_GETS = frozenset({"/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me/profile"})
+# /subjects is the plain subject list (no student data), so editors can still show subject names.
+ALWAYS_OPEN_GETS = frozenset({"/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me/profile", "/subjects"})
 ADMIN_PREFIX = "/admin/maintenance"
 # POST /login (not /auth/login: that path doesn't exist) so an admin can sign in during a break.
 LOGIN_PATH = "/login"

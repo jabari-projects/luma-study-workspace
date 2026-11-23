@@ -54,6 +54,7 @@ from .public_search import router as public_search_router
 from .reports import router as reports_router
 from .feedback import router as feedback_router
 from .study_sessions import router as study_sessions_router
+from .subjects import router as subjects_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
 from .transcripts import router as transcripts_router
@@ -434,6 +435,7 @@ app.include_router(summaries_router)
 app.include_router(transcripts_router)
 app.include_router(analytics_router)
 app.include_router(public_search_router)
+app.include_router(subjects_router)
 app.include_router(reports_router)
 app.include_router(feedback_router)
 app.include_router(capture_router)

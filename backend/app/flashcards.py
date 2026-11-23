@@ -20,6 +20,7 @@ from .edit_versions import (
     work_route,
 )
 from .publishing import apply_update_publish_rules, build_create_publish_fields
+from .subjects import SUBJECT_FIELDS, check_sent_subject, checked_create_pair, subject_changes
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/flashcards", tags=["flashcards"])
@@ -27,7 +28,7 @@ TABLE_NAME = "flashcards"
 STUDY_TYPE = "flashcards"
 # What a student edits besides the cards. A retried save whose first copy landed already
 # matches on these (and on the cards' words).
-EDIT_FIELDS = ("title", "tags", "is_public")
+EDIT_FIELDS = ("title", "tags", "is_public", *SUBJECT_FIELDS)
 
 
 MAX_CARDS_PER_DECK = 500
@@ -57,6 +58,9 @@ class FlashcardCreateRequest(BaseModel):
     back: Optional[str] = Field(default=None, min_length=1)
     cards: Optional[list[FlashcardCard]] = None
     tags: list[str] = Field(default_factory=list)
+    # A subject and subtopic from app/data/subjects.json (both optional; old websites never send them).
+    subject_slug: Optional[str] = Field(default=None, max_length=40)
+    subtopic_slug: Optional[str] = Field(default=None, max_length=40)
     # Accepted so the current frontend keeps working, but ignored: new items
     # are always private and the server sets the publish metadata.
     is_public: bool = False
@@ -81,6 +85,9 @@ class FlashcardUpdateRequest(BaseModel):
     back: Optional[str] = Field(default=None, min_length=1)
     cards: Optional[list[FlashcardCard]] = None
     tags: Optional[list[str]] = None
+    # A subject and subtopic from app/data/subjects.json (both optional; old websites never send them).
+    subject_slug: Optional[str] = Field(default=None, max_length=40)
+    subtopic_slug: Optional[str] = Field(default=None, max_length=40)
     is_public: Optional[bool] = None
     published_at: Optional[str] = None
     published_by: Optional[str] = None
@@ -106,6 +113,8 @@ class FlashcardResponse(BaseModel):
     back: str
     cards: list[FlashcardCard] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    subject_slug: Optional[str] = None
+    subtopic_slug: Optional[str] = None
     is_public: bool = False
     published_at: Optional[str] = None
     published_by: Optional[str] = None
@@ -185,6 +194,8 @@ def _normalize_flashcard_row(row: dict) -> dict:
         "back": row.get("back") or "",
         "cards": _row_cards(row),
         "tags": row.get("tags") or [],
+        "subject_slug": row.get("subject_slug"),
+        "subtopic_slug": row.get("subtopic_slug"),
         "is_public": bool(row.get("is_public", False)),
         "published_at": row.get("published_at"),
         "published_by": row.get("published_by"),
@@ -227,6 +238,7 @@ def create_flashcard(
             "title": payload.title,
             **_cards_payload(payload.cards or []),
             "tags": payload.tags,
+            **checked_create_pair(payload.subject_slug, payload.subtopic_slug),
             **build_create_publish_fields(STUDY_TYPE),
         },
         parse_idempotency_key(idempotency_key),
@@ -268,8 +280,10 @@ def update_flashcard(
     if not updates and sent_cards is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 
+    check_sent_subject(updates)
+
     def prepare(row: dict) -> dict:
-        changes = dict(updates)
+        changes = subject_changes(dict(updates), row.get("subject_slug"))
         if sent_cards is not None:
             if expected_version is None:
                 # OVERLAP(remove after the frontend with expected_version is live): the old

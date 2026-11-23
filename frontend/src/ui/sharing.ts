@@ -27,6 +27,9 @@ export function shareCopy(noun: string, username: string | null) {
     shared: `Shared. Students signed in to Luma can find this ${noun} now.`,
     stopped: `You stopped sharing. Only you can see this ${noun} now.`,
     needsTitle: `Give this ${noun} a title before you share it.`,
+    // Asked once, right after a student makes something (ui/shareAsk.ts).
+    promptTitle: "Share with the crowd?",
+    promptBody: `People can learn from you. Students signed in to Luma will see this ${noun} and ${who}. Nothing else about you. You can stop sharing anytime.`,
   }
 }
 

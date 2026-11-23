@@ -14,7 +14,8 @@ SAM_ID = "aaaaaaaa-0000-4000-8000-000000000001"
 LEE_ID = "bbbbbbbb-0000-4000-8000-000000000002"
 SAMANTHA_ID = "cccccccc-0000-4000-8000-000000000003"
 
-ITEM_KEYS = {"id", "study_type", "title", "preview", "tags", "username", "published_at", "created_at"}
+# The subject slugs come from the shared subject list; they say nothing about the person.
+ITEM_KEYS = {"id", "study_type", "title", "preview", "tags", "subject_slug", "subtopic_slug", "username", "published_at", "created_at"}
 USER_KEYS = {"username", "items"}
 
 

@@ -12,7 +12,7 @@ import type { Page } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 import type { TestInfo } from "@playwright/test"
 
-import { API, PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait } from "./helpers"
+import { API, PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait, answerSharePrompt } from "./helpers"
 
 /**
  * Same rules as helpers.expectNoSeriousA11yIssues, but can leave out parts that
@@ -123,6 +123,8 @@ test.describe("making notes", () => {
 
     await page.getByRole("button", { name: "Save note" }).click()
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+    await answerSharePrompt(page)
     await expect(pageTitle(page)).toHaveText(myTitle)
     await expect(page.getByText(/^Note · Private/)).toBeVisible()
     const sheet = page.getByRole("article", { name: myTitle })
@@ -316,6 +318,8 @@ test.describe("making notes", () => {
       tags: ["photosynthesis", "chloroplast"],
     })
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+    await answerSharePrompt(page)
     await expect(pageTitle(page)).toHaveText(myTitle)
     const sheet = page.getByRole("article", { name: myTitle })
     await expect(sheet.getByRole("heading", { name: "Photosynthesis" })).toBeVisible()
@@ -416,6 +420,8 @@ test.describe("making notes", () => {
     await expect(page.getByText(/^Saved at /)).toBeVisible()
     await page.getByRole("button", { name: "Save changes" }).click()
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+    await answerSharePrompt(page)
     await expect(pageTitle(page)).toHaveText(myTitle)
     await expect(page.getByText(/We found 2 cards in your note/)).toBeVisible()
     await expect(page.getByRole("button", { name: "Make a deck (2)" })).toBeEnabled()
@@ -587,6 +593,8 @@ test.describe("making notes", () => {
       content: expect.stringContaining("Plants make their own food"),
     })
     await expect(page).toHaveURL(/\/summaries\/[0-9a-f-]{36}$/)
+    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+    await answerSharePrompt(page)
     const summaryId = page.url().split("/").pop()!
     await expect(page.getByText("Your summary is ready!")).toBeVisible()
     await expect(pageTitle(page)).toHaveText("Plants in short")
@@ -661,6 +669,8 @@ test.describe("making notes", () => {
     await tool.getByRole("button", { name: "Try saving again" }).click()
     expect((await saved).postDataJSON()).toMatchObject({ title: "Plants in short" })
     await expect(page).toHaveURL(/\/summaries\/[0-9a-f-]{36}$/)
+    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+    await answerSharePrompt(page)
     await expect(pageTitle(page)).toHaveText("Plants in short")
     expect(asked).toHaveLength(1)
   })

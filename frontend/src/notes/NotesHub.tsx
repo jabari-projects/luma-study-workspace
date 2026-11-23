@@ -42,6 +42,8 @@ import {
   tabFromQuery,
 } from "./paths"
 import type { HubItem, HubTab } from "./paths"
+import { subjectLabel } from "../subjects/subjects"
+import { useSubjects } from "../subjects/useSubjects"
 
 /** The four ways to start. The same words as the + New menu. */
 const startLinks: { to: string; label: string; hint: string; icon: Icon }[] = [
@@ -69,6 +71,7 @@ const itemTitle = (item: HubItem) => item.title?.trim() || (item.kind === "summa
 /** /notes: every note and summary in one list, with ways to start a new one. */
 export function NotesHub() {
   const [params, setParams] = useSearchParams()
+  const { list: subjectList } = useSubjects()
   const tab = tabFromQuery(params.get("show"))
   const [items, setItems] = useState<HubItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -341,6 +344,12 @@ export function NotesHub() {
                       <Link className="row-link" to={`${kind.path}/${item.id}`}>
                         {title}
                       </Link>
+                      {subjectLabel(subjectList, item.subject_slug, item.subtopic_slug) ? (
+                        <small className="row-subject">
+                          <span className="sr-only">Subject: </span>
+                          {subjectLabel(subjectList, item.subject_slug, item.subtopic_slug)}
+                        </small>
+                      ) : null}
                       {preview ? <span className="row-preview">{preview}</span> : null}
                     </span>
                     <span className="row-meta">

@@ -44,6 +44,8 @@ export type HubItem = {
   kind: "note" | "summary"
   title?: string | null
   content?: string | null
+  subject_slug?: string | null
+  subtopic_slug?: string | null
   is_public?: boolean | null
   created_at?: string | null
   updated_at?: string | null

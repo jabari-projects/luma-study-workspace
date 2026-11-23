@@ -469,5 +469,5 @@ def test_public_search_shows_current_username_not_stale_published_by(db, monkeyp
         {"id": "n1", "user_id": "u1", "title": "Cells", "content": "c", "tags": [], "is_public": True,
          "published_by": "luma_admin", "published_at": "2026-01-01", "created_at": "2026-01-01", "study_type": "note"}
     ]
-    items = [found.item for found in public_search._find_items("")]
+    items = [found.item for found in public_search._found_items(public_search._run_search().get("rows") or [])]
     assert items and items[0].username == "real_owner", items[0].username

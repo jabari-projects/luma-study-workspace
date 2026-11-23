@@ -74,7 +74,7 @@ async function searchTopics(page: Page, query: string) {
   await page.goto("/discover")
   await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
   await page.getByLabel("Search", { exact: true }).fill(query)
-  const done = page.waitForResponse((r) => r.url().startsWith(`${API}/public/topics`) && r.url().includes("query="))
+  const done = page.waitForResponse((r) => r.url().startsWith(`${API}/public/search`) && r.url().includes("q="))
   await page.getByRole("button", { name: "Search", exact: true }).click()
   await done
 }
@@ -305,7 +305,7 @@ test.describe("Sharing a note", () => {
 
 test.describe("Sharing is locked down", () => {
   test("shared search needs a signed-in student", async ({ request }) => {
-    for (const path of ["/public/topics", "/public/topics?query=spanish", "/public/users?query=jabari"]) {
+    for (const path of ["/public/search", "/public/search?q=spanish", "/public/topics", "/public/topics?query=spanish", "/public/users?query=jabari"]) {
       const response = await request.get(`${API}${path}`)
       expect(response.status(), path).toBe(401)
       expect(await response.text()).not.toContain("Spanish Basics")
@@ -319,7 +319,7 @@ test.describe("Sharing is locked down", () => {
     const topics = (await (await request.get(`${API}/public/topics`, { headers })).json()) as Record<string, unknown>[]
     expect(topics.length).toBeGreaterThan(0)
     for (const item of topics) {
-      expect(Object.keys(item).sort()).toEqual(["created_at", "id", "preview", "published_at", "study_type", "tags", "title", "username"])
+      expect(Object.keys(item).sort()).toEqual(["created_at", "id", "preview", "published_at", "study_type", "subject_slug", "subtopic_slug", "tags", "title", "username"])
     }
     const users = (await (await request.get(`${API}/public/users?query=jabari`, { headers })).json()) as Record<string, unknown>[]
     expect(users.map((user) => Object.keys(user).sort())).toEqual([["items", "username"]])

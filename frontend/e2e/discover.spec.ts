@@ -29,9 +29,9 @@ async function makeAccount(page: Page, info: TestInfo): Promise<string> {
   return email
 }
 
-/** Every shared-notes request answers with nothing, as if no one had shared yet. */
+/** Every shared-notes search answers with nothing, as if no one had shared yet. */
 async function emptyShelf(page: Page) {
-  await page.route(`${API}/public/topics**`, (route) => {
+  await page.route(`${API}/public/search**`, (route) => {
     if (route.request().method() === "OPTIONS") return route.continue()
     return route.fulfill({
       status: 200,
@@ -40,7 +40,7 @@ async function emptyShelf(page: Page) {
         "access-control-allow-origin": new URL(page.url()).origin,
         "access-control-allow-credentials": "true",
       },
-      body: "[]",
+      body: JSON.stringify({ items: [], total: 0, next_offset: null, facets: { subjects: [], subtopics: [], types: [] } }),
     })
   })
 }
@@ -81,7 +81,7 @@ test("Discover opens on the newest shared items, each with @username only", asyn
   await page.getByRole("button", { name: "Search", exact: true }).click()
   await expect(page.getByRole("heading", { level: 2, name: "Shared notes about “spanish”" })).toBeVisible()
   await expect(row(page, "Spanish Basics")).toBeVisible()
-  await expect(status(page)).toHaveText(/^\d+ shared items? about “spanish”\.$/)
+  await expect(status(page)).toHaveText(/^\d+ shared items? for “spanish”\.$/)
 
   // Show newest goes back. Pressed with the keyboard, focus lands in the search box, not on the page.
   await page.getByRole("button", { name: "Show newest" }).focus()
@@ -175,7 +175,7 @@ test("with nothing shared, Discover shows a friendly empty state (dark theme, ax
 
 test("a slow server shows placeholder rows and says Luma is waking up", async ({ page }) => {
   await loginAndWait(page, SEEDED.sam.email)
-  await page.route(`${API}/public/topics**`, async (route) => {
+  await page.route(`${API}/public/search**`, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 4500))
     await route.continue()
   })

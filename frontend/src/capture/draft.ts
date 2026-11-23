@@ -7,6 +7,8 @@ export type SourceKind = "audio" | "paste" | "file" | "link" | "youtube"
 /** Where a draft came from: any text source, or a picture (Image to notes). */
 export type DraftSourceKind = SourceKind | "image"
 
+import type { SubjectChoice } from "../subjects/subjects"
+
 export type DraftCard = { id: string; front: string; back: string; keep: boolean }
 
 export type NotesDraft = {
@@ -17,6 +19,8 @@ export type NotesDraft = {
   cards: DraftCard[]
   truncated: boolean
   source: { kind: DraftSourceKind; label: string }
+  /** The subject the student picked for the note and its deck. Older tab drafts have none. */
+  subject?: SubjectChoice
 }
 
 /** The notes shape both /api/notes-from-text and /api/generate-notes answer with. */

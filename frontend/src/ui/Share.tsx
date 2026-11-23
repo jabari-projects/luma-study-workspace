@@ -1,9 +1,11 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { LockSimple, ShareNetwork } from "@phosphor-icons/react"
 
 import { getErrorCode, getErrorMessage } from "../api"
 import { AxiosError } from "axios"
 import { ConflictPanel } from "../work/ConflictPanel"
+import { useMaintenance } from "../maintenance/observe"
+import { breakIsOn } from "../maintenance/store"
 import { ConfirmDialog } from "./ConfirmDialog"
 import type { Notice, StudyType } from "./common"
 import { hasTitle, setSharing, shareCopy, useShareName } from "./sharing"
@@ -21,6 +23,7 @@ import type { ShareableItem } from "./sharing"
 export function ShareDialog({
   noun,
   username,
+  prompt = false,
   busy,
   onConfirm,
   onCancel,
@@ -28,6 +31,8 @@ export function ShareDialog({
 }: {
   noun: string
   username: string | null
+  /** The "Share with the crowd?" words, asked once right after the item was made. */
+  prompt?: boolean
   busy: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -37,8 +42,8 @@ export function ShareDialog({
   return (
     <ConfirmDialog
       tone="primary"
-      title={copy.title}
-      body={copy.body}
+      title={prompt ? copy.promptTitle : copy.title}
+      body={prompt ? copy.promptBody : copy.body}
       confirmLabel="Share"
       busyLabel="Sharing..."
       cancelLabel="Not now"
@@ -61,6 +66,7 @@ export function ShareControl<T extends ShareableItem>({
   item,
   onUpdated,
   setNotice,
+  askNow = false,
 }: {
   endpoint: string
   studyType: StudyType
@@ -68,9 +74,18 @@ export function ShareControl<T extends ShareableItem>({
   item: T
   onUpdated: (item: T) => void
   setNotice: (notice: Notice | null) => void
+  /**
+   * Ask "Share with the crowd?" right away: the item was just made in this tab (ui/shareAsk.ts).
+   * Not when it is already shared, has no title, or during a maintenance break.
+   * Not now closes it, and this Share button stays as it is.
+   */
+  askNow?: boolean
 }) {
   const username = useShareName()
-  const [asking, setAsking] = useState(false)
+  const maintenance = useMaintenance()
+  const [prompting, setPrompting] = useState(() => askNow && !item.is_public && hasTitle(item) && !breakIsOn(maintenance.status))
+  const [asking, setAsking] = useState(prompting)
+  const shareButton = useRef<HTMLButtonElement>(null)
   const [busy, setBusy] = useState(false)
   // A newer version from another tab or device (409): the student picks, nothing is overwritten.
   const [conflict, setConflict] = useState<{ share: boolean; current: T } | null>(null)
@@ -103,12 +118,15 @@ export function ShareControl<T extends ShareableItem>({
       })
     } finally {
       setBusy(false)
+      // The first answer ends the "just made" prompt; later taps ask the ordinary way.
+      setPrompting(false)
     }
   }
 
   return (
     <>
       <button
+        ref={shareButton}
         type="button"
         className="secondary-button share-button"
         disabled={busy}
@@ -137,9 +155,15 @@ export function ShareControl<T extends ShareableItem>({
         <ShareDialog
           noun={noun}
           username={username}
+          prompt={prompting}
           busy={busy}
           onConfirm={() => void change(true)}
-          onCancel={() => setAsking(false)}
+          onCancel={() => {
+            setAsking(false)
+            setPrompting(false)
+          }}
+          // Opened by itself on a fresh page, so focus goes to the Share button (or what took its place).
+          returnFocus={() => shareButton.current}
         />
       ) : null}
     </>

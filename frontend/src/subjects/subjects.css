@@ -1,0 +1,335 @@
+/* ---------------------------------------------------------------- subject picker */
+
+.subject-picker {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.subject-picker-label {
+  font-weight: 750;
+}
+
+.subject-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.subject-picker-button {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  min-height: 46px;
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  color: var(--muted);
+  background: var(--card);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.subject-picker-button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subject-picker-button.chosen {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.subject-picker-button:hover {
+  border-color: var(--ink);
+}
+
+.subject-clear {
+  width: 46px;
+  height: 46px;
+}
+
+.subject-picker-hint {
+  font-size: 0.88rem;
+}
+
+.subject-scrim {
+  display: none;
+}
+
+.subject-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  width: min(420px, 100%);
+  min-width: min(300px, 100%);
+  max-height: 380px;
+  margin-top: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--card-2);
+  box-shadow: var(--lift);
+}
+
+.subject-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.subject-step-name {
+  margin: 0;
+  font-weight: 800;
+}
+
+.subject-search {
+  width: 100%;
+  min-height: 46px;
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--card);
+  font: inherit;
+}
+
+.subject-empty {
+  margin: 4px 2px;
+}
+
+.subject-options {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+
+.subject-group-name {
+  margin: 10px 8px 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.subject-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.subject-option.active {
+  color: var(--ink);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.subject-done {
+  display: none;
+  justify-content: flex-end;
+}
+
+/* Phones: a sheet from the bottom, up to 85% of the screen, with a Done button. */
+@media (max-width: 599px) {
+  .subject-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: var(--scrim);
+  }
+
+  .subject-panel {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 46;
+    width: 100%;
+    min-width: 0;
+    max-height: 85vh;
+    margin: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 16px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .subject-done {
+    display: flex;
+  }
+}
+
+/* A small "Math › Algebra 1" line on items. */
+.subject-line {
+  margin: 0;
+  color: var(--accent-ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- Discover filters */
+
+.discover-filters {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.filter-row {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.filter-row legend {
+  padding: 0;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1.5px solid var(--field-border);
+  border-radius: 999px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--card);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.filter-chip > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.filter-chip:hover {
+  border-color: var(--ink);
+}
+
+.filter-chip[aria-pressed="true"] {
+  border-color: var(--accent-strong);
+  color: var(--on-accent);
+  background: var(--accent-strong);
+}
+
+.filter-chip .chip-count {
+  min-width: 1.6em;
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.filter-chip[aria-pressed="true"] .chip-count {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.filter-chip.more {
+  border-style: dashed;
+}
+
+.filter-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-trail li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-trail li + li::before {
+  content: "›";
+  color: var(--muted);
+}
+
+.filter-trail .clear-all {
+  margin-left: 6px;
+}
+
+.filter-trail li.clear::before {
+  content: none;
+}
+
+.filter-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.result-subject {
+  margin: 0 0 2px;
+  color: var(--accent-ink);
+  font-size: 0.85rem;
+  font-weight: 750;
+}
+
+.show-more {
+  justify-self: center;
+  margin-top: 14px;
+}
+
+/* Deck editor: the picker gets its own row under the title and tags. */
+.editor-head .subject-picker {
+  grid-column: 1 / -1;
+  order: 3;
+  max-width: 560px;
+}
+
+.editor-subject .subject-picker,
+.wb-subject .subject-picker {
+  max-width: 560px;
+}
+
+.row-subject {
+  color: var(--accent-ink);
+  font-weight: 700;
+}

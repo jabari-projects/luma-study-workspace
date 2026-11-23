@@ -196,6 +196,12 @@ class FakeSupabase:
     guard_installed = True
 
     def rpc(self, name, params=None):
+        if name == "public_study_search":
+            # The Discover search function (2026_11_24_subjects.sql), run over the fake tables.
+            from tests.public_search_fake import public_study_search
+
+            self.__dict__.setdefault("rpc_calls", []).append((name, params))
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=public_study_search(self.tables, params or {})))
         assert name == "luma_password_guard_installed"
         installed = self.guard_installed
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=installed))

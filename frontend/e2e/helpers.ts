@@ -162,3 +162,14 @@ export async function longestMotion(page: Page) {
     return { animation, transition, worst, paths }
   })
 }
+
+/**
+ * "Share with the crowd?" opens once on a new item's page, right after it was made in this tab.
+ * Not now (the default) closes it and keeps the item private; Share shares it.
+ */
+export async function answerSharePrompt(page: Page, answer: "Not now" | "Share" = "Not now") {
+  const dialog = page.getByRole("dialog", { name: "Share with the crowd?" })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole("button", { name: answer, exact: true }).click()
+  await expect(dialog).toBeHidden()
+}

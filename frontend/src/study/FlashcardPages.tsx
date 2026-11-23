@@ -23,7 +23,13 @@ import { api, getErrorMessage, getTabAccountId } from "../api"
 import { studyIntroKey } from "../accounts"
 import { NoticeBanner, PageHeader } from "../ui/common"
 import { ShareControl } from "../ui/Share"
+import { forgetShareAsk, markJustMade, shouldAskToShare } from "../ui/shareAsk"
 import { sharedLine, useShareName } from "../ui/sharing"
+import { SubjectLine } from "../subjects/SubjectLine"
+import { SubjectPicker } from "../subjects/SubjectPicker"
+import { NO_SUBJECT, choiceFrom, subjectBody, subjectLabel } from "../subjects/subjects"
+import type { SubjectChoice } from "../subjects/subjects"
+import { useSubjects } from "../subjects/useSubjects"
 import type { Notice } from "../ui/common"
 import { Scribble } from "../ui/Scribble"
 import { ConflictPanel, YourVersionBox } from "../work/ConflictPanel"
@@ -187,6 +193,7 @@ export function DecksPage() {
                         {deck.title}
                       </Link>
                     </h3>
+                    <SubjectLine subject={deck.subject_slug} subtopic={deck.subtopic_slug} />
                     <p className="deck-count">
                       <Cards weight="duotone" aria-hidden="true" /> {deckCountLine(stats.total, stats.due)}
                     </p>
@@ -294,7 +301,7 @@ function emptyCard(): DraftCard {
   return { id: newCardId(), front: "", back: "", review: null }
 }
 
-type DeckFields = { title: string; tags: string; cards: DraftCard[] }
+type DeckFields = { title: string; tags: string; subject: SubjectChoice; cards: DraftCard[] }
 
 /** Autosave waits this long after the last change (B.4). */
 const DECK_AUTOSAVE_MS = 2000
@@ -306,6 +313,7 @@ function deckFieldsFrom(deck: Deck): DeckFields {
   return {
     title: deck.title === "Untitled deck" ? "" : deck.title,
     tags: deck.tags.join(", "),
+    subject: choiceFrom(deck.subject_slug, deck.subtopic_slug),
     cards: deck.cards.length > 0 ? deck.cards.map(({ id, front, back }) => ({ id, front, back, review: null })) : [emptyCard()],
   }
 }
@@ -358,6 +366,7 @@ const SAVE_BUTTON_ID = "deck-save"
 function deckBody(fields: DeckFields) {
   return {
     title: fields.title.trim(),
+    ...subjectBody(fields.subject),
     tags: fields.tags
       .split(",")
       .map((tag) => tag.trim().replace(/^#/, ""))
@@ -377,12 +386,20 @@ const deckText = (fields: DeckFields) =>
 const deckDraftData = (fields: DeckFields) => ({
   title: fields.title,
   tags: fields.tags,
+  subject: fields.subject,
   cards: fields.cards.map(({ id, front, back }) => ({ id, front, back })),
 })
 
+/** A tab draft's words. Drafts from before subjects have none, and still open (with no subject). */
 function fromDraft(value: unknown): DeckFields | null {
   if (!isDeckFields(value)) return null
-  return { ...value, cards: value.cards.map(({ id, front, back }) => ({ id, front, back, review: null })) }
+  const subject = (value as { subject?: Partial<SubjectChoice> | null }).subject
+  return {
+    title: value.title,
+    tags: value.tags,
+    subject: choiceFrom(subject?.subject, subject?.subtopic),
+    cards: value.cards.map(({ id, front, back }) => ({ id, front, back, review: null })),
+  }
 }
 
 /**
@@ -410,7 +427,7 @@ function NewDeck({ accountId }: { accountId: string | null }) {
       itemId={null}
       version={null}
       createKey={start.createKey}
-      initial={{ title: "", tags: "", cards: [emptyCard(), emptyCard()] }}
+      initial={{ title: "", tags: "", subject: NO_SUBJECT, cards: [emptyCard(), emptyCard()] }}
       offer={start.draft}
       onThrowAwayOffer={() => {
         clearDraft(sessionDraftStore(), accountId, "deck", "new")
@@ -494,7 +511,7 @@ function DeckForm({
   const isNew = itemId === null
   const navigate = useNavigate()
   const [fields, setFields] = useState<DeckFields>(initial)
-  const { title, tags, cards } = fields
+  const { title, tags, subject, cards } = fields
   const [makeOpen, setMakeOpen] = useState(false)
   // The red marks show after "Save deck" was pressed, until everything is filled in.
   const [showProblems, setShowProblems] = useState(false)
@@ -524,8 +541,13 @@ function DeckForm({
     textOf: deckText,
     rowHas: (row, sent) => {
       const stored = normalizeDeck(row)
-      const words = deckBody(sent).cards
-      return stored.title === deckBody(sent).title && JSON.stringify(stored.cards.map(({ id, front, back }) => ({ id, front, back }))) === JSON.stringify(words)
+      const sentBody = deckBody(sent)
+      return (
+        stored.title === sentBody.title &&
+        (stored.subject_slug ?? null) === sentBody.subject_slug &&
+        (stored.subtopic_slug ?? null) === sentBody.subtopic_slug &&
+        JSON.stringify(stored.cards.map(({ id, front, back }) => ({ id, front, back }))) === JSON.stringify(sentBody.cards)
+      )
     },
     draft: { kind: "deck", data: deckDraftData },
     hold: (content) => {
@@ -615,6 +637,7 @@ function DeckForm({
     if (isNew) {
       const now = autosave.peek()
       if (!now?.itemId || now.version === null) return
+      markJustMade(accountId, "flashcards", now.itemId)
       justCreatedDecks.set(now.itemId, { fields, version: now.version, savedAt: now.savedAt })
       navigate(`/flashcards/${now.itemId}/edit`, { replace: true })
       return
@@ -734,6 +757,7 @@ function DeckForm({
             </label>
             {shown?.titleMissing ? <FieldProblem id={`${TITLE_ID}-problem`} /> : null}
           </div>
+          <SubjectPicker value={subject} onChange={(next) => update({ ...fields, subject: next })} />
           <label>
             Tags
             <input value={tags} onChange={(event) => update({ ...fields, tags: event.target.value })} placeholder="Add tags (optional)" />
@@ -864,6 +888,11 @@ export function DeckPage() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const shareName = useShareName()
+  const { list: subjectList } = useSubjects()
+  const [accountId] = useState(() => getTabAccountId())
+  // Made in this tab a moment ago: ask "Share with the crowd?" once (ui/shareAsk.ts).
+  const [askShare] = useState(() => shouldAskToShare(accountId, "flashcards", itemId))
+  useEffect(() => forgetShareAsk(accountId, "flashcards", itemId), [accountId, itemId])
 
   if (loading) return <LoadingCard text="Opening your deck..." />
   if (!deck) {
@@ -895,7 +924,9 @@ export function DeckPage() {
       <PageHeader
         eyebrow={`Flashcards · ${deck.is_public ? "Shared" : "Private"}`}
         title={deck.title}
-        description={deck.is_public ? sharedLine(shareName) : "Your deck"}
+        description={[subjectLabel(subjectList, deck.subject_slug, deck.subtopic_slug), deck.is_public ? sharedLine(shareName) : "Your deck"]
+          .filter(Boolean)
+          .join(" · ")}
         actions={
           <>
             <ShareControl
@@ -905,6 +936,7 @@ export function DeckPage() {
               item={deck}
               onUpdated={(updated) => setDeck(normalizeDeck(updated))}
               setNotice={setNotice}
+              askNow={askShare}
             />
             <Link className="ghost-button" to={STUDY_HUB}>
               <ArrowLeft weight="bold" aria-hidden="true" /> Back to Study

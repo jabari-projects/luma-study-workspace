@@ -5,7 +5,7 @@
 import { expect, test } from "@playwright/test"
 import type { Page } from "@playwright/test"
 
-import { loginAndWait, makeAccount } from "./helpers"
+import { loginAndWait, makeAccount, answerSharePrompt } from "./helpers"
 import { countRequests } from "./work-helpers"
 
 const field = (page: Page, name: string) => page.getByRole("textbox", { name, exact: true })
@@ -98,6 +98,8 @@ test("a saved deck: Save deck with an empty answer stays put and says which card
   await field(page, "Answer 2").fill("Dos")
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
+  // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+  await answerSharePrompt(page)
   await expect(page.getByRole("heading", { level: 1, name: "Saved errors deck" })).toBeVisible()
 })
 
@@ -137,5 +139,7 @@ test("workbench: a kept card with an empty side stops Save + make deck the same 
 
   await page.getByRole("button", { name: "Save + make deck (6)" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+$/, { timeout: 15_000 })
+  // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+  await answerSharePrompt(page)
   await expect(page.locator(".card-list .card-a", { hasText: "In the leaves" })).toBeVisible()
 })

@@ -13,7 +13,9 @@
 
 ## Discovery and account experience
 
-- **Discover** — Signed-in students can search study sets other students chose to share. Shared items show only the username and topic.
+- **Discover** — Signed-in students can search everything other students chose to share: type anything (like "1+1"), then narrow with chips that show how many items each holds: subject, then its subtopics, then type (Flashcards, Notes, Summaries; every deck can be a quiz). Filters combine, a trail ("All › Math › Algebra 1") steps back, Clear all resets, and the filters live in the address (Back undoes a tap, a reload keeps them). Shared items show only the username, the subject and the topic. Counts are per subject or type, never per person.
+- **Subjects** — Notes, decks and summaries can have a subject and subtopic from one list of 60 high school subjects and college fields (639 subtopics; `backend/app/data/subjects.json`, sent by `GET /subjects`). The picker ("Subject (optional)") searches names and short names like "apush" or "bio", or browses by group; on phones it opens as a sheet from the bottom. It is optional, and tags stay.
+- **Share with the crowd?** — Right after a student makes a deck, note or summary, its page asks once: "Share with the crowd? People can learn from you." Share shares it (signed-in students, username only); Not now keeps it private and the Share button stays. Asked once per item, in that tab only; nothing is stored.
 - **Summary from a note** — Make a short summary from one of your notes (`/api/summarize`).
 - **Reports** — Students can report a shared item; admins review reports on the admin reports page.
 - **Authentication and account management** — Sign up, log in, verify email, request and reset passwords, update profile information, and delete an account.

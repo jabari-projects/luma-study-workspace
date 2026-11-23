@@ -6,7 +6,7 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test"
 
-import { PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait, setThemeMode } from "./helpers"
+import { PASSWORD, SEEDED, fakeEmail, latestMail, loginAndWait, setThemeMode, answerSharePrompt } from "./helpers"
 
 type Card = { front: string; back: string }
 
@@ -57,6 +57,8 @@ async function createDeck(page: Page, title: string, cards: Card[], tags = "") {
   // Save deck again opens the deck.
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
+  // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+  await answerSharePrompt(page)
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible()
   return page.url().split("/").pop()!
 }
@@ -344,6 +346,8 @@ test.describe("make a deck (fresh account)", () => {
     await expect(page.getByText(/^Saved at /)).toBeVisible()
     await page.getByRole("button", { name: "Save deck" }).click()
     await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
+    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
+    await answerSharePrompt(page)
     await expect(page.getByRole("heading", { level: 1, name: "Made Up Facts" })).toBeVisible()
     await expect(deckStat(page, "cards")).toHaveText("4")
     await expect(deckStat(page, "ready now")).toHaveText("4")

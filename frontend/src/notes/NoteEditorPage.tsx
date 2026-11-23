@@ -15,10 +15,22 @@ import { SaveStatus } from "../work/SaveStatus"
 import { clearDraft, readDraft, sessionDraftStore } from "../work/drafts"
 import type { Draft } from "../work/drafts"
 import { newCreateKey, toReply, useAutosave } from "../work/useAutosave"
+import { markJustMade } from "../ui/shareAsk"
+import { SubjectPicker } from "../subjects/SubjectPicker"
+import { NO_SUBJECT, choiceFrom, subjectBody } from "../subjects/subjects"
+import type { SubjectChoice } from "../subjects/subjects"
 import { NOTES_HUB, defaultNoteTitle, parseTags } from "./paths"
 
-type Fields = { title: string; content: string; tags: string }
-type NoteRow = { id: string; title?: string; content?: string; tags?: string[]; version?: number }
+type Fields = { title: string; content: string; tags: string; subject: SubjectChoice }
+type NoteRow = {
+  id: string
+  title?: string
+  content?: string
+  tags?: string[]
+  subject_slug?: string | null
+  subtopic_slug?: string | null
+  version?: number
+}
 type Kind = "note" | "summary"
 
 /** The offer for a new note an earlier version kept on this device. */
@@ -36,15 +48,29 @@ function fieldsFrom(row: NoteRow): Fields {
     title: typeof row.title === "string" ? row.title : "",
     content: typeof row.content === "string" ? row.content : "",
     tags: Array.isArray(row.tags) ? row.tags.join(", ") : "",
+    subject: choiceFrom(row.subject_slug, row.subtopic_slug),
   }
 }
 
-function isFields(value: unknown): value is Fields {
+/** A tab draft's words. Drafts from before subjects have none, and still open (with no subject). */
+function draftFields(value: unknown): Fields | null {
   const v = value as Partial<Fields> | null
-  return Boolean(v && typeof v.title === "string" && typeof v.content === "string" && typeof v.tags === "string")
+  if (!(v && typeof v.title === "string" && typeof v.content === "string" && typeof v.tags === "string")) return null
+  return { title: v.title, content: v.content, tags: v.tags, subject: choiceFrom(v.subject?.subject, v.subject?.subtopic) }
 }
 
-const body = (fields: Fields) => ({ title: fields.title.trim().slice(0, 200), content: fields.content, tags: parseTags(fields.tags) })
+/** A draft whose words can be used, with its words read safely. */
+function usableDraft(draft: Draft<Fields> | null): Draft<Fields> | null {
+  const data = draft ? draftFields(draft.data) : null
+  return draft && data ? { ...draft, data } : null
+}
+
+const body = (fields: Fields) => ({
+  title: fields.title.trim().slice(0, 200),
+  content: fields.content,
+  tags: parseTags(fields.tags),
+  ...subjectBody(fields.subject),
+})
 const textOf = (fields: Fields) => [fields.title.trim(), fields.content.trim()].filter(Boolean).join("\n\n")
 
 /** Why these words can't be saved yet, or null. A summary may have no title. */
@@ -85,14 +111,13 @@ function legacyOffer(kind: Kind, accountId: string | null, createKey: string): D
   if (kind !== "note" || !accountId || getTabAccountId() !== accountId) return null
   const data = readLegacyNoteDraft(deviceStore(), accountId)
   if (!data) return null
-  return { v: 1, accountId, kind, itemId: "new", baseVersion: null, createKey, savedAt: Date.now(), data }
+  return { v: 1, accountId, kind, itemId: "new", baseVersion: null, createKey, savedAt: Date.now(), data: { ...data, subject: NO_SUBJECT } }
 }
 
 function NewNote({ kind, accountId }: { kind: Kind; accountId: string | null }) {
   // A draft from earlier in this tab keeps its Idempotency-Key, so a reload and retry can't make a copy.
   const [start, setStart] = useState(() => {
-    const draft = readDraft<Fields>(sessionDraftStore(), getTabAccountId(), accountId, kind, "new")
-    const usable = draft && isFields(draft.data) ? draft : null
+    const usable = usableDraft(readDraft<Fields>(sessionDraftStore(), getTabAccountId(), accountId, kind, "new"))
     const createKey = usable?.createKey ?? newCreateKey()
     const legacy = usable ? null : legacyOffer(kind, accountId, createKey)
     return { round: 0, draft: usable ?? legacy, legacy: legacy !== null, createKey }
@@ -108,7 +133,7 @@ function NewNote({ kind, accountId }: { kind: Kind; accountId: string | null }) 
       itemId={null}
       version={null}
       createKey={start.createKey}
-      initial={{ title: defaultNoteTitle(), content: "", tags: "" }}
+      initial={{ title: defaultNoteTitle(), content: "", tags: "", subject: NO_SUBJECT }}
       offer={start.draft}
       offerText={start.legacy ? LEGACY_OFFER : undefined}
       onCreated={dropLegacy}
@@ -172,7 +197,7 @@ function LoadNote({ kind, accountId, itemId }: { kind: Kind; accountId: string |
 
 function LoadedNote({ kind, accountId, itemId, row }: { kind: Kind; accountId: string | null; itemId: string; row: NoteRow }) {
   // Read once when the note opens: a draft from earlier in this tab, for this account only.
-  const [draft] = useState(() => readDraft<Fields>(sessionDraftStore(), getTabAccountId(), accountId, kind, itemId))
+  const [draft] = useState(() => usableDraft(readDraft<Fields>(sessionDraftStore(), getTabAccountId(), accountId, kind, itemId)))
   return (
     <NoteForm
       kind={kind}
@@ -182,7 +207,7 @@ function LoadedNote({ kind, accountId, itemId, row }: { kind: Kind; accountId: s
       createKey={null}
       initial={fieldsFrom(row)}
       currentRow={row}
-      offer={draft && isFields(draft.data) ? draft : null}
+      offer={draft}
     />
   )
 }
@@ -265,7 +290,7 @@ function NoteForm({
   const usedOffer = useRef(false)
   const copyKey = useRef<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
-  const { title, content, tags } = fields
+  const { title, content, tags, subject } = fields
 
   const autosave = useAutosave<Fields, NoteRow>({
     label: kind === "summary" ? "Your summary" : "Your note",
@@ -277,7 +302,11 @@ function NoteForm({
     debounceMs: AUTOSAVE_MS,
     autosave: true,
     textOf,
-    rowHas: (row, sent) => row.title === body(sent).title && row.content === sent.content,
+    rowHas: (row, sent) =>
+      row.title === body(sent).title &&
+      row.content === sent.content &&
+      (row.subject_slug ?? null) === body(sent).subject_slug &&
+      (row.subtopic_slug ?? null) === body(sent).subtopic_slug,
     draft: { kind, data: (value) => value },
     send: (request, config) => {
       const why = problem(kind, request.content)
@@ -333,6 +362,7 @@ function NoteForm({
     if (isNew) {
       const now = autosave.peek()
       if (!now?.itemId || now.version === null) return
+      markJustMade(accountId, kind, now.itemId)
       toast.success("Saved your note!")
       justCreated.set(now.itemId, { fields, version: now.version, savedAt: now.savedAt })
       navigate(`${endpoint}/${now.itemId}/edit`, { replace: true })
@@ -450,6 +480,9 @@ function NoteForm({
             Write <code>Question :: Answer</code> on a line to make a flashcard.
           </span>
         </p>
+        <div className="editor-subject">
+          <SubjectPicker value={subject} onChange={(next) => change({ subject: next })} />
+        </div>
         <div className="editor-tags">
           <label htmlFor="note-editor-tags">Tags (optional)</label>
           <input

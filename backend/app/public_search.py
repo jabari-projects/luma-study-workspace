@@ -3,22 +3,34 @@
 Privacy rules (owner decisions, 2026-11-16):
 - Only signed-in students can search. There is no anonymous access.
 - A shared item shows its username only: never a user id, display name or photo.
-- No popularity counts, and nothing is sorted by how much someone shared.
+- No popularity counts, and nothing is sorted by how much someone shared. The Discover
+  filter counts are per subject or type (how many shared items), never per person.
+
+All three routes read through one SQL function, public.public_study_search
+(2026_11_24_subjects.sql). It returns owner ids; this module swaps each one for the owner's
+current username and never sends the id.
 """
 
 import re
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import get_current_user_id
+from .subjects import subject_exists, subjects_matching, subtopic_exists
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/public", tags=["public"])
 StudyType = Literal["note", "flashcards", "summary"]
+STUDY_TYPES = ("note", "flashcards", "summary")
 
+# One page of search results, the furthest a student can page, and the longest search.
+PAGE_SIZE = 30
+MAX_OFFSET = 400
+MAX_QUERY_LENGTH = 80
 # People search needs this many letters, so nobody can list every student who shared.
 MIN_USER_QUERY_LENGTH = 3
 # Usernames only ever use these characters (see the signup and rename rules in main.py).
@@ -26,8 +38,9 @@ _USERNAME_CHARS = re.compile(r"^[A-Za-z0-9_]+$")
 # How many usernames one people search looks at, and how many people it returns.
 PEOPLE_LOOKUP_LIMIT = 100
 PEOPLE_RESULT_LIMIT = 40
-# Newest shared items listed under each person.
+# Newest shared items listed under each person, and how many rows one people search reads.
 ITEMS_PER_PERSON = 24
+PEOPLE_ITEMS_LIMIT = 500
 
 
 class PublicStudyItem(BaseModel):
@@ -39,6 +52,9 @@ class PublicStudyItem(BaseModel):
     title: str
     preview: str
     tags: list[str] = Field(default_factory=list)
+    # From app/data/subjects.json, or null ("No subject"). Not personal data.
+    subject_slug: Optional[str] = None
+    subtopic_slug: Optional[str] = None
     username: str
     published_at: Optional[str] = None
     created_at: str
@@ -49,6 +65,38 @@ class PublicUser(BaseModel):
 
     username: str
     items: list[PublicStudyItem] = Field(default_factory=list)
+
+
+class SlugCount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # null means "No subject" (or "No subtopic").
+    slug: Optional[str] = None
+    count: int
+
+
+class TypeCount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: StudyType
+    count: int
+
+
+class SearchFacets(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subjects: list[SlugCount] = Field(default_factory=list)
+    subtopics: list[SlugCount] = Field(default_factory=list)
+    types: list[TypeCount] = Field(default_factory=list)
+
+
+class PublicSearchAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PublicStudyItem]
+    total: int
+    next_offset: Optional[int] = None
+    facets: SearchFacets
 
 
 @dataclass
@@ -68,6 +116,10 @@ def _as_tags(value: object) -> list[str]:
         return []
 
     return [str(tag) for tag in value if str(tag).strip()]
+
+
+def _as_slug(value: object) -> Optional[str]:
+    return value if isinstance(value, str) and value else None
 
 
 # Markdown marks that should not show up in a plain preview.
@@ -96,29 +148,9 @@ def _clip(value: str, limit: int = 220) -> str:
     return f"{normalized[: limit - 3].rstrip()}..."
 
 
-def _matches_query(query: str, *values: object) -> bool:
-    normalized_query = query.strip().lower().lstrip("#")
-    if not normalized_query:
-        return True
-
-    haystack = " ".join(
-        [
-            text
-            for value in values
-            for text in ([str(value)] if not isinstance(value, list) else [str(item) for item in value])
-        ]
-    ).lower()
-    return normalized_query in haystack
-
-
-def _fetch_public_rows(
-    table_name: str, columns: str, limit: int = 100, user_ids: Optional[list[str]] = None
-) -> list[dict]:
-    query = get_supabase().table(table_name).select(columns).eq("is_public", True)
-    if user_ids is not None:
-        query = query.in_("user_id", user_ids)
-    response = query.order("published_at", desc=True).limit(limit).execute()
-    return response.data or []
+def _escape_like(text: str) -> str:
+    """Make %, _ and backslash match themselves in an ilike pattern."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _profile_lookup(user_ids: list[str]) -> dict[str, dict]:
@@ -145,124 +177,132 @@ def _username_for(profile: Optional[dict]) -> str:
     return "student"
 
 
-def _published_at_for(row: dict) -> str:
-    return str(row.get("published_at") or row.get("created_at") or "")
+def search_words(raw: str) -> str:
+    """What a topic search looks for: spaces squeezed, a leading # (old tag habit) dropped."""
+    return " ".join(raw.split()).lstrip("#").strip()
 
 
-_COLUMNS = {
-    # published_by is left out on purpose: it can hold an old name, and search must not match on it.
-    "notes": "id, user_id, title, content, tags, created_at, is_public, published_at, study_type",
-    "flashcards": "id, user_id, title, front, back, tags, created_at, is_public, published_at, study_type",
-    "summaries": "id, user_id, title, content, tags, created_at, is_public, published_at, study_type",
-}
+def _run_search(
+    *,
+    text: str = "",
+    subject: Optional[str] = None,
+    subtopic: Optional[str] = None,
+    study_type: Optional[str] = None,
+    user_ids: Optional[list[str]] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> dict:
+    """One call to public.public_study_search. Its rows carry owner ids: never send them on."""
+    wanted = search_words(text)
+    params = {
+        "p_pattern": f"%{_escape_like(wanted)}%" if wanted else None,
+        # Items in a subject whose name or alias holds the words match too ("algebra" finds math/algebra).
+        "p_match_pairs": [{"subject": slug, "subtopic": sub} for slug, sub in subjects_matching(wanted)],
+        "p_subject": subject,
+        "p_subtopic": subtopic,
+        "p_type": study_type,
+        "p_user_ids": user_ids,
+        "p_limit": PAGE_SIZE if limit is None else limit,
+        "p_offset": offset,
+    }
+    data = get_supabase().rpc("public_study_search", params).execute().data
+    return data if isinstance(data, dict) else {}
 
 
-def _find_items(query: str = "") -> list[_Found]:
-    """The newest shared items that match a topic search."""
-    rows = {table: _fetch_public_rows(table, columns) for table, columns in _COLUMNS.items()}
-    user_ids = [
-        _as_text(row.get("user_id"))
-        for table_rows in rows.values()
-        for row in table_rows
-        if _as_text(row.get("user_id"))
-    ]
-    return _build_items(rows, _profile_lookup(user_ids), query)[:80]
-
-
-def _build_items(rows: dict[str, list[dict]], profiles: dict[str, dict], query: str = "") -> list[_Found]:
-    notes, flashcards, summaries = rows["notes"], rows["flashcards"], rows["summaries"]
-    items: list[_Found] = []
-
-    for row in notes:
+def _found_items(rows: list) -> list[_Found]:
+    """Shared rows as items with the owner's current username."""
+    rows = [row for row in rows if isinstance(row, dict)]
+    profiles = _profile_lookup([_as_text(row.get("user_id")) for row in rows if _as_text(row.get("user_id"))])
+    found: list[_Found] = []
+    for row in rows:
         title = _as_text(row.get("title"))
-        content = _as_text(row.get("content"))
-        tags = _as_tags(row.get("tags"))
-        if not title or not _matches_query(query, title, content, tags):
+        study_type = row.get("study_type")
+        if not title.strip() or study_type not in STUDY_TYPES:
             continue
         user_id = _as_text(row.get("user_id"))
-        profile = profiles.get(user_id)
-        username = _username_for(profile)
-        items.append(
+        found.append(
             _Found(
                 user_id=user_id,
                 item=PublicStudyItem(
                     id=str(row["id"]),
-                    study_type="note",
+                    study_type=study_type,
                     title=title,
-                    preview=_clip(content),
-                    tags=tags,
-                    username=username,
-                    published_at=_published_at_for(row),
+                    preview=_clip(_as_text(row.get("body"))),
+                    tags=_as_tags(row.get("tags")),
+                    subject_slug=_as_slug(row.get("subject_slug")),
+                    subtopic_slug=_as_slug(row.get("subtopic_slug")),
+                    username=_username_for(profiles.get(user_id)),
+                    published_at=str(row.get("published_at") or row.get("created_at") or ""),
                     created_at=str(row.get("created_at") or ""),
                 ),
             )
         )
-
-    for row in flashcards:
-        title = _as_text(row.get("title"))
-        front = _as_text(row.get("front"))
-        back = _as_text(row.get("back"))
-        tags = _as_tags(row.get("tags"))
-        if not title or not _matches_query(query, title, front, back, tags):
-            continue
-        user_id = _as_text(row.get("user_id"))
-        profile = profiles.get(user_id)
-        username = _username_for(profile)
-        items.append(
-            _Found(
-                user_id=user_id,
-                item=PublicStudyItem(
-                    id=str(row["id"]),
-                    study_type="flashcards",
-                    title=title,
-                    preview=_clip(front or back),
-                    tags=tags,
-                    username=username,
-                    published_at=_published_at_for(row),
-                    created_at=str(row.get("created_at") or ""),
-                ),
-            )
-        )
-
-    for row in summaries:
-        title = _as_text(row.get("title"))
-        content = _as_text(row.get("content"))
-        tags = _as_tags(row.get("tags"))
-        if not title or not _matches_query(query, title, content, tags):
-            continue
-        user_id = _as_text(row.get("user_id"))
-        profile = profiles.get(user_id)
-        username = _username_for(profile)
-        items.append(
-            _Found(
-                user_id=user_id,
-                item=PublicStudyItem(
-                    id=str(row["id"]),
-                    study_type="summary",
-                    title=title,
-                    preview=_clip(content),
-                    tags=tags,
-                    username=username,
-                    published_at=_published_at_for(row),
-                    created_at=str(row.get("created_at") or ""),
-                ),
-            )
-        )
-
-    return sorted(items, key=lambda found: found.item.published_at or found.item.created_at, reverse=True)
+    return found
 
 
-@router.get("/topics", response_model=list[PublicStudyItem])
-def search_public_topics(
-    query: str = Query(default="", max_length=80),
+def _count(value: object) -> int:
+    try:
+        return max(int(value or 0), 0)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _facets(answer: dict) -> SearchFacets:
+    def entries(key: str) -> list[dict]:
+        return [entry for entry in answer.get(key) or [] if isinstance(entry, dict) and _count(entry.get("count")) > 0]
+
+    return SearchFacets(
+        subjects=[SlugCount(slug=_as_slug(e.get("slug")), count=_count(e.get("count"))) for e in entries("subjects")],
+        subtopics=[SlugCount(slug=_as_slug(e.get("slug")), count=_count(e.get("count"))) for e in entries("subtopics")],
+        types=[TypeCount(type=e["type"], count=_count(e.get("count"))) for e in entries("types") if e.get("type") in STUDY_TYPES],
+    )
+
+
+def _not_on_list() -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "That subject isn't on the list.", "error_code": "unknown_subject"},
+    )
+
+
+@router.get("/search", response_model=PublicSearchAnswer)
+def search_public(
+    q: str = Query(default="", max_length=MAX_QUERY_LENGTH),
+    subject: Optional[str] = Query(default=None, max_length=40),
+    subtopic: Optional[str] = Query(default=None, max_length=40),
+    type: Optional[StudyType] = Query(default=None),
+    offset: int = Query(default=0, ge=0, le=MAX_OFFSET),
     _user_id: str = Depends(get_current_user_id),
 ):
-    return [found.item for found in _find_items(query)]
+    """Everything students shared, narrowed by words, a subject, a subtopic and a type, with counts.
+
+    total and items follow every filter. facets.subjects ignores the chosen subject and subtopic
+    (so the other subjects stay in view), facets.subtopics (only with a subject) ignores the
+    chosen subtopic, and facets.types ignores the chosen type.
+    """
+    if subject is not None and not subject_exists(subject):
+        return _not_on_list()
+    if subtopic is not None and not subtopic_exists(subject, subtopic):
+        return _not_on_list()
+    answer = _run_search(text=q, subject=subject, subtopic=subtopic, study_type=type, offset=offset)
+    total = _count(answer.get("total"))
+    following = offset + PAGE_SIZE
+    return PublicSearchAnswer(
+        items=[found.item for found in _found_items(answer.get("rows") or [])],
+        total=total,
+        next_offset=following if following < total and following <= MAX_OFFSET else None,
+        facets=_facets(answer),
+    )
 
 
-def _escape_like(text: str) -> str:
-    """Make %, _ and backslash match themselves in an ilike pattern."""
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+# OVERLAP(remove after the website with /public/search is live): websites still open from
+# before this release ask /public/topics. It answers with the first page of the same search.
+@router.get("/topics", response_model=list[PublicStudyItem])
+def search_public_topics(
+    query: str = Query(default="", max_length=MAX_QUERY_LENGTH),
+    _user_id: str = Depends(get_current_user_id),
+):
+    return [found.item for found in _found_items(_run_search(text=query).get("rows") or [])]
 
 
 def _profiles_named_like(wanted: str) -> list[dict]:
@@ -287,7 +327,7 @@ def _profiles_named_like(wanted: str) -> list[dict]:
 
 @router.get("/users", response_model=list[PublicUser])
 def search_public_users(
-    query: str = Query(default="", max_length=80),
+    query: str = Query(default="", max_length=MAX_QUERY_LENGTH),
     _user_id: str = Depends(get_current_user_id),
 ):
     wanted = query.strip().lstrip("@").lower()
@@ -301,14 +341,9 @@ def search_public_users(
     if not profiles:
         return []
 
-    user_ids = list(profiles)
-    rows = {
-        table: _fetch_public_rows(table, columns, limit=500, user_ids=user_ids)
-        for table, columns in _COLUMNS.items()
-    }
-
+    rows = _run_search(user_ids=list(profiles), limit=PEOPLE_ITEMS_LIMIT).get("rows") or []
     by_user: dict[str, list[PublicStudyItem]] = {}
-    for found in _build_items(rows, profiles):
+    for found in _found_items(rows):
         by_user.setdefault(found.user_id, []).append(found.item)
 
     # Only students who shared something are listed, each with their newest items.

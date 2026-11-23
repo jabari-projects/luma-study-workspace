@@ -27,9 +27,66 @@
 //   POST /__test/clock, /__test/feedback   fake clock and monthly poll scenarios (see dev/mock-feedback.mjs)
 // It follows the account contract in docs/api.md (signup -> code -> session).
 import http from "node:http"
-import { randomInt, randomUUID } from "node:crypto"
+import { createHash, randomInt, randomUUID } from "node:crypto"
+import { readFileSync } from "node:fs"
 
 import { FEEDBACK_RETAINED, forgetFeedbackUser, handleFeedback } from "./mock-feedback.mjs"
+
+// ---------- subjects (the backend's own file, like GET /subjects in backend/app/subjects.py) ----------
+const SUBJECTS_RAW = readFileSync(new URL("../../backend/app/data/subjects.json", import.meta.url))
+const SUBJECT_LIST = JSON.parse(SUBJECTS_RAW.toString("utf8"))
+const SUBJECTS_ETAG = `"${createHash("sha256").update(SUBJECTS_RAW).digest("hex").slice(0, 16)}"`
+const SUBJECT_BY_SLUG = new Map(SUBJECT_LIST.subjects.map((s) => [s.slug, s]))
+const SUBJECT_MESSAGES = {
+  unknown: "Pick a subject from the list.",
+  first: "Pick a subject first.",
+  subtopic: "Pick a subtopic from the list for this subject.",
+}
+/** Like subjects.check_pair: null when fine, else the message for a 422. */
+function subjectProblem(subject, subtopic) {
+  if (subject == null) return subtopic == null ? null : SUBJECT_MESSAGES.first
+  if (typeof subject !== "string" || !SUBJECT_BY_SLUG.has(subject)) return SUBJECT_MESSAGES.unknown
+  if (subtopic != null && !SUBJECT_BY_SLUG.get(subject).subtopics.some((t) => t.slug === subtopic)) return SUBJECT_MESSAGES.subtopic
+  return null
+}
+/** Like checked_create_pair: the subject columns for a new item, or {problem}. */
+function createSubject(body) {
+  const subject = body.subject_slug ?? null
+  const subtopic = body.subtopic_slug ?? null
+  const problem = subjectProblem(subject, subtopic)
+  return problem ? { problem } : { subject_slug: subject, subtopic_slug: subject == null ? null : subtopic }
+}
+/** Like check_sent_subject + subject_changes: the update's subject fields against the stored item, or {problem}. */
+function updateSubject(body, item) {
+  const hasSubject = "subject_slug" in body
+  const hasSubtopic = "subtopic_slug" in body
+  if (hasSubject) {
+    const problem = subjectProblem(body.subject_slug ?? null, hasSubtopic ? (body.subtopic_slug ?? null) : null)
+    if (problem) return { problem }
+    return { changes: { subject_slug: body.subject_slug ?? null, subtopic_slug: hasSubtopic ? (body.subtopic_slug ?? null) : null } }
+  }
+  if (hasSubtopic) {
+    const problem = subjectProblem(item.subject_slug ?? null, body.subtopic_slug ?? null)
+    return problem ? { problem } : { changes: { subtopic_slug: body.subtopic_slug ?? null } }
+  }
+  return { changes: {} }
+}
+/** Like subjects_matching: (subject, subtopic) pairs whose name or alias holds the words (3+ letters). */
+function subjectsMatching(text) {
+  const wanted = text.toLowerCase().split(/\s+/).filter(Boolean).join(" ")
+  if (wanted.length < 3) return []
+  const pairs = []
+  for (const subject of SUBJECT_LIST.subjects) {
+    if ([subject.name.toLowerCase(), ...(subject.aliases || [])].some((word) => word.includes(wanted))) {
+      pairs.push([subject.slug, null])
+      continue
+    }
+    for (const subtopic of subject.subtopics) if (subtopic.name.toLowerCase().includes(wanted)) pairs.push([subject.slug, subtopic.slug])
+  }
+  return pairs
+}
+/** Every item answer carries both subject fields (null for old items), like the backend's normalizers. */
+const withSubject = (item) => ({ ...item, subject_slug: item.subject_slug ?? null, subtopic_slug: item.subtopic_slug ?? null })
 
 const PORT = Number(process.env.PORT || 8787)
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_SECONDS || 0) * 1000
@@ -154,7 +211,7 @@ const now = Date.now()
 const past = (h) => new Date(now - h * 3600e3).toISOString()
 const decks = [
   {
-    id: "d1", user_id: "u1", title: "Solar System", tags: ["science"], is_public: false, created_at: past(90), updated_at: past(2),
+    id: "d1", user_id: "u1", title: "Solar System", tags: ["science"], subject_slug: "earth-space", subtopic_slug: "solar-system", is_public: false, created_at: past(90), updated_at: past(2),
     cards: [
       { id: "c1", front: "Which planet is closest to the Sun?", back: "Mercury", review: null },
       { id: "c2", front: "What is the largest planet?", back: "Jupiter", review: { due: past(5), stability: 3, difficulty: 5, elapsed_days: 2, scheduled_days: 3, learning_steps: 0, reps: 3, lapses: 0, state: 2, last_review: past(80) } },
@@ -164,7 +221,7 @@ const decks = [
     ],
   },
   {
-    id: "d2", user_id: "u1", title: "Spanish Basics", tags: ["spanish", "words"], is_public: true, published_by: "jabari", published_at: past(20), created_at: past(200), updated_at: past(20),
+    id: "d2", user_id: "u1", title: "Spanish Basics", tags: ["spanish", "words"], subject_slug: "spanish", subtopic_slug: "vocabulary", is_public: true, published_by: "jabari", published_at: past(20), created_at: past(200), updated_at: past(20),
     cards: [
       { id: "s1", front: "Hello", back: "Hola", review: null },
       { id: "s2", front: "Thank you", back: "Gracias", review: null },
@@ -177,11 +234,52 @@ const notes = []
 // Summaries have the same shape as notes. The demo account starts with one.
 const summaries = [
   {
-    id: "5a1e0000-0000-4000-8000-000000000001", user_id: "u1", title: "The water cycle in short", tags: ["science"],
+    id: "5a1e0000-0000-4000-8000-000000000001", user_id: "u1", title: "The water cycle in short", tags: ["science"], subject_slug: "earth-space", subtopic_slug: "water",
     content: "Water goes up as vapor, makes clouds, and falls as rain or snow. Then it starts again.",
     is_public: false, published_at: null, published_by: null, study_type: "summary", created_at: past(48), updated_at: past(30),
   },
 ]
+// Shared items from a made-up classmate (riley), across 4 subjects and 3 types, so Discover's
+// filters have real narrowing to do: "1+1" finds 7, then Math 5, Basic math 4, Flashcards 2.
+// All shared before the seeded Spanish Basics deck, so that deck stays near the top.
+addAccount("fourth@luma.test", "riley", "demo-password", true, "u5", "#0891b2")
+;[
+  ["flashcards", "Adding small numbers", "math", "basic-math", [["1+1", "2"], ["2+2", "4"]]],
+  ["flashcards", "Math facts warm-up", "math", "basic-math", [["3+4", "7"], ["1+1", "2"]]],
+  ["note", "Adding is putting together", "math", "basic-math", "1+1 = 2. Adding puts groups together."],
+  ["summary", "Adding in short", "math", "basic-math", "Adding joins numbers. 1+1 is 2."],
+  ["flashcards", "Solve for x", "math", "algebra", [["x+1=2", "x = 1"], ["2x=4", "x = 2"]]],
+  ["note", "Like terms", "math", "algebra", "Combine like terms: x + x = 2x, just like 1+1 = 2."],
+  ["summary", "Algebra rules", "math", "algebra", "Do the same thing to both sides."],
+  ["flashcards", "Shapes", "math", "geometry", [["Sides on a triangle?", "3"], ["Sides on a square?", "4"]]],
+  ["note", "Angles", "math", "geometry", "A right angle is 90 degrees."],
+  ["note", "Area", "math", "geometry", "The area of a rectangle is length times width."],
+  ["flashcards", "Cell parts", "biology", "cells", [["Powerhouse of the cell?", "Mitochondria"], ["Holds the DNA?", "Nucleus"]]],
+  ["note", "Plant and animal cells", "biology", "cells", "Plant cells have a wall. Animal cells do not."],
+  ["summary", "Cells in short", "biology", "cells", "All living things are made of cells."],
+  ["flashcards", "DNA words", "biology", "genetics", [["Gene?", "A part of DNA"], ["Allele?", "A version of a gene"]]],
+  ["note", "Punnett squares", "biology", "genetics", "A Punnett square shows the chances of each trait."],
+  ["flashcards", "Colors in Spanish", "spanish", "vocabulary", [["Red", "Rojo"], ["Blue", "Azul"]]],
+  ["flashcards", "Numbers in Spanish", "spanish", "vocabulary", [["One", "Uno"], ["Two", "Dos"]]],
+  ["note", "Greetings", "spanish", "vocabulary", "Hola means hello. Adios means goodbye."],
+  ["summary", "Spanish words in short", "spanish", "vocabulary", "Learn ten words a day."],
+  ["flashcards", "Civil War dates", "us-history", "civil-war", [["When did the Civil War begin?", "1861"], ["When did it end?", "1865"]]],
+  ["note", "Causes of the Civil War", "us-history", "civil-war", "Slavery and states' rights split the country."],
+  ["summary", "Reconstruction in short", "us-history", "civil-war", "After the war the South was rebuilt."],
+  ["note", "Study tips", null, null, "Short breaks help you remember. Two short sessions, 1+1, beat one long one."],
+  ["flashcards", "Mixed review", null, null, [["1+1", "2"], ["Capital of France", "Paris"]]],
+].forEach(([kind, title, subject_slug, subtopic_slug, words], index) => {
+  const stamp = past(40 + index * 3)
+  const base = {
+    id: `seed-riley-${index + 1}`, user_id: "u5", title, tags: [], subject_slug, subtopic_slug, is_public: true,
+    published_by: "riley", published_at: stamp, created_at: stamp, updated_at: stamp, version: 1,
+  }
+  if (kind === "flashcards") {
+    decks.push({ ...base, progress_rev: 0, cards: words.map(([front, back], n) => ({ id: `r${index}-${n}`, front, back, review: null })) })
+  } else {
+    ;(kind === "note" ? notes : summaries).push({ ...base, content: words, study_type: kind })
+  }
+})
 // Study plans (/study-sessions). Like the backend, time is kept in seconds.
 const studyPlans = []
 
@@ -212,7 +310,7 @@ function maintRetryAfter() {
   return end === null ? 900 : Math.min(3600, Math.max(60, Math.ceil((end - Date.now()) / 1000)))
 }
 const MAINT_AI = ["/api/generate-notes", "/api/transcribe", "/api/notes-from-text", "/api/summarize", "/api/import/link"]
-const MAINT_OPEN_GETS = ["/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me", "/me/profile"]
+const MAINT_OPEN_GETS = ["/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me", "/me/profile", "/subjects"]
 const MAINT_CONTENT = ["notes", "summaries", "flashcards", "study-sessions", "transcripts"]
 function maintGroup(method, path, parts) {
   const read = method === "GET" || method === "HEAD"
@@ -304,8 +402,9 @@ function maintView() {
 const maintCounts = () => ({ users: accounts.size, profiles: profiles.size, notes: notes.length, summaries: summaries.length, flashcards: decks.length, study_sessions: studyPlans.length })
 
 let currentOrigin = "http://localhost:5173"
-function send(res, code, body) {
+function send(res, code, body, extraHeaders = {}) {
   res.writeHead(code, {
+    ...extraHeaders,
     "content-type": "application/json",
     "access-control-allow-origin": currentOrigin,
     "access-control-allow-credentials": "true",
@@ -320,7 +419,7 @@ function send(res, code, body) {
   res.end(body === undefined ? "" : JSON.stringify(body))
 }
 
-const shape = (d) => ({ ...d, front: d.cards[0]?.front ?? "", back: d.cards[0]?.back ?? "", study_type: "flashcards" })
+const shape = (d) => withSubject({ ...d, front: d.cards[0]?.front ?? "", back: d.cards[0]?.back ?? "", study_type: "flashcards" })
 
 // --- student work (fake): versions, retry-safe creates and save faults, like backend/app/edit_versions.py ---
 const createKeys = new Map() // `${user}:${kind}:${key}` -> item id
@@ -362,7 +461,7 @@ const sameWords = (fields) => (item, body) => {
 }
 const deckWords = (cards) => (cards || []).map(({ id, front, back }) => ({ id, front, back }))
 function sameDeck(item, body) {
-  const fields = ["title", "tags", "is_public"].filter((field) => field in body)
+  const fields = ["title", "tags", "is_public", "subject_slug", "subtopic_slug"].filter((field) => field in body)
   const cardsSame = !("cards" in body) || JSON.stringify(deckWords(item.cards)) === JSON.stringify(deckWords(body.cards))
   return ("cards" in body || fields.length > 0) && cardsSame && fields.every((f) => JSON.stringify(item[f] ?? null) === JSON.stringify(body[f] ?? null))
 }
@@ -638,7 +737,7 @@ http
     if (url.pathname === "/public/reports" && req.method === "POST") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
-      const item = decks.find((d) => d.id === body.item_id && d.is_public)
+      const item = [...decks, ...notes, ...summaries].find((d) => d.id === body.item_id && d.is_public)
       if (!item) return send(res, 404, { detail: "We couldn't find that public item. It may have been removed." })
       if (!reports.some((r) => r.reporter === a.id && r.item_id === body.item_id && r.status === "open")) {
         reports.unshift({ id: randomUUID(), item_type: body.item_type, item_id: body.item_id, item_title: item.title,
@@ -758,54 +857,113 @@ http
         if ((kind === "note" && !String(body.title || "").trim()) || !String(body.content || "").trim()) return send(res, 422, { detail: "Title and content are required." })
         const created = createKeyOf(req)
         if (created.bad) return send(res, 422, BAD_KEY)
-        if (replayed(res, me, parts[0], created.key, store)) return
+        const subject = createSubject(body)
+        if (subject.problem) return send(res, 422, { detail: subject.problem })
+        if (replayed(res, me, parts[0], created.key, store, withSubject)) return
         const stamp = new Date().toISOString()
-        const item = { id: randomUUID(), created_at: stamp, updated_at: stamp, is_public: false, tags: [], study_type: kind, ...clientOnly(body), user_id: me.id, version: 1 }
+        const item = { id: randomUUID(), created_at: stamp, updated_at: stamp, is_public: false, tags: [], study_type: kind, ...clientOnly(body), ...subject, user_id: me.id, version: 1 }
         store.unshift(item)
         rememberKey(me, parts[0], created.key, item)
-        return send(res, 201, item)
+        return send(res, 201, withSubject(item))
       }
-      if (parts.length === 1) return send(res, 200, store.filter((n) => n.user_id === me.id).map(versioned))
+      if (parts.length === 1) return send(res, 200, store.filter((n) => n.user_id === me.id).map((n) => withSubject(versioned(n))))
       const item = store.find((n) => n.id === parts[1] && n.user_id === me.id)
       if (!item) return send(res, 404, req.method === "PUT" ? { detail: missing, error_code: "item_gone" } : { detail: missing })
       versioned(item)
       if (req.method === "PUT") {
         if (kind === "note" && "title" in body && !String(body.title || "").trim()) return send(res, 422, { detail: "Title can't be empty." })
-        if (versionClash(res, item, body, sameWords(["title", "content", "tags", "is_public"]))) return
-        Object.assign(item, clientOnly(body), { user_id: me.id, updated_at: new Date().toISOString(), version: item.version + 1 })
+        if ("subject_slug" in body) {
+          const sent = subjectProblem(body.subject_slug ?? null, "subtopic_slug" in body ? (body.subtopic_slug ?? null) : null)
+          if (sent) return send(res, 422, { detail: sent })
+        }
+        if (versionClash(res, item, body, sameWords(["title", "content", "tags", "is_public", "subject_slug", "subtopic_slug"]), withSubject)) return
+        const subject = updateSubject(body, item)
+        if (subject.problem) return send(res, 422, { detail: subject.problem })
+        Object.assign(item, clientOnly(body), subject.changes, { user_id: me.id, updated_at: new Date().toISOString(), version: item.version + 1 })
       }
       if (req.method === "DELETE") {
         store.splice(store.indexOf(item), 1)
         return send(res, 200, { message: `${kind === "note" ? "Note" : "Summary"} deleted successfully` })
       }
-      return send(res, 200, item)
+      return send(res, 200, withSubject(item))
     }
 
-    // --- shared search (fake data, shaped like backend/app/public_search.py) ---
+    // --- shared search (fake data, shaped like backend/app/public_search.py and the SQL function
+    // public_study_search in 2026_11_24_subjects.sql) ---
     // Signed in only. Each item carries the owner's CURRENT username and nothing else
-    // about them: no user id, no display name, no photo, no counts. The stored
-    // published_by is never shown or searched (it can hold an old name).
-    if (url.pathname === "/public/topics" || url.pathname === "/public/users") {
+    // about them: no user id, no display name, no photo. Counts are per subject or type,
+    // never per person. The stored published_by is never shown or searched.
+    if (url.pathname === "/public/search" || url.pathname === "/public/topics" || url.pathname === "/public/users") {
       if (!accountFor(req)) return send(res, 401, { detail: "Not authenticated" })
       const nameOf = (userId) => byId(userId)?.username || "student"
-      const sharedRows = (ownerIds) => [
-        ...notes.filter((n) => n.is_public).map((n) => ({ row: n, study_type: "note", text: [n.content || ""], preview: n.content || "" })),
-        ...decks.filter((d) => d.is_public).map((d) => ({ row: d, study_type: "flashcards", text: [d.cards[0]?.front || "", d.cards[0]?.back || ""], preview: d.cards[0]?.front || d.cards[0]?.back || "" })),
-        ...summaries.filter((s) => s.is_public).map((s) => ({ row: s, study_type: "summary", text: [s.content || ""], preview: s.content || "" })),
-      ]
-        .filter(({ row }) => (row.title || "") && (!ownerIds || ownerIds.has(row.user_id)))
-        .map(({ row, study_type, text, preview }) => ({
-          ownerId: row.user_id,
-          haystack: [row.title, ...text, ...(row.tags || [])].join(" ").toLowerCase(),
-          item: {
-            id: row.id, study_type, title: row.title, preview: clipPreview(preview), tags: row.tags || [],
-            username: nameOf(row.user_id), published_at: row.published_at || row.created_at, created_at: row.created_at,
+      const deckText = (d) => [d.cards[0]?.front || "", d.cards[0]?.back || "", ...(d.cards || []).flatMap((c) => [c.front || "", c.back || ""])]
+      /** One search, like public_study_search: words, subject pairs, filters, owners, page and counts. */
+      const searchShared = ({ text = "", subject = null, subtopic = null, type = null, ownerIds = null, limit = 30, offset = 0 }) => {
+        const wanted = text.split(/\s+/).filter(Boolean).join(" ").replace(/^#+/, "").trim().toLowerCase()
+        const pairs = subjectsMatching(wanted)
+        const matched = [
+          ...notes.filter((n) => n.is_public).map((n) => ({ row: n, study_type: "note", text: [n.content || ""], body: n.content || "" })),
+          ...decks.filter((d) => d.is_public).map((d) => ({ row: d, study_type: "flashcards", text: deckText(d), body: d.cards[0]?.front || d.cards[0]?.back || "" })),
+          ...summaries.filter((s) => s.is_public).map((s) => ({ row: s, study_type: "summary", text: [s.content || ""], body: s.content || "" })),
+        ]
+          .filter(({ row }) => String(row.title || "").trim() && (!ownerIds || ownerIds.has(row.user_id)))
+          .map((found) => ({ ...found, subject: found.row.subject_slug ?? null, subtopic: found.row.subtopic_slug ?? null }))
+          .filter(({ row, text: words, subject: s, subtopic: t }) =>
+            !wanted ||
+            [row.title, ...words, ...(row.tags || [])].join(" ").toLowerCase().includes(wanted) ||
+            pairs.some(([ps, pt]) => ps === s && (pt === null || pt === t)))
+        const tally = (rows, key) => {
+          const counts = new Map()
+          for (const r of rows) counts.set(r[key], (counts.get(r[key]) || 0) + 1)
+          return [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] === null) - (b[0] === null) || String(a[0]).localeCompare(String(b[0])))
+        }
+        const chosen = matched
+          .filter((r) => (!subject || r.subject === subject) && (!subtopic || r.subtopic === subtopic) && (!type || r.study_type === type))
+          .sort((a, b) => String(b.row.published_at || "").localeCompare(String(a.row.published_at || "")) || String(b.row.id).localeCompare(String(a.row.id)))
+        const ofType = matched.filter((r) => !type || r.study_type === type)
+        const inSubject = matched.filter((r) => (!subject || r.subject === subject) && (!subtopic || r.subtopic === subtopic))
+        return {
+          total: chosen.length,
+          rows: chosen.slice(offset, offset + limit).map(({ row, study_type, body: words, subject: s, subtopic: t }) => ({
+            ownerId: row.user_id,
+            item: {
+              id: row.id, study_type, title: row.title, preview: clipPreview(words), tags: row.tags || [],
+              subject_slug: s, subtopic_slug: t,
+              username: nameOf(row.user_id), published_at: row.published_at || row.created_at, created_at: row.created_at,
+            },
+          })),
+          facets: {
+            subjects: tally(ofType, "subject").map(([slug, count]) => ({ slug, count })),
+            subtopics: subject ? tally(ofType.filter((r) => r.subject === subject), "subtopic").map(([slug, count]) => ({ slug, count })) : [],
+            types: tally(inSubject, "study_type").map(([t, count]) => ({ type: t, count })),
           },
-        }))
-        .sort((a, b) => String(b.item.published_at).localeCompare(String(a.item.published_at)))
+        }
+      }
+      if (url.pathname === "/public/search") {
+        const q = url.searchParams.get("q") || ""
+        const subject = url.searchParams.get("subject")
+        const subtopic = url.searchParams.get("subtopic")
+        const type = url.searchParams.get("type")
+        const offset = Number(url.searchParams.get("offset") || 0)
+        const unprocessable = (msg) => send(res, 422, { detail: [{ loc: ["query"], msg, type: "value_error" }] })
+        if (q.length > 80) return unprocessable("String should have at most 80 characters")
+        if (type && !["note", "flashcards", "summary"].includes(type)) return unprocessable("Input should be 'note', 'flashcards' or 'summary'")
+        if (!Number.isInteger(offset) || offset < 0 || offset > 400) return unprocessable("Input should be between 0 and 400")
+        const notOnList = { detail: "That subject isn't on the list.", error_code: "unknown_subject" }
+        if (subject !== null && !SUBJECT_BY_SLUG.has(subject)) return send(res, 422, notOnList)
+        if (subtopic !== null && (subject === null || !SUBJECT_BY_SLUG.get(subject).subtopics.some((t) => t.slug === subtopic))) return send(res, 422, notOnList)
+        const answer = searchShared({ text: q, subject, subtopic, type, offset })
+        const following = offset + 30
+        return send(res, 200, {
+          items: answer.rows.map(({ item }) => item),
+          total: answer.total,
+          next_offset: following < answer.total && following <= 400 ? following : null,
+          facets: answer.facets,
+        })
+      }
       if (url.pathname === "/public/topics") {
-        const q = (url.searchParams.get("query") || "").trim().replace(/^#/, "").toLowerCase()
-        return send(res, 200, sharedRows().filter(({ haystack }) => !q || haystack.includes(q)).map(({ item }) => item).slice(0, 80))
+        // OVERLAP, like the backend: the first page of the same search.
+        return send(res, 200, searchShared({ text: url.searchParams.get("query") || "" }).rows.map(({ item }) => item))
       }
       // People: usernames only, 3+ letters, closest name first, never by how much someone shared.
       // Like the server, look the name up first, then fetch only those students' shared items,
@@ -814,12 +972,18 @@ http
       if (wanted.length < 3 || !/^[a-z0-9_]+$/.test(wanted)) return send(res, 200, [])
       const named = new Set([...accounts.values()].filter((a) => a.username.toLowerCase().includes(wanted)).map((a) => a.id))
       const byOwner = new Map()
-      for (const { ownerId, item } of sharedRows(named)) byOwner.set(ownerId, [...(byOwner.get(ownerId) || []), item])
+      for (const { ownerId, item } of searchShared({ ownerIds: named, limit: 500 }).rows) byOwner.set(ownerId, [...(byOwner.get(ownerId) || []), item])
       const rank = (name) => (name === wanted ? 0 : name.startsWith(wanted) ? 1 : 2)
       const users = [...byOwner.entries()]
         .map(([ownerId, items]) => ({ username: nameOf(ownerId), items: items.slice(0, 24) }))
         .sort((a, b) => rank(a.username.toLowerCase()) - rank(b.username.toLowerCase()) || a.username.toLowerCase().localeCompare(b.username.toLowerCase()))
       return send(res, 200, users.slice(0, 40))
+    }
+    // The subject list (no sign-in), like GET /subjects: the same file, ETag and 304.
+    if (url.pathname === "/subjects" && req.method === "GET") {
+      const cache = { etag: SUBJECTS_ETAG, "cache-control": "public, max-age=86400" }
+      if (String(req.headers["if-none-match"] || "").split(",").map((t) => t.trim()).includes(SUBJECTS_ETAG)) return send(res, 304, undefined, cache)
+      return send(res, 200, SUBJECT_LIST, cache)
     }
     if (url.pathname === "/robots.txt") {
       res.writeHead(200, { "content-type": "text/plain", "x-robots-tag": "noindex, nofollow" })
@@ -940,9 +1104,11 @@ http
       if (parts.length === 1 && req.method === "POST") {
         const created = createKeyOf(req)
         if (created.bad) return send(res, 422, BAD_KEY)
+        const subject = createSubject(body)
+        if (subject.problem) return send(res, 422, { detail: subject.problem })
         if (replayed(res, me, "flashcards", created.key, decks, shape)) return
         const stamp = new Date().toISOString()
-        const d = { id: randomUUID(), is_public: false, created_at: stamp, updated_at: stamp, tags: [], ...clientOnly(body), user_id: me.id, version: 1, progress_rev: 0 }
+        const d = { id: randomUUID(), is_public: false, created_at: stamp, updated_at: stamp, tags: [], ...clientOnly(body), ...subject, user_id: me.id, version: 1, progress_rev: 0 }
         d.cards = (d.cards || []).map((card) => ({ review: null, ...card }))
         decks.unshift(d)
         rememberKey(me, "flashcards", created.key, d)
@@ -967,8 +1133,14 @@ http
       if (!d) return send(res, 404, req.method === "PUT" ? { detail: "Flashcard not found", error_code: "item_gone" } : { detail: "Flashcard not found" })
       versioned(d)
       if (req.method === "PUT") {
+        if ("subject_slug" in body) {
+          const sent = subjectProblem(body.subject_slug ?? null, "subtopic_slug" in body ? (body.subtopic_slug ?? null) : null)
+          if (sent) return send(res, 422, { detail: sent })
+        }
         if (versionClash(res, d, body, sameDeck, shape)) return
-        const changes = clientOnly(body)
+        const subject = updateSubject(body, d)
+        if (subject.problem) return send(res, 422, { detail: subject.problem })
+        const changes = { ...clientOnly(body), ...subject.changes }
         if (Array.isArray(changes.cards) && typeof body.expected_version === "number") {
           // The editor never sends progress: keep what studying stored for each card id.
           const stored = new Map(d.cards.map((card) => [card.id, card.review ?? null]))

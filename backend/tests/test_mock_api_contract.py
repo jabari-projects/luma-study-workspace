@@ -218,3 +218,106 @@ def test_maintenance_status_and_break_answers_match(mock, work_api, phase):
     finally:
         maintenance.set_runtime(None)
         mock.call("POST", "/__test/maintenance", {"phase": "none"})
+
+
+# ---------- subjects and Discover search (2026_11_24_subjects) ----------
+
+SEARCH_KEYS = {"items", "total", "next_offset", "facets"}
+FACET_KEYS = {"subjects", "subtopics", "types"}
+SHARED_ITEM_KEYS = {"id", "study_type", "title", "preview", "tags", "subject_slug", "subtopic_slug", "username", "published_at", "created_at"}
+
+
+def test_subject_list_answers_match(mock, work_api):
+    real = work_api.get("/subjects")
+    fake = mock.call("GET", "/subjects")
+    assert (real.status_code, fake[0]) == (200, 200)
+    assert real.json() == fake[1]  # the fake API reads the backend's own file
+    fake_etag = _lower(fake[2])["etag"]
+    assert real.headers["etag"] == fake_etag
+    assert real.headers["cache-control"] == _lower(fake[2])["cache-control"]
+    assert work_api.get("/subjects", headers={"If-None-Match": fake_etag}).status_code == 304
+    assert mock.call("GET", "/subjects", headers={"If-None-Match": fake_etag})[0] == 304
+
+
+@pytest.mark.parametrize("kind", ["notes", "summaries", "flashcards"])
+def test_subject_fields_on_create_and_update_match(mock, work_api, kind):
+    bodies = {
+        "notes": {"title": "SYNTH subject", "content": "SYNTH words", "tags": []},
+        "summaries": {"title": "SYNTH subject", "content": "SYNTH words", "tags": []},
+        "flashcards": {"title": "SYNTH subject", "cards": [{"id": "c1", "front": "Q", "back": "A"}]},
+    }
+    body = {**bodies[kind], "subject_slug": "math", "subtopic_slug": "algebra"}
+    real = work_api.post(f"/{kind}", json=body)
+    fake = mock.call("POST", f"/{kind}", body)
+    assert (real.status_code, fake[0]) == (201, 201)
+    for answer in (real.json(), fake[1]):
+        assert (answer["subject_slug"], answer["subtopic_slug"]) == ("math", "algebra")
+
+    plain_real = work_api.post(f"/{kind}", json=bodies[kind]).json()
+    plain_fake = mock.call("POST", f"/{kind}", bodies[kind])[1]
+    assert plain_real["subject_slug"] is None and plain_fake["subject_slug"] is None
+    assert "subtopic_slug" in plain_real and "subtopic_slug" in plain_fake
+
+    for bad, message in (
+        ({"subject_slug": "astrology"}, "Pick a subject from the list."),
+        ({"subtopic_slug": "algebra"}, "Pick a subject first."),
+        ({"subject_slug": "biology", "subtopic_slug": "algebra"}, "Pick a subtopic from the list for this subject."),
+    ):
+        real_bad = work_api.post(f"/{kind}", json={**bodies[kind], **bad})
+        fake_bad = mock.call("POST", f"/{kind}", {**bodies[kind], **bad})
+        assert (real_bad.status_code, fake_bad[0]) == (422, 422)
+        assert real_bad.json()["detail"] == fake_bad[1]["detail"] == message
+
+    # Only a subject: the old subtopic is cleared on both.
+    move = {"subject_slug": "geometry-is-not-a-subject", "expected_version": 1}
+    assert work_api.put(f"/{kind}/{real.json()['id']}", json=move).status_code == 422
+    assert mock.call("PUT", f"/{kind}/{fake[1]['id']}", move)[0] == 422
+    move = {"subject_slug": "biology", "expected_version": 1}
+    real_moved = work_api.put(f"/{kind}/{real.json()['id']}", json=move)
+    fake_moved = mock.call("PUT", f"/{kind}/{fake[1]['id']}", move)
+    assert (real_moved.status_code, fake_moved[0]) == (200, 200)
+    for answer in (real_moved.json(), fake_moved[1]):
+        assert (answer["subject_slug"], answer["subtopic_slug"]) == ("biology", None)
+    # Only a subtopic: checked against the stored subject.
+    wrong = {"subtopic_slug": "algebra", "expected_version": 2}
+    real_wrong = work_api.put(f"/{kind}/{real.json()['id']}", json=wrong)
+    fake_wrong = mock.call("PUT", f"/{kind}/{fake[1]['id']}", wrong)
+    assert (real_wrong.status_code, fake_wrong[0]) == (422, 422)
+    assert real_wrong.json()["detail"] == fake_wrong[1]["detail"]
+    right = {"subtopic_slug": "cells", "expected_version": 2}
+    assert work_api.put(f"/{kind}/{real.json()['id']}", json=right).json()["subtopic_slug"] == "cells"
+    assert mock.call("PUT", f"/{kind}/{fake[1]['id']}", right)[1]["subtopic_slug"] == "cells"
+
+
+def test_discover_search_answers_match(mock, work_api, monkeypatch):
+    from app import public_search
+    from tests.test_security import FakeSupabase
+
+    monkeypatch.setattr(public_search, "get_supabase", lambda: FakeSupabase())
+    for params in ("", "?q=1%2B1", "?q=1%2B1&subject=math", "?subject=math&subtopic=algebra&type=flashcards"):
+        real = work_api.get(f"/public/search{params}")
+        fake = mock.call("GET", f"/public/search{params}")
+        assert (real.status_code, fake[0]) == (200, 200), params
+        assert _keys(real.json()) == _keys(fake[1]) == SEARCH_KEYS
+        assert _keys(real.json()["facets"]) == _keys(fake[1]["facets"]) == FACET_KEYS
+        for item in fake[1]["items"]:
+            assert set(item) == SHARED_ITEM_KEYS
+        for entry in fake[1]["facets"]["subjects"] + fake[1]["facets"]["subtopics"]:
+            assert set(entry) == {"slug", "count"}
+        for entry in fake[1]["facets"]["types"]:
+            assert set(entry) == {"type", "count"}
+    for params in ("?subject=astrology", "?subject=math&subtopic=cells", "?subtopic=algebra"):
+        real = work_api.get(f"/public/search{params}")
+        fake = mock.call("GET", f"/public/search{params}")
+        assert (real.status_code, fake[0]) == (422, 422), params
+        assert real.json() == fake[1] == {"detail": "That subject isn't on the list.", "error_code": "unknown_subject"}
+    for params in ("?type=quiz", "?offset=401", f"?q={'x' * 81}"):
+        assert work_api.get(f"/public/search{params}").status_code == 422
+        assert mock.call("GET", f"/public/search{params}")[0] == 422
+    # The fake API's seeded classmate makes the documented narrowing: 7, then 5, 4 and 2.
+    totals = [
+        mock.call("GET", f"/public/search{params}")[1]["total"]
+        for params in ("?q=1%2B1", "?q=1%2B1&subject=math", "?q=1%2B1&subject=math&subtopic=basic-math",
+                       "?q=1%2B1&subject=math&subtopic=basic-math&type=flashcards")
+    ]
+    assert totals == [7, 5, 4, 2]

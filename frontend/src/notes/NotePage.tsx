@@ -11,7 +11,10 @@ import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner, PageHeader } from "../ui/common"
 import type { Notice, StudyType } from "../ui/common"
 import { ShareControl } from "../ui/Share"
+import { forgetShareAsk, markJustMade, shouldAskToShare } from "../ui/shareAsk"
 import { sharedLine, useShareName } from "../ui/sharing"
+import { SubjectLine } from "../subjects/SubjectLine"
+import { choiceFrom, subjectBody } from "../subjects/subjects"
 import { createWithApi } from "../work/apiCreate"
 import { sameCards, sameText } from "../work/createOnce"
 import { DraftOffer } from "../work/DraftOffer"
@@ -27,6 +30,8 @@ type NoteItem = {
   title?: string
   content?: string
   tags?: string[]
+  subject_slug?: string | null
+  subtopic_slug?: string | null
   is_public?: boolean
   created_at?: string
   updated_at?: string | null
@@ -83,6 +88,8 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
   const [summaryKey, setSummaryKey] = useState(newCreateKey)
   const deckKey = useRef(newCreateKey())
   const [accountId] = useState(() => getTabAccountId())
+  // Made in this tab a moment ago: ask "Share with the crowd?" once (ui/shareAsk.ts).
+  const [askShare] = useState(() => shouldAskToShare(accountId, studyType, itemId))
   const { headers: sessionHeaders } = useEditSession()
   const heldSummary = useMemo<HeldSummary | null>(() => (unsavedSummary ? { made: unsavedSummary, key: summaryKey } : null), [unsavedSummary, summaryKey])
   const summaryWork = useExplicitWork<HeldSummary>({
@@ -108,6 +115,9 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
     }
   }, [])
 
+  // Asked once: a reload or a later visit never asks again.
+  useEffect(() => forgetShareAsk(accountId, studyType, itemId), [accountId, studyType, itemId])
+
   useEffect(() => {
     if (summaryNotice) summaryNoticeRef.current?.scrollIntoView?.({ block: "nearest" })
   }, [summaryNotice])
@@ -128,6 +138,8 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
   const item = state.id === itemId ? state.item : null
   const content = typeof item?.content === "string" ? item.content : ""
   const title = (typeof item?.title === "string" && item.title.trim()) || "Untitled"
+  // A deck or summary made from this note takes its subject too.
+  const subject = subjectBody(choiceFrom(item?.subject_slug, item?.subtopic_slug))
 
   const found = useMemo(() => findCardsInNote(content), [content])
   const cards = useMemo(
@@ -164,6 +176,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
       const body = {
         title: `${title} cards`.slice(0, 200),
         tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
+        ...subject,
         cards: kept.map((card) => ({ id: newCardId(), front: card.front, back: card.back, review: null })),
       }
       const deck = await createWithApi<{ id: string; version: number; title?: string; cards?: unknown }>(
@@ -175,6 +188,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
       )
       deckKey.current = newCreateKey()
       if ((getTabAccountId() ?? undefined) !== accountId) return
+      markJustMade(accountId, "flashcards", deck.id)
       toast.success("Your deck is ready!")
       navigate(`/flashcards/${deck.id}`)
     } catch (error: unknown) {
@@ -215,6 +229,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
         title: (made.title || `Summary of ${title}`).slice(0, 200),
         content: made.summary,
         tags: Array.isArray(item?.tags) ? item!.tags!.slice(0, 5) : [],
+        ...subject,
       }
       const summary = await createWithApi<{ id: string; version: number; title?: string; content?: string }>(
         "/summaries",
@@ -235,6 +250,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
       setUnsavedSummary(null)
       setConfirmingSummary(false)
       if ((getTabAccountId() ?? undefined) !== accountId) return
+      markJustMade(accountId, "summary", summary.id)
       toast.success("Your summary is ready!")
       // Saved and confirmed, so leaving needs no "are you sure?".
       navigate(summaryPath, { state: LEAVE_ANYWAY_STATE })
@@ -297,6 +313,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
           </Link>
           <p className="kicker">{`${kindLabel} · ${item.is_public ? "Shared" : "Private"}`}</p>
           <h1>{title}</h1>
+          <SubjectLine subject={item.subject_slug} subtopic={item.subtopic_slug} />
           <p className="lede">
             {[friendlyDate(item.updated_at ?? item.created_at), item.is_public ? sharedLine(shareName) : ""]
               .filter(Boolean)
@@ -314,6 +331,7 @@ function NoteView({ endpoint, studyType, backTo, kindLabel }: NotePageProps) {
             item={item}
             onUpdated={(updated) => setState({ id: itemId, item: updated, error: null })}
             setNotice={setNotice}
+            askNow={askShare}
           />
           <button type="button" className="ghost-button danger-text" onClick={() => setConfirmingDelete(true)}>
             <Trash weight="bold" aria-hidden="true" /> Delete

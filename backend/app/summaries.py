@@ -14,19 +14,23 @@ from .edit_versions import (
     work_route,
 )
 from .publishing import apply_update_publish_rules, build_create_publish_fields
+from .subjects import SUBJECT_FIELDS, check_sent_subject, checked_create_pair, subject_changes
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/summaries", tags=["summaries"])
 TABLE_NAME = "summaries"
 STUDY_TYPE = "summary"
 # What a student edits. A retried save whose first copy landed already matches on these.
-EDIT_FIELDS = ("title", "content", "tags", "is_public")
+EDIT_FIELDS = ("title", "content", "tags", "is_public", *SUBJECT_FIELDS)
 
 
 class SummaryCreateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=200)
     content: str = Field(..., min_length=1)
     tags: list[str] = Field(default_factory=list)
+    # A subject and subtopic from app/data/subjects.json (both optional; old websites never send them).
+    subject_slug: Optional[str] = Field(default=None, max_length=40)
+    subtopic_slug: Optional[str] = Field(default=None, max_length=40)
     # Accepted so the current frontend keeps working, but ignored: new items
     # are always private and the server sets the publish metadata.
     is_public: bool = False
@@ -40,6 +44,9 @@ class SummaryUpdateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=200)
     content: Optional[str] = Field(default=None, min_length=1)
     tags: Optional[list[str]] = None
+    # A subject and subtopic from app/data/subjects.json (both optional; old websites never send them).
+    subject_slug: Optional[str] = Field(default=None, max_length=40)
+    subtopic_slug: Optional[str] = Field(default=None, max_length=40)
     is_public: Optional[bool] = None
     published_at: Optional[str] = None
     published_by: Optional[str] = None
@@ -55,6 +62,8 @@ class SummaryResponse(BaseModel):
     title: str = ""
     content: str
     tags: list[str] = Field(default_factory=list)
+    subject_slug: Optional[str] = None
+    subtopic_slug: Optional[str] = None
     is_public: bool = False
     published_at: Optional[str] = None
     published_by: Optional[str] = None
@@ -75,6 +84,8 @@ def _normalize_summary_row(row: dict) -> dict:
         "title": row.get("title") or "",
         "content": row.get("content") or "",
         "tags": row.get("tags") or [],
+        "subject_slug": row.get("subject_slug"),
+        "subtopic_slug": row.get("subtopic_slug"),
         "is_public": bool(row.get("is_public", False)),
         "published_at": row.get("published_at"),
         "published_by": row.get("published_by"),
@@ -117,6 +128,7 @@ def create_summary(
             "title": payload.title,
             "content": payload.content,
             "tags": payload.tags,
+            **checked_create_pair(payload.subject_slug, payload.subtopic_slug),
             **build_create_publish_fields(STUDY_TYPE),
         },
         parse_idempotency_key(idempotency_key),
@@ -152,8 +164,11 @@ def update_summary(summary_id: str, payload: SummaryUpdateRequest, user_id: str 
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
 
+    check_sent_subject(updates)
+
     def prepare(row: dict) -> dict:
-        return apply_update_publish_rules(row, dict(updates), user_id=user_id, study_type=STUDY_TYPE)
+        changes = subject_changes(dict(updates), row.get("subject_slug"))
+        return apply_update_publish_rules(row, changes, user_id=user_id, study_type=STUDY_TYPE)
 
     row = cas_update(
         get_supabase(),
