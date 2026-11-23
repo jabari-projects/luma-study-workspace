@@ -1,7 +1,7 @@
 // How this tab learns about a maintenance break, without endless polling (owner rule):
 // - once when the app opens;
-// - when any API answer carries a different X-Luma-Maintenance-Rev than we know
-//   (every answer from the server has it, errors included);
+// - when any API answer carries a newer X-Luma-Maintenance-Rev than we know (every answer
+//   from a server that has read the break state has it, errors included);
 // - on focus, or when the tab is shown again, if the last check is over a minute old.
 // When a read says there is no break, saves still waiting on the break message try once.
 // Imported once from main.tsx. Nothing here ever navigates, reloads or signs anyone out.

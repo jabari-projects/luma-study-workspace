@@ -49,6 +49,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user_id, get_jwt_secret_key, require_admin
+from .deadline import AI_NOTES_DEADLINE_SECONDS, AI_TRANSCRIBE_DEADLINE_SECONDS, FETCH_DEADLINE_SECONDS
 from .supabase_client import get_supabase, is_supabase_configured
 
 logger = logging.getLogger(__name__)
@@ -93,10 +94,16 @@ INSTANCES_TABLE = "maintenance_instances"
 JOBS_TABLE = "maintenance_jobs"
 LOG_TABLE = "maintenance_log"
 
-# Row counts kept at activation and compared before reopening (numbers only).
-COUNT_TABLES = ("users", "profiles", "notes", "summaries", "flashcards", "study_sessions")
+# Row counts kept at activation and compared before reopening (numbers only, no content).
+# Every table of student work and accounts: transcripts and the feedback ballots too.
+COUNT_TABLES = (
+    "users", "profiles", "notes", "summaries", "flashcards", "study_sessions", "transcripts",
+    "feedback_responses", "feedback_answers",
+)
 # The "database" reopen check reads no rows from each of these.
 CORE_TABLES = COUNT_TABLES
+# The column the "database" check probes (limit 0) where a table has no "id".
+PROBE_COLUMNS: dict[str, tuple[str, ...]] = {"profiles": ("user_id",), "feedback_answers": ("response_id",)}
 # The "schema" reopen check: these columns must exist. The student-work columns come from
 # 2026_11_19_student_work_versions.sql: without them every save fails, so Luma must not reopen.
 REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
@@ -104,6 +111,9 @@ REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
     "summaries": ("id", "user_id", "version", "create_key"),
     "flashcards": ("id", "user_id", "version", "create_key", "progress_rev"),
     "study_sessions": ("id", "user_id", "version", "create_key"),
+    "transcripts": ("id", "user_id"),
+    "feedback_responses": ("id", "poll_id"),
+    "feedback_answers": ("response_id", "poll_id"),
     STATE_TABLE: (
         "id", "phase", "rev", "reason", "note", "start_at", "estimated_end_at", "drain_started_at",
         "grace_ends_at", "activated_at", "backup_ref", "counts_at_activation", "checks",
@@ -142,16 +152,18 @@ OTHER_WRITE = "other_write"
 READ = "read"
 EDIT_SESSION = "edit_session"
 
-ALWAYS_OPEN_GETS = frozenset({"/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me", "/me/profile"})
+ALWAYS_OPEN_GETS = frozenset({"/maintenance/status", "/health", "/health/ready", "/robots.txt", "/me/profile"})
 ADMIN_PREFIX = "/admin/maintenance"
 # POST /login (not /auth/login: that path doesn't exist) so an admin can sign in during a break.
 LOGIN_PATH = "/login"
+# Each job's deadline is the request's own deadline (app/deadline.py), so a job row never
+# turns "stale" while its request can still be running.
 AI_PATHS = {
-    "/api/generate-notes": ("ai_image", 100),
-    "/api/notes-from-text": ("ai_notes", 100),
-    "/api/summarize": ("ai_summary", 100),
-    "/api/transcribe": ("ai_transcribe", 150),
-    "/api/import/link": ("link_import", 20),
+    "/api/generate-notes": ("ai_image", math.ceil(AI_NOTES_DEADLINE_SECONDS)),
+    "/api/notes-from-text": ("ai_notes", math.ceil(AI_NOTES_DEADLINE_SECONDS)),
+    "/api/summarize": ("ai_summary", math.ceil(AI_NOTES_DEADLINE_SECONDS)),
+    "/api/transcribe": ("ai_transcribe", math.ceil(AI_TRANSCRIBE_DEADLINE_SECONDS)),
+    "/api/import/link": ("link_import", math.ceil(FETCH_DEADLINE_SECONDS)),
 }
 UPLOAD_PATHS = ("/me/avatar", "/me/theme-image")
 CONTENT_PREFIXES = ("/notes", "/summaries", "/flashcards", "/study-sessions", "/transcripts")
@@ -697,19 +709,12 @@ def set_runtime(runtime: Optional[MaintenanceRuntime]) -> None:
         _runtime = runtime
 
 
-def writes_paused() -> bool:
-    """True during the break (or before this process could read the break state). Routes
-    that stay open during a break (like log in) use it to skip optional writes. Uses the
-    cached state only: no database call."""
-    runtime = get_runtime()
-    return (not runtime.state_known) or runtime.state["phase"] in ("active", "checking")
-
-
 def ordinary_writes_allowed() -> bool:
     """True only when the gate would let an ordinary write (OTHER_WRITE) through right now.
-    A read that also tidies up (the feedback poll's monthly drafts and voter-key cleanup) checks
-    it, so a read never writes once writes are refused: after the grace time, during the break,
-    or before this process could read the break state. Cached state only: no database call."""
+    Routes that stay open (log in) or reads that also tidy up (the feedback poll's monthly
+    drafts and voter-key cleanup) check it before an optional write, so nothing writes once
+    writes are refused: after the grace time, during the break, or before this process could
+    read the break state. Cached state only: no database call."""
     runtime = get_runtime()
     return runtime.state_known and decide(runtime.state, OTHER_WRITE, None, runtime.clock()) is None
 
@@ -794,10 +799,16 @@ class MaintenanceMiddleware:
             response.headers["Cache-Control"] = "no-store"
             await response(scope, receive, send)
             return
-        phase_headers = [
-            (b"x-luma-maintenance", state["phase"].encode()),
-            (b"x-luma-maintenance-rev", str(int(state.get("rev") or 0)).encode()),
-        ]
+        # A process that hasn't read the break state yet must not claim "none, rev 0": a tab
+        # would think the break is over. It sends no phase headers until it knows.
+        phase_headers = (
+            [
+                (b"x-luma-maintenance", state["phase"].encode()),
+                (b"x-luma-maintenance-rev", str(int(state.get("rev") or 0)).encode()),
+            ]
+            if runtime.state_known
+            else []
+        )
         if blocked is not None:
             code, message = blocked
             retry = WEBHOOK_RETRY_AFTER_SECONDS if group == WEBHOOK else retry_after_seconds(state, now)
@@ -839,6 +850,17 @@ maintenance_router = APIRouter(tags=["maintenance"])
 async def maintenance_status():
     runtime = get_runtime()
     state = await runtime.current_state()
+    if not runtime.state_known:
+        # Never answer a default "none" while a break might be on.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": UNAVAILABLE_MESSAGE,
+                "error_code": "maintenance_unavailable",
+                "retry_after": UNKNOWN_STATE_RETRY_SECONDS,
+            },
+            headers={"Retry-After": str(UNKNOWN_STATE_RETRY_SECONDS), "Cache-Control": "no-store"},
+        )
     return JSONResponse(content=public_status(state, runtime.clock()), headers={"Cache-Control": "no-store"})
 
 
@@ -1224,7 +1246,7 @@ def run_checks(runtime: MaintenanceRuntime, state: dict, counts_drop_reason: Opt
     failed_tables = []
     for table in CORE_TABLES:
         try:
-            runtime.call(lambda t=table: runtime.store.probe(t, ("id",) if t != "profiles" else ("user_id",)))
+            runtime.call(lambda t=table: runtime.store.probe(t, PROBE_COLUMNS.get(t, ("id",))))
         except MaintenanceUnavailable:
             failed_tables.append(table)
     results.append({"name": "database", "passed": not failed_tables, "detail": {"failed_tables": failed_tables}})

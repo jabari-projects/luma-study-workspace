@@ -49,10 +49,13 @@ export function parseStatus(value: unknown): MaintenanceStatus | null {
   }
 }
 
-/** A response told us the state is at `headerRev`: do we need to read the status again? */
+/**
+ * A response told us the state is at `headerRev`: do we need to read the status again?
+ * The rev only ever goes up, so a lower one (a server that hasn't caught up yet) is ignored.
+ */
 export function needsRefresh(known: MaintenanceStatus | null, headerRev: number | null, checking: boolean): boolean {
   if (headerRev === null || Number.isNaN(headerRev) || checking) return false
-  return known === null || headerRev !== known.rev
+  return known === null || headerRev > known.rev
 }
 
 /** Re-read on focus or when the tab comes back, but not more than once a minute. */

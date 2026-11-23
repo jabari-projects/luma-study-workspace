@@ -67,6 +67,24 @@ const fail = (label, why) => {
 }
 const info = (label) => results.push(`INFO  ${label}`)
 const check = (label, condition, why) => (condition ? pass(label) : fail(label, why))
+
+// The file sets lock_timeout and statement_timeout right after begin (fail fast instead of
+// queueing every save behind a lock), and only for its own transaction: nothing leaks out.
+const startsWithTimeouts = (sql) => {
+  const statements = sql
+    .split(/\r?\n/)
+    .map((line) => line.split("--")[0])
+    .join(" ")
+    .split(";")
+    .map((s) => s.trim().replace(/\s+/g, " ").toLowerCase())
+    .filter(Boolean)
+  return statements[0] === "begin" && statements[1] === "set local lock_timeout = '5s'" && statements[2] === "set local statement_timeout = '120s'"
+}
+const timeoutsAfter = async (db) => {
+  const lock = (await db.query("show lock_timeout")).rows[0].lock_timeout
+  const stmt = (await db.query("show statement_timeout")).rows[0].statement_timeout
+  return { lock, stmt }
+}
 const firstLine = (error) => String(error?.message ?? error).split("\n")[0].slice(0, 220)
 const step = async (label, fn) => {
   try {
@@ -285,6 +303,11 @@ await step("apply migration (first run)", () => db.exec(migration))
 const afterFirstSchema = await schemaSnapshot(db)
 const afterFirstData = await dataSnapshot(db, await columnsNow(db))
 await step("apply migration again (idempotent second run)", () => db.exec(migration))
+check("the file sets lock_timeout 5s and statement_timeout 120s right after begin", startsWithTimeouts(migration))
+{
+  const t = await timeoutsAfter(db)
+  check("the timeouts stay inside the file's transaction (nothing leaks to the session)", t.lock === "0" && t.stmt === "0", JSON.stringify(t))
+}
 check("second run changes no schema object", same(afterFirstSchema, await schemaSnapshot(db)))
 check("second run changes no row", same(afterFirstData, await dataSnapshot(db, await columnsNow(db))))
 
@@ -378,6 +401,21 @@ try {
   /* already rolled back */
 }
 check("after the failure nothing changed (all or nothing)", same(freshBefore, await schemaSnapshot(fresh)))
+
+// (g) drift: production got a "version" column by hand with another type. "if not exists"
+// would skip it, so the file's guard must stop and roll everything back.
+const drifted = await buildReplica()
+await applyReleaseBefore(drifted)
+await drifted.exec("alter table public.notes add column version integer")
+const driftedBefore = await schemaSnapshot(drifted)
+await rejects("a hand-made notes.version of another type stops the file", null, () => drifted.exec(migration))
+try {
+  await drifted.exec("rollback")
+} catch {
+  /* already rolled back */
+}
+check("after the drift stop nothing changed (all or nothing)", same(driftedBefore, await schemaSnapshot(drifted)))
+await drifted.close()
 
 await db.close()
 await fresh.close()

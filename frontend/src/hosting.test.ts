@@ -99,6 +99,17 @@ describe("vercel.json", () => {
     assert.ok(matches(rewrite.source, "/dashboard"))
     assert.ok(matches(rewrite.source, "/"))
   })
+
+  // After a deploy, a page opened earlier may ask for a code file that is gone. It must get a
+  // real 404 (so the page can say "Luma was updated, reload"), never index.html with a 200.
+  it("never answers a missing /assets/ file with the app page", () => {
+    for (const rewrite of vercel.rewrites ?? []) {
+      assert.ok(!matches(rewrite.source, "/assets/index-old123.js"), rewrite.source)
+      assert.ok(!matches(rewrite.source, "/assets/pdf.worker.min-old.mjs"), rewrite.source)
+    }
+    const rewrite = (vercel.rewrites ?? []).find((r) => r.destination === "/index.html")
+    assert.ok(rewrite && matches(rewrite.source, "/assets-help"), "only the /assets/ folder is left out")
+  })
 })
 
 describe("public/robots.txt", () => {

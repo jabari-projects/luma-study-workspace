@@ -903,15 +903,30 @@ def test_limiter_prunes_expired_keys_globally():
     assert list(limiter._events) == ["fresh"]
 
 
-@pytest.mark.parametrize("phase, rewritten", [("active", False), ("checking", False), ("draining", True), ("none", True)])
-def test_login_during_a_break_does_not_rewrite_the_password(api, db, phase, rewritten):
-    """Log in stays open during a break, but must not write to users then."""
+@pytest.mark.parametrize(
+    "phase, grace_minutes, rewritten",
+    [
+        ("active", None, False),
+        ("checking", None, False),
+        ("draining", 10, True),  # still in the grace time: ordinary writes go through
+        ("draining", -1, False),  # after the grace time (when the backup is taken): no writes
+        ("none", None, True),
+    ],
+)
+def test_login_during_a_break_does_not_rewrite_the_password(api, db, phase, grace_minutes, rewritten):
+    """Log in stays open during a break, but must not write to users once writes are refused."""
+    from datetime import timedelta
+
     from app import maintenance
     from tests.maintenance_fakes import FakeClock, FakeMaintenanceDB, make_runtime
 
+    clock = FakeClock()
     mdb = FakeMaintenanceDB()
     mdb.state["phase"] = phase
-    maintenance.set_runtime(make_runtime(mdb, FakeClock(), "instance-login"))
+    if grace_minutes is not None:
+        mdb.state["drain_started_at"] = maintenance.iso(clock() - timedelta(minutes=20))
+        mdb.state["grace_ends_at"] = maintenance.iso(clock() + timedelta(minutes=grace_minutes))
+    maintenance.set_runtime(make_runtime(mdb, clock, "instance-login"))
     try:
         db.user(password="short1")  # an old plaintext password that would be upgraded
         response = login(api, password="short1")

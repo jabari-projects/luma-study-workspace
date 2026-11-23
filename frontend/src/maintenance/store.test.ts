@@ -64,9 +64,11 @@ describe("parseStatus", () => {
 })
 
 describe("when to check again", () => {
-  it("checks when a response carries a different rev", () => {
+  it("checks when a response carries a newer rev, never an older one", () => {
     assert.equal(needsRefresh(base, 5, false), true)
     assert.equal(needsRefresh(base, 4, false), false)
+    assert.equal(needsRefresh(base, 3, false), false)
+    assert.equal(needsRefresh(base, 0, false), false)
     assert.equal(needsRefresh(null, 1, false), true)
   })
 

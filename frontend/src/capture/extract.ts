@@ -8,7 +8,7 @@ export const MAX_FILE_BYTES = 15 * 1024 * 1024
 const MAX_PDF_PAGES = 60
 
 export class ExtractError extends Error {
-  readonly code: "too_big" | "type" | "scanned" | "locked" | "empty" | "broken"
+  readonly code: "too_big" | "type" | "scanned" | "locked" | "empty" | "broken" | "updated"
   constructor(code: ExtractError["code"], message: string) {
     super(message)
     this.code = code
@@ -74,12 +74,27 @@ async function readPlainText(file: File): Promise<string> {
   return text
 }
 
+export const UPDATED_MESSAGE = "Luma was updated while this page was open. Reload the page, then try again."
+
+/**
+ * Loads a part of Luma that is only fetched when needed (PDF and Word readers). After a new
+ * version goes live, a page opened before it asks for a file that no longer exists: say so
+ * plainly instead of blaming the student's file.
+ */
+async function loadPart<T>(load: () => Promise<T>): Promise<T> {
+  try {
+    return await load()
+  } catch {
+    throw new ExtractError("updated", UPDATED_MESSAGE)
+  }
+}
+
 type MammothApi = { extractRawText: (input: { arrayBuffer: ArrayBuffer }) => Promise<{ value: string }> }
 
 async function readDocx(file: File): Promise<string> {
+  const loaded = (await loadPart(() => import("mammoth/mammoth.browser.min.js"))) as unknown as { default?: MammothApi } & MammothApi
+  const mammoth = loaded.default ?? loaded
   try {
-    const loaded = (await import("mammoth/mammoth.browser.min.js")) as unknown as { default?: MammothApi } & MammothApi
-    const mammoth = loaded.default ?? loaded
     const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
     return result.value
   } catch {
@@ -89,8 +104,8 @@ async function readDocx(file: File): Promise<string> {
 
 async function readPdf(file: File, onProgress: Progress) {
   onProgress("Opening your PDF...")
-  const pdfjs = await import("pdfjs-dist")
-  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default
+  const pdfjs = await loadPart(() => import("pdfjs-dist"))
+  const workerUrl = (await loadPart(() => import("pdfjs-dist/build/pdf.worker.min.mjs?url"))).default
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
   const loadingTask = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) })

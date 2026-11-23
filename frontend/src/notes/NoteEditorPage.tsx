@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { ArrowLeft, Lightbulb } from "@phosphor-icons/react"
 
+import { readLegacyNoteDraft, removeLegacyNoteDraft } from "../accounts"
 import { api, getErrorMessage, getTabAccountId } from "../api"
 import { NoticeBanner } from "../ui/common"
 import type { Notice } from "../ui/common"
@@ -19,6 +20,9 @@ import { NOTES_HUB, defaultNoteTitle, parseTags } from "./paths"
 type Fields = { title: string; content: string; tags: string }
 type NoteRow = { id: string; title?: string; content?: string; tags?: string[]; version?: number }
 type Kind = "note" | "summary"
+
+/** The offer for a new note an earlier version kept on this device. */
+const LEGACY_OFFER = "We found a note you did not save on this device. Luma now keeps unsaved words only in this tab, so save it soon."
 
 /** Autosave waits this long after the last change (B.4). */
 const AUTOSAVE_MS = 1500
@@ -64,13 +68,38 @@ export function NoteEditorPage({ kind = "note" }: { kind?: Kind }) {
   return <LoadNote key={itemId} kind={kind} accountId={accountId} itemId={itemId} />
 }
 
+function deviceStore(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A new note an earlier version of Luma kept on this device (accounts.ts, until 2027-02-01),
+ * offered like a tab draft. The device copy is only removed once the note is saved, or when the
+ * student throws it away: using it alone keeps the copy, so a closed tab can't lose it.
+ */
+function legacyOffer(kind: Kind, accountId: string | null, createKey: string): Draft<Fields> | null {
+  if (kind !== "note" || !accountId || getTabAccountId() !== accountId) return null
+  const data = readLegacyNoteDraft(deviceStore(), accountId)
+  if (!data) return null
+  return { v: 1, accountId, kind, itemId: "new", baseVersion: null, createKey, savedAt: Date.now(), data }
+}
+
 function NewNote({ kind, accountId }: { kind: Kind; accountId: string | null }) {
   // A draft from earlier in this tab keeps its Idempotency-Key, so a reload and retry can't make a copy.
   const [start, setStart] = useState(() => {
     const draft = readDraft<Fields>(sessionDraftStore(), getTabAccountId(), accountId, kind, "new")
     const usable = draft && isFields(draft.data) ? draft : null
-    return { round: 0, draft: usable, createKey: usable?.createKey ?? newCreateKey() }
+    const createKey = usable?.createKey ?? newCreateKey()
+    const legacy = usable ? null : legacyOffer(kind, accountId, createKey)
+    return { round: 0, draft: usable ?? legacy, legacy: legacy !== null, createKey }
   })
+  const dropLegacy = () => {
+    if (start.legacy && accountId) removeLegacyNoteDraft(deviceStore(), accountId)
+  }
   return (
     <NoteForm
       key={start.round}
@@ -81,9 +110,12 @@ function NewNote({ kind, accountId }: { kind: Kind; accountId: string | null }) 
       createKey={start.createKey}
       initial={{ title: defaultNoteTitle(), content: "", tags: "" }}
       offer={start.draft}
+      offerText={start.legacy ? LEGACY_OFFER : undefined}
+      onCreated={dropLegacy}
       onThrowAwayOffer={() => {
+        dropLegacy()
         clearDraft(sessionDraftStore(), accountId, kind, "new")
-        setStart((current) => ({ round: current.round + 1, draft: null, createKey: newCreateKey() }))
+        setStart((current) => ({ round: current.round + 1, draft: null, legacy: false, createKey: newCreateKey() }))
       }}
     />
   )
@@ -194,6 +226,8 @@ function NoteForm({
   initial,
   currentRow,
   offer,
+  offerText,
+  onCreated,
   onThrowAwayOffer,
   savedAt = null,
 }: {
@@ -207,6 +241,9 @@ function NoteForm({
   /** The row as loaded (edit pages), for a draft that was based on an older version. */
   currentRow?: NoteRow
   offer: Draft<Fields> | null
+  offerText?: string
+  /** A new note made from the offered words was saved (its first create succeeded). */
+  onCreated?: () => void
   onThrowAwayOffer?: () => void
 }) {
   const isNew = itemId === null
@@ -224,6 +261,8 @@ function NoteForm({
     offer && (offer.baseVersion ?? null) !== (version ?? null) ? offer.data : null,
   )
   const [copyBusy, setCopyBusy] = useState(false)
+  // The offered words were taken (Use them), so saving this note saves them.
+  const usedOffer = useRef(false)
   const copyKey = useRef<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const { title, content, tags } = fields
@@ -288,6 +327,7 @@ function NoteForm({
     const saved = await autosave.flush({ allowCreate: true })
     setSaving(false)
     if (!saved) return // The save line says why, and the words stay here.
+    if (isNew && usedOffer.current) onCreated?.()
     // Another account took over this tab while saving: the note is saved, but don't open it here.
     if ((getTabAccountId() ?? null) !== accountId) return
     if (isNew) {
@@ -369,10 +409,12 @@ function NoteForm({
       {mine !== null ? <YourVersionBox text={mine} onClose={() => setMine(null)} /> : null}
       {pendingOffer ? (
         <DraftOffer
+          text={offerText}
           onUse={() => {
             setFields(pendingOffer.data)
             autosave.change(pendingOffer.data)
             setPendingOffer(null)
+            usedOffer.current = true
           }}
           onThrowAway={() => {
             setPendingOffer(null)

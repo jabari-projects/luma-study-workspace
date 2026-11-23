@@ -167,8 +167,19 @@ def test_a_new_process_whose_first_read_fails_keeps_reads_open_and_refuses_chang
         w = World(db=db, clock=runtime.clock, rt=runtime, who={"id": None}, client=None)
         gate, _ = make_gate(w)
         assert not runtime.state_known
-        assert gate.get("/notes").status_code == 200  # reading stays open
-        assert gate.get("/maintenance/status").status_code == 200
+        read = gate.get("/notes")
+        assert read.status_code == 200  # reading stays open
+        # ...but it never claims "no break, rev 0" while it doesn't know.
+        assert "x-luma-maintenance" not in read.headers and "x-luma-maintenance-rev" not in read.headers
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        status_app = FastAPI()
+        status_app.include_router(maintenance.maintenance_router)
+        status = TestClient(status_app).get("/maintenance/status")
+        assert status.status_code == 503 and status.json()["error_code"] == "maintenance_unavailable"
+        assert status.headers["Retry-After"] == str(maintenance.UNKNOWN_STATE_RETRY_SECONDS)
+        assert "x-luma-maintenance" not in status.headers
         for method, path in [
             ("PUT", "/notes/n1"),
             ("POST", "/notes"),
@@ -197,6 +208,7 @@ def test_a_new_process_whose_first_read_fails_keeps_reads_open_and_refuses_chang
         db.state["rev"] = int(db.state.get("rev") or 0) + 1
         runtime.clock.advance(seconds=10)
         assert gate.put("/notes/n1").status_code == 200
+        assert gate.get("/notes").headers["x-luma-maintenance"] == "none"
     finally:
         maintenance.set_runtime(None)
 

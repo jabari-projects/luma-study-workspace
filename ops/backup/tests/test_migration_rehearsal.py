@@ -22,7 +22,7 @@ from luma_backup.pgtools import PgTools, free_port
 PASSPHRASE = "rehearsal-passphrase-" + secrets.token_hex(8)
 KEY = "sb_secret_rehearsal_" + secrets.token_hex(8)
 
-# This release's files, in the order the owner runs them (docs/deployment-checklist.md step 6).
+# This release's files, in the order the owner runs them (docs/deployment-checklist.md R3 and step 6).
 RELEASE = ["2026_11_18_monthly_feedback.sql", "2026_11_19_maintenance_state.sql",
            "2026_11_19_student_work_versions.sql"]
 FEEDBACK_TABLES = {"feedback_polls", "feedback_questions", "feedback_responses", "feedback_answers",

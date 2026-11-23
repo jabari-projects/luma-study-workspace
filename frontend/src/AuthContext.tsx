@@ -29,7 +29,7 @@ import {
   chatbotAccountId as findChatbotAccountId,
   orderedAccounts,
   pickActive,
-  removeLegacyNoteDrafts,
+  pruneLegacyNoteDrafts,
   updateUser,
 } from "./accounts"
 import type { AccountBook } from "./accounts"
@@ -49,12 +49,13 @@ type StartState = AuthState & { lostBinding: boolean }
 // A reloaded or restored tab whose account was signed out while it was asleep shows the
 // "signed out" notice instead of quietly opening another account.
 function initialState(): StartState {
+  const book = readBook()
   try {
-    removeLegacyNoteDrafts(window.localStorage)
+    // Old device drafts of saved accounts stay until New note offers them (accounts.ts).
+    pruneLegacyNoteDrafts(window.localStorage, new Set(Object.keys(book.accounts)))
   } catch {
     // Storage blocked: nothing old to remove.
   }
-  const book = readBook()
   const saved = getTabAccountId()
   const { id, lostBinding } = pickActive(book, saved, saved !== null)
   if (id !== saved) {

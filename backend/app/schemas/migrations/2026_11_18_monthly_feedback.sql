@@ -28,6 +28,12 @@
 
 begin;
 
+-- Fail fast instead of queueing every student's save behind a lock: if another session holds
+-- one of these tables, or a step runs long, the whole file rolls back with nothing changed.
+-- It is safe to run again (docs/deployment-checklist.md).
+set local lock_timeout = '5s';
+set local statement_timeout = '120s';
+
 create table if not exists public.feedback_polls (
   id uuid primary key default gen_random_uuid(),
   period_month date not null check (extract(day from period_month) = 1),

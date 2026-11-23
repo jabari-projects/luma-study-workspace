@@ -14,6 +14,18 @@ from typing import Callable, TypeVar
 
 T = TypeVar("T")
 
+# Hard deadlines of Luma's long requests, in one place. The routes that do the work (main.py,
+# capture.py, link_import.py) cut a request off at these, and the maintenance gate
+# (maintenance.py) records each running job with the same deadline, so a break never treats a
+# job as finished while its request can still be running.
+# Each AI HTTP step may take up to its own timeout (main.py), but the whole call is cut off at
+# the deadline (a true total), which is shorter than the browser's wait (notes 120 s,
+# transcription 180 s; see frontend/src/capture/capture-api.ts).
+AI_NOTES_DEADLINE_SECONDS = 100.0
+AI_TRANSCRIBE_DEADLINE_SECONDS = 150.0
+# Wall-clock budget for one whole link import (DNS + every redirect hop + body).
+FETCH_DEADLINE_SECONDS = 20.0
+
 # Shared pool for outside calls. A call that misses its deadline keeps running in
 # the background until its own HTTP timeout ends it; its result is thrown away.
 _EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=16, thread_name_prefix="ai-call")

@@ -2,7 +2,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
-import { NOTE_DRAFT_PREFIX, removeLegacyNoteDrafts } from "../accounts.ts"
+import { LEGACY_NOTE_DRAFT_END, NOTE_DRAFT_PREFIX, pruneLegacyNoteDrafts, readLegacyNoteDraft, removeLegacyNoteDraft } from "../accounts.ts"
 import {
   DRAFT_MAX_AGE_MS,
   MAX_DRAFT_CHARS,
@@ -133,11 +133,33 @@ describe("drafts", () => {
 })
 
 describe("old device drafts (luma.noteDraft:*)", () => {
-  it("are removed from localStorage once, and nothing else is", () => {
-    const local = memoryStore({ [`${NOTE_DRAFT_PREFIX}u1`]: "{}", [`${NOTE_DRAFT_PREFIX}u2`]: "{}", "luma.auth": "{}" })
-    removeLegacyNoteDrafts(local)
+  const before = LEGACY_NOTE_DRAFT_END - 1
+  const words = JSON.stringify({ title: "SYNTH title", content: "SYNTH words", tags: "bio" })
+
+  it("are kept for saved accounts and removed for accounts no longer on this device", () => {
+    const local = memoryStore({ [`${NOTE_DRAFT_PREFIX}u1`]: words, [`${NOTE_DRAFT_PREFIX}u2`]: words, "luma.auth": "{}" })
+    pruneLegacyNoteDrafts(local, new Set(["u1"]), before)
+    assert.deepEqual([...local.data.keys()].sort(), ["luma.auth", `${NOTE_DRAFT_PREFIX}u1`])
+    assert.doesNotThrow(() => pruneLegacyNoteDrafts(blockedStore(), new Set(), before))
+    assert.doesNotThrow(() => pruneLegacyNoteDrafts(null, new Set(), before))
+  })
+
+  it("are all removed after the end date, and nothing else is", () => {
+    const local = memoryStore({ [`${NOTE_DRAFT_PREFIX}u1`]: words, "luma.auth": "{}" })
+    pruneLegacyNoteDrafts(local, new Set(["u1"]), LEGACY_NOTE_DRAFT_END)
     assert.deepEqual([...local.data.keys()], ["luma.auth"])
-    assert.doesNotThrow(() => removeLegacyNoteDrafts(blockedStore()))
-    assert.doesNotThrow(() => removeLegacyNoteDrafts(null))
+  })
+
+  it("are read back exactly for their own account, and removed only on request", () => {
+    const local = memoryStore({ [`${NOTE_DRAFT_PREFIX}u1`]: words, [`${NOTE_DRAFT_PREFIX}u2`]: "not json" })
+    assert.deepEqual(readLegacyNoteDraft(local, "u1"), { title: "SYNTH title", content: "SYNTH words", tags: "bio" })
+    assert.equal(readLegacyNoteDraft(local, "u2"), null)
+    assert.equal(readLegacyNoteDraft(local, "u3"), null)
+    assert.equal(readLegacyNoteDraft(local, null), null)
+    assert.equal(readLegacyNoteDraft(blockedStore(), "u1"), null)
+    assert.ok(local.data.has(`${NOTE_DRAFT_PREFIX}u1`))
+    removeLegacyNoteDraft(local, "u1")
+    assert.equal(local.data.has(`${NOTE_DRAFT_PREFIX}u1`), false)
+    assert.doesNotThrow(() => removeLegacyNoteDraft(blockedStore(), "u1"))
   })
 })

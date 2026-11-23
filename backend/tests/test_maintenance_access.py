@@ -199,3 +199,30 @@ def test_edit_session_token_does_not_open_another_students_note(monkeypatch):
         main.app.dependency_overrides.pop(get_current_user_id, None)
         main.app.dependency_overrides.pop(get_current_user, None)
         maintenance.set_runtime(None)
+
+
+def _routes() -> set[tuple[str, str]]:
+    from app import main
+
+    return {(method, route.path) for route in main.app.routes for method in (getattr(route, "methods", None) or ())}
+
+
+def test_every_always_open_get_is_a_real_route():
+    """A dead entry would silently put a future route outside the in-flight count."""
+    routes = _routes()
+    for path in maintenance.ALWAYS_OPEN_GETS:
+        assert ("GET", path) in routes, path
+
+
+def test_every_ai_job_is_a_real_route_with_its_own_deadline():
+    from app import deadline as deadlines
+
+    routes = _routes()
+    for path in maintenance.AI_PATHS:
+        assert ("POST", path) in routes, path
+    seconds = {kind: limit for kind, limit in maintenance.AI_PATHS.values()}
+    assert seconds["ai_image"] >= deadlines.AI_NOTES_DEADLINE_SECONDS
+    assert seconds["ai_notes"] >= deadlines.AI_NOTES_DEADLINE_SECONDS
+    assert seconds["ai_summary"] >= deadlines.AI_NOTES_DEADLINE_SECONDS
+    assert seconds["ai_transcribe"] >= deadlines.AI_TRANSCRIBE_DEADLINE_SECONDS
+    assert seconds["link_import"] >= deadlines.FETCH_DEADLINE_SECONDS

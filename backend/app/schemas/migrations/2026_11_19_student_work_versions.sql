@@ -17,6 +17,12 @@
 
 begin;
 
+-- Fail fast instead of queueing every student's save behind a lock: if another session holds
+-- one of these tables, or a step runs long, the whole file rolls back with nothing changed.
+-- It is safe to run again (docs/deployment-checklist.md).
+set local lock_timeout = '5s';
+set local statement_timeout = '120s';
+
 alter table public.notes          add column if not exists version bigint not null default 1;
 alter table public.notes          add column if not exists create_key uuid;
 alter table public.summaries      add column if not exists version bigint not null default 1;
@@ -31,6 +37,39 @@ create unique index if not exists notes_user_create_key_uidx          on public.
 create unique index if not exists summaries_user_create_key_uidx      on public.summaries (user_id, create_key) where create_key is not null;
 create unique index if not exists flashcards_user_create_key_uidx     on public.flashcards (user_id, create_key) where create_key is not null;
 create unique index if not exists study_sessions_user_create_key_uidx on public.study_sessions (user_id, create_key) where create_key is not null;
+
+-- Hard stop: "if not exists" skips a column or index that is already there. If production
+-- ever got one by hand with another type, nullability, default or shape, the new code would
+-- break, so stop here (everything above rolls back) instead of carrying on.
+do $guard$
+declare
+  bad text;
+begin
+  select string_agg(format('%s.%s', w.t, w.c), ', ') into bad
+    from (values
+      ('notes', 'version', 'bigint', 'NO', '1'), ('summaries', 'version', 'bigint', 'NO', '1'),
+      ('flashcards', 'version', 'bigint', 'NO', '1'), ('study_sessions', 'version', 'bigint', 'NO', '1'),
+      ('notes', 'create_key', 'uuid', 'YES', null), ('summaries', 'create_key', 'uuid', 'YES', null),
+      ('flashcards', 'create_key', 'uuid', 'YES', null), ('study_sessions', 'create_key', 'uuid', 'YES', null),
+      ('flashcards', 'progress_rev', 'bigint', 'NO', '0')
+    ) as w(t, c, typ, nullable, def)
+    left join information_schema.columns col
+      on col.table_schema = 'public' and col.table_name = w.t and col.column_name = w.c
+   where col.column_name is null or col.data_type <> w.typ or col.is_nullable <> w.nullable
+      or col.column_default is distinct from w.def;
+  if bad is not null then
+    raise exception 'student work columns are not as expected: %', bad;
+  end if;
+  select string_agg(w.t, ', ') into bad
+    from (values ('notes'), ('summaries'), ('flashcards'), ('study_sessions')) as w(t)
+    left join pg_indexes i on i.schemaname = 'public' and i.indexname = w.t || '_user_create_key_uidx'
+   where i.indexdef is null
+      or i.indexdef not like 'CREATE UNIQUE INDEX%(user_id, create_key) WHERE (create_key IS NOT NULL)';
+  if bad is not null then
+    raise exception 'create_key indexes are not as expected: %', bad;
+  end if;
+end
+$guard$;
 
 commit;
 

@@ -94,3 +94,11 @@ def test_one_transaction_then_schema_reload():
     assert statements[-2] == "commit"
     assert statements[-1] == "notify pgrst, 'reload schema'"
     assert "rollback" not in _sql_without_comments()
+
+
+def test_fails_fast_instead_of_queueing_behind_locks():
+    # Right after begin: a held lock or a long step rolls the whole file back (safe to rerun).
+    statements = [" ".join(s.split()) for s in _sql_without_comments().split(";") if s.strip()]
+    assert statements[0] == "begin"
+    assert statements[1] == "set local lock_timeout = '5s'"
+    assert statements[2] == "set local statement_timeout = '120s'"

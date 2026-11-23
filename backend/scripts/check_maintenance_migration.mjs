@@ -62,6 +62,24 @@ const fail = (label, why) => {
 }
 const info = (label) => results.push(`INFO  ${label}`)
 const check = (label, condition, why) => (condition ? pass(label) : fail(label, why))
+
+// The file sets lock_timeout and statement_timeout right after begin (fail fast instead of
+// queueing every save behind a lock), and only for its own transaction: nothing leaks out.
+const startsWithTimeouts = (sql) => {
+  const statements = sql
+    .split(/\r?\n/)
+    .map((line) => line.split("--")[0])
+    .join(" ")
+    .split(";")
+    .map((s) => s.trim().replace(/\s+/g, " ").toLowerCase())
+    .filter(Boolean)
+  return statements[0] === "begin" && statements[1] === "set local lock_timeout = '5s'" && statements[2] === "set local statement_timeout = '120s'"
+}
+const timeoutsAfter = async (db) => {
+  const lock = (await db.query("show lock_timeout")).rows[0].lock_timeout
+  const stmt = (await db.query("show statement_timeout")).rows[0].statement_timeout
+  return { lock, stmt }
+}
 const firstLine = (error) => String(error?.message ?? error).split("\n")[0].slice(0, 220)
 const step = async (label, fn) => {
   try {
@@ -274,6 +292,26 @@ const beforeSchema = await schemaSnapshot(db, oldTables)
 // (c) apply twice
 await step("migration applies", () => db.exec(migration))
 await step("migration applies a second time (safe to run twice)", () => db.exec(migration))
+check("the file sets lock_timeout 5s and statement_timeout 120s right after begin", startsWithTimeouts(migration))
+{
+  const t = await timeoutsAfter(db)
+  check("the timeouts stay inside the file's transaction (nothing leaks to the session)", t.lock === "0" && t.stmt === "0", JSON.stringify(t))
+}
+
+// The tables maintenance.py counts before and after a break (COUNT_TABLES) and the column it
+// probes on each (PROBE_COLUMNS, else "id") all exist once this release's files have run.
+{
+  const source = readFileSync(join(backendDir, "app", "maintenance.py"), "utf8")
+  const block = source.match(/COUNT_TABLES = \(([^)]*)\)/)
+  const counted = block ? [...block[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]) : []
+  const probeBlock = source.match(/PROBE_COLUMNS[^=]*= \{([^}]*)\}/)
+  const probes = Object.fromEntries(probeBlock ? [...probeBlock[1].matchAll(/"([a-z_]+)": \("([a-z_]+)",\)/g)].map((m) => [m[1], m[2]]) : [])
+  check("COUNT_TABLES read from maintenance.py includes transcripts and the feedback ballots", ["transcripts", "feedback_responses", "feedback_answers"].every((t) => counted.includes(t)), counted.join(","))
+  for (const table of counted) {
+    const column = probes[table] ?? "id"
+    await step(`reopen checks can count and probe ${table}.${column}`, () => db.exec(`select count(*)::int n from public.${ident(table)}; select ${ident(column)} from public.${ident(table)} limit 0`))
+  }
+}
 
 // (d) nothing old changed
 check("every pre-existing row and value is unchanged", same(beforeData, await dataSnapshot(db, oldTables)))

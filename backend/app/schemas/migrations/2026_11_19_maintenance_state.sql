@@ -14,6 +14,12 @@
 
 begin;
 
+-- Fail fast instead of queueing every student's save behind a lock: if another session holds
+-- one of these tables, or a step runs long, the whole file rolls back with nothing changed.
+-- It is safe to run again (docs/deployment-checklist.md).
+set local lock_timeout = '5s';
+set local statement_timeout = '120s';
+
 create table if not exists public.maintenance_state (
   id smallint primary key default 1 check (id = 1),
   phase text not null default 'none' check (phase in ('none', 'announced', 'draining', 'active', 'checking')),

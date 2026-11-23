@@ -145,7 +145,6 @@ def test_a_process_that_has_not_read_the_break_state_writes_nothing_from_reads()
     maintenance.set_runtime(runtime)
     try:
         assert maintenance.ordinary_writes_allowed() is False
-        assert maintenance.writes_paused() is True
     finally:
         maintenance.set_runtime(None)
 

@@ -32,6 +32,8 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 import certifi
 import httpx
 
+from .deadline import FETCH_DEADLINE_SECONDS
+
 logger = logging.getLogger(__name__)
 
 MAX_URL_LENGTH = 2048
@@ -41,10 +43,9 @@ MAX_TEXT_CHARS = 60_000
 MIN_TEXT_CHARS = 200
 MAX_TITLE_CHARS = 300
 FETCH_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
-# Wall-clock budget for one whole import (DNS + every redirect hop + body).
-# httpx timeouts are per operation, so a server that drips a few bytes every
-# 9 seconds would otherwise hold a worker thread for many minutes.
-FETCH_DEADLINE_SECONDS = 20.0
+# Wall-clock budget for one whole import (app/deadline.py). httpx timeouts are per
+# operation, so a server that drips a few bytes every 9 seconds would otherwise hold a
+# worker thread for many minutes.
 DNS_TIMEOUT_SECONDS = 5.0
 # Bounded pool for DNS lookups so a hung getaddrinfo cannot pin request threads.
 _DNS_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="link-import-dns")

@@ -39,7 +39,7 @@ from .auth import (
     validate_access_token,
 )
 from .config import check_jwt_secret_key, settings
-from .deadline import DeadlineExceeded, run_with_deadline
+from .deadline import AI_NOTES_DEADLINE_SECONDS, AI_TRANSCRIBE_DEADLINE_SECONDS, DeadlineExceeded, run_with_deadline
 from .flashcards import router as flashcards_router
 from .notes import router as notes_router
 from .passwords import (
@@ -57,7 +57,7 @@ from .study_sessions import router as study_sessions_router
 from .summaries import router as summaries_router
 from .supabase_client import get_supabase, is_supabase_configured
 from .transcripts import router as transcripts_router
-from .maintenance import MaintenanceMiddleware, maintenance_router, admin_maintenance_router, writes_paused
+from .maintenance import MaintenanceMiddleware, maintenance_router, admin_maintenance_router, ordinary_writes_allowed
 
 # Deployment notes:
 # - Backend platforms like Render, Railway, and Fly.io should set
@@ -333,12 +333,10 @@ IMAGE_TOO_BIG_MESSAGE = "That picture is too big. Try one under 15 MB."
 
 
 # Each HTTP step may take up to the TIMEOUT, but the whole call is also cut off at the
-# DEADLINE (a true total), which is shorter than the browser's wait (notes 120 s,
+# DEADLINE (app/deadline.py, a true total), which is shorter than the browser's wait (notes 120 s,
 # transcription 180 s; see frontend/src/capture/capture-api.ts).
 AI_REQUEST_TIMEOUT_SECONDS = 90.0
 AI_TRANSCRIBE_TIMEOUT_SECONDS = 140.0
-AI_NOTES_DEADLINE_SECONDS = 100.0
-AI_TRANSCRIBE_DEADLINE_SECONDS = 150.0
 
 
 class _BodyTooLarge(Exception):
@@ -893,9 +891,9 @@ def verify_user(email: str, password: str):
     if not ok:
         return None
 
-    # Log in stays open during a break, but the database must not change then: the upgrade
-    # waits for the next log in after Luma reopens.
-    if needs_rehash and not writes_paused():
+    # Log in stays open during a break, but the database must not change once writes are
+    # refused (after the grace time too): the upgrade waits for a log in after Luma reopens.
+    if needs_rehash and ordinary_writes_allowed():
         try:
             update_user(user_row["id"], {"password": hash_password(password)})
         except Exception as exc:

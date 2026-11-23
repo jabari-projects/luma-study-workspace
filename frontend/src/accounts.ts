@@ -17,20 +17,60 @@ export const LEGACY_ACTIVITY_KEY = "luma.activity"
 export const MAX_ACCOUNTS = 3
 export const activityKey = (id: string) => `${LEGACY_ACTIVITY_KEY}:${id}`
 /**
- * Old new-note drafts that earlier versions kept in localStorage (on the device, after the tab
- * closed). Drafts now live only in the tab (work/drafts.ts). Real-data migration path: this
- * removes the old copies once per page load. Remove after 2027-02-01 (Task Board item:
- * "Remove the luma.noteDraft cleanup").
+ * Old new-note drafts that earlier versions kept on the device (localStorage), one per account:
+ * `luma.noteDraft:<account id>` = {title, content, tags}. Drafts now live only in the tab
+ * (work/drafts.ts). A student's old draft is never deleted unseen: New note offers it once
+ * (Use them / Throw them away), and only that choice, signing out of that account, or the end
+ * date removes it. Real-data migration path; remove after LEGACY_NOTE_DRAFT_END (Task Board
+ * item: "Remove the luma.noteDraft migration").
  */
 export const NOTE_DRAFT_PREFIX = "luma.noteDraft:"
+export const noteDraftKey = (id: string) => `${NOTE_DRAFT_PREFIX}${id}`
+/** 2027-02-01: after this, old device drafts are removed without an offer. */
+export const LEGACY_NOTE_DRAFT_END = Date.UTC(2027, 1, 1)
 
-export function removeLegacyNoteDrafts(storage: Pick<Storage, "key" | "length" | "removeItem"> | null): void {
+export type LegacyNoteDraft = { title: string; content: string; tags: string }
+
+/** The old device draft of this account, or null when there is none or it can't be read. */
+export function readLegacyNoteDraft(storage: Pick<Storage, "getItem"> | null, accountId: string | null): LegacyNoteDraft | null {
+  if (!storage || !accountId) return null
+  try {
+    const raw = storage.getItem(noteDraftKey(accountId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<LegacyNoteDraft> | null
+    if (typeof parsed?.title !== "string" || typeof parsed.content !== "string") return null
+    if (!parsed.title.trim() && !parsed.content.trim()) return null
+    return { title: parsed.title, content: parsed.content, tags: typeof parsed.tags === "string" ? parsed.tags : "" }
+  } catch {
+    return null
+  }
+}
+
+export function removeLegacyNoteDraft(storage: Pick<Storage, "removeItem"> | null, accountId: string): void {
+  try {
+    storage?.removeItem(noteDraftKey(accountId))
+  } catch {
+    // Storage blocked: nothing more we can do.
+  }
+}
+
+/**
+ * Removes old device drafts that no saved account can be offered any more: drafts of accounts
+ * that are not on this device (signed out, as the old code did on sign-out), and every one
+ * after LEGACY_NOTE_DRAFT_END. Drafts of saved accounts are kept until New note offers them.
+ */
+export function pruneLegacyNoteDrafts(
+  storage: Pick<Storage, "key" | "length" | "removeItem"> | null,
+  savedAccountIds: ReadonlySet<string>,
+  now: number = Date.now(),
+): void {
   if (!storage) return
   try {
     const keys: string[] = []
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index)
-      if (key && key.startsWith(NOTE_DRAFT_PREFIX)) keys.push(key)
+      if (!key || !key.startsWith(NOTE_DRAFT_PREFIX)) continue
+      if (now >= LEGACY_NOTE_DRAFT_END || !savedAccountIds.has(key.slice(NOTE_DRAFT_PREFIX.length))) keys.push(key)
     }
     keys.forEach((key) => storage.removeItem(key))
   } catch {

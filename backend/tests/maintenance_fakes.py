@@ -187,6 +187,12 @@ class FakeMaintenanceDB:
         self.tables["summaries"] = [{"id": "s1", "user_id": "student-1"}]
         self.tables["flashcards"] = [{"id": "f1", "user_id": "student-1"}]
         self.tables["study_sessions"] = []
+        self.tables["transcripts"] = [{"id": "t1", "user_id": "student-1"}]
+        self.tables["feedback_responses"] = [{"id": "r1", "poll_id": "p1"}]
+        self.tables["feedback_answers"] = [
+            {"response_id": "r1", "poll_id": "p1"},
+            {"response_id": "r1", "poll_id": "p1"},
+        ]
 
     def table(self, name):
         return _Query(self, name)

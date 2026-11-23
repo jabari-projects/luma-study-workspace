@@ -39,6 +39,24 @@ const fail = (label, why) => {
   results.push(`FAIL  ${label}${why ? `: ${why}` : ""}`)
 }
 const check = (label, condition, why) => (condition ? pass(label) : fail(label, why))
+
+// The file sets lock_timeout and statement_timeout right after begin (fail fast instead of
+// queueing every save behind a lock), and only for its own transaction: nothing leaks out.
+const startsWithTimeouts = (sql) => {
+  const statements = sql
+    .split(/\r?\n/)
+    .map((line) => line.split("--")[0])
+    .join(" ")
+    .split(";")
+    .map((s) => s.trim().replace(/\s+/g, " ").toLowerCase())
+    .filter(Boolean)
+  return statements[0] === "begin" && statements[1] === "set local lock_timeout = '5s'" && statements[2] === "set local statement_timeout = '120s'"
+}
+const timeoutsAfter = async (db) => {
+  const lock = (await db.query("show lock_timeout")).rows[0].lock_timeout
+  const stmt = (await db.query("show statement_timeout")).rows[0].statement_timeout
+  return { lock, stmt }
+}
 const firstLine = (error) => String(error?.message ?? error).split("\n")[0].slice(0, 200)
 const step = async (label, fn) => {
   try {
@@ -87,6 +105,11 @@ const asRole = async (role, fn) => {
 // ---------------------------------------------------------------- apply (twice: idempotent)
 await step("migration applies", () => db.exec(migration))
 await step("migration applies a second time (idempotent)", () => db.exec(migration))
+check("the file sets lock_timeout 5s and statement_timeout 120s right after begin", startsWithTimeouts(migration))
+{
+  const t = await timeoutsAfter(db)
+  check("the timeouts stay inside the file's transaction (nothing leaks to the session)", t.lock === "0" && t.stmt === "0", JSON.stringify(t))
+}
 
 for (const t of TABLES) {
   const row = await one("select relrowsecurity r from pg_class where oid = to_regclass($1)", [`public.${t}`])

@@ -5,11 +5,13 @@ import {
   AUTH_STORAGE_KEY,
   AccountBlockedError,
   LEGACY_ACTIVITY_KEY,
+  NOTE_DRAFT_PREFIX,
   STUDY_INTRO_PREFIX,
   TAB_ACCOUNT_KEY,
   activityKey,
   classifyUnauthorized,
   markExpired,
+  noteDraftKey,
   parseBook,
   remove,
   resolveRequestAuth,
@@ -256,14 +258,15 @@ export function writeStoredSession(stored: StoredAuthSession): void {
 }
 
 /**
- * Removes one account, its study activity, its saved theme and its "don't show the review
- * intro" choice from this device, and its unsaved drafts from this tab.
+ * Removes one account, its study activity, its saved theme, its old device note draft and its
+ * "don't show the review intro" choice from this device, and its unsaved drafts from this tab.
  */
 export function removeStoredAccount(id: string): void {
   writeBook(remove(readBook(), id))
   storageSet(local, activityKey(id), null)
   storageSet(local, themeCacheKey(id), null)
   storageSet(local, studyIntroKey(id), null)
+  storageSet(local, noteDraftKey(id), null)
   sweepAccountDrafts(sessionDraftStore(), id)
 }
 
@@ -284,6 +287,7 @@ export function clearAllStoredSessions(): void {
         key &&
         (key.startsWith(`${LEGACY_ACTIVITY_KEY}:`) ||
           key.startsWith(THEME_CACHE_PREFIX) ||
+          key.startsWith(NOTE_DRAFT_PREFIX) ||
           key.startsWith(STUDY_INTRO_PREFIX))
       ) {
         keys.push(key)

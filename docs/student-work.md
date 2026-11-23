@@ -37,8 +37,11 @@ The save line says: "Not saved yet", "Saving...", "Still saving..." (after 5 s),
 - **OVERLAP** (deploy safety): a `PUT` without `expected_version` still works (last write wins, the
   version still goes up), and a `POST` without a key still works. This is for browsers that still have
   the old page open during a deploy. Remove it in the contract step (deployment checklist step 9):
-  make `expected_version` required (428 `version_required`). Task Board item: "Remove the OVERLAP
-  save code after the new frontend has been live 7 days".
+  make `expected_version` required (428 `version_required`), only once the backend logs show no
+  `PUT` without `expected_version` for 14 days in a row, and only after a "new version, save and
+  reload" signal has shipped. Old pages have no autosave and no draft for saved items, so the 428
+  `detail` must say in plain words: "Luma was updated. Copy your text somewhere safe, then reload the
+  page." Task Board item: "Remove the OVERLAP save code".
 
 ## Migration (NOT APPLIED)
 
@@ -60,8 +63,20 @@ J:/LumaPilot/wt-feedback/backend/.venv/Scripts/python.exe -m pytest -q -p no:cac
 - Read only when the key's account AND the saved account both match the tab's account.
 - Removed when saved, on **Throw it away**, on sign-out (that account), sign-out of all, account
   deletion, and when the tab closes. Closing the tab is never treated as a save.
-- The old device copy `luma.noteDraft:<account>` (localStorage) is removed once on start. Real-data
-  migration path; remove after 2027-02-01 (Task Board item: "Remove the luma.noteDraft cleanup").
+- The old device copy `luma.noteDraft:<account>` (localStorage, written by the release before this
+  one, which told students "Draft saved on this device") is **never deleted unseen**. Real-data
+  migration path (`accounts.ts`, `NoteEditorPage.tsx`):
+  - **Write a note** offers it once: "We found a note you did not save on this device..." with
+    **Use them** (the words go into the editor and this tab's draft; the device copy is removed
+    only once that note is saved) or **Throw them away** (removed). Saving a different note while
+    the offer is ignored never removes it. If the student used the words, then closed the tab
+    without saving, the offer comes back next time. The notes page shows "You have a note you did not save on this
+    device. **Open it**" while one is waiting.
+  - Removed without an offer only when that account is no longer on this device (signed out, as the
+    old code did), on sign-out of that account or of all accounts, and after 2027-02-01.
+  - An old tab still open after the deploy can keep writing its copy; the new code leaves it alone.
+  - Remove the migration after 2027-02-01 (Task Board item: "Remove the luma.noteDraft migration").
+  - Tested by `frontend/e2e/legacy-draft.spec.ts` and `frontend/src/work/drafts.test.ts`.
 - Policy text to update (Integration track): "An unsaved draft is kept only in that browser tab. It is
   removed when you save, sign out, delete your account, or close the tab."
 

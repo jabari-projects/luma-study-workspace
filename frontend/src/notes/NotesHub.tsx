@@ -18,6 +18,7 @@ import {
 } from "@phosphor-icons/react"
 import type { Icon } from "@phosphor-icons/react"
 
+import { readLegacyNoteDraft } from "../accounts"
 import { api, getErrorMessage, getTabAccountId } from "../api"
 import { ConfirmDialog } from "../ui/ConfirmDialog"
 import { NoticeBanner } from "../ui/common"
@@ -27,6 +28,7 @@ import { ShareDialog } from "../ui/Share"
 import { hasTitle, setSharing, shareCopy, useShareName } from "../ui/sharing"
 import { RowMenu } from "./RowMenu"
 import type { RowMenuHandle } from "./RowMenu"
+import "../work/work.css"
 import {
   IMAGE_NOTES,
   IMPORT_NOTES,
@@ -78,6 +80,14 @@ export function NotesHub() {
   const [sharing, setSharingItem] = useState<HubItem | null>(null)
   const [shareBusy, setShareBusy] = useState(false)
   const shareName = useShareName()
+  // A new note an earlier version kept on this device (accounts.ts): point to where it is offered.
+  const [oldDraft] = useState(() => {
+    try {
+      return readLegacyNoteDraft(window.localStorage, getTabAccountId()) !== null
+    } catch {
+      return false
+    }
+  })
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const panelRef = useRef<HTMLDivElement>(null)
   const menuRefs = useRef(new Map<string, RowMenuHandle>())
@@ -246,6 +256,15 @@ export function NotesHub() {
           ))}
         </ul>
       </nav>
+
+      {oldDraft ? (
+        <div className="work-draft-offer" role="region" aria-label="Note you did not save">
+          <p>You have a note you did not save on this device.</p>
+          <Link className="primary-button small" to={NEW_NOTE}>
+            Open it
+          </Link>
+        </div>
+      ) : null}
 
       <NoticeBanner notice={notice} />
 

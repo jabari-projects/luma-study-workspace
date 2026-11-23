@@ -470,3 +470,25 @@ describe("SaveClient: signed out and progress merging", () => {
     assert.equal(server.requests[1].content, "c1,c2")
   })
 })
+
+// Why the deploy order is a hard rule (docs/deployment-checklist.md): the release-1 backend
+// (production 7b602b9) answers a create with 201 and no version, and ignores Idempotency-Key.
+// The new website then can't confirm the save, so every Try again would make another copy.
+describe("SaveClient against the OLD backend (no version field): never run the new site on it", () => {
+  it("a create the old backend stored still reads as not saved, and Try again posts again", async () => {
+    let made = 0
+    const oldBackend = (): SaveReply<Row> => {
+      made += 1
+      return { kind: "ok", status: 201, row: { id: `old-${made}` } }
+    }
+    const { client, clock, server, last } = makeClient([oldBackend], { itemId: null, version: null, createKey: "k-old" })
+    client.change("draft")
+    assert.equal(await client.flush({ allowCreate: true }), false)
+    assert.equal(last().state, "failed")
+    assert.equal(last().itemId, null, "the stored item's id is never kept")
+    client.retry()
+    await clock.advance(2000)
+    assert.ok(server.requests.length >= 2 && server.requests.every((request) => request.mode === "create"))
+    assert.ok(made >= 2, "on a backend that ignores Idempotency-Key, each try makes another copy")
+  })
+})

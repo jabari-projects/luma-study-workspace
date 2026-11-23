@@ -70,3 +70,11 @@ def test_rls_on_for_every_new_table_and_no_public_access():
     assert "revoke all on table public.%i from authenticated" in sql
     assert "create policy" not in sql
     assert "to anon" not in sql and "to authenticated" not in sql
+
+
+def test_fails_fast_instead_of_queueing_behind_locks():
+    # Right after begin: a held lock or a long step rolls the whole file back (safe to rerun).
+    statements = [" ".join(s.split()) for s in _sql().split(";") if s.strip()]
+    assert statements[0] == "begin"
+    assert statements[1] == "set local lock_timeout = '5s'"
+    assert statements[2] == "set local statement_timeout = '120s'"

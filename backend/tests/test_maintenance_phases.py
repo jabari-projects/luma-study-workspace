@@ -183,6 +183,7 @@ def test_full_break_and_reopen(world):
     assert state["phase"] == "active" and state["backup_ref"] == "20261201T103000Z"
     assert state["counts_at_activation"] == {
         "users": 2, "profiles": 2, "notes": 3, "summaries": 1, "flashcards": 1, "study_sessions": 0,
+        "transcripts": 1, "feedback_responses": 1, "feedback_answers": 2,
     }
     checks = world.checks()
     assert checks.status_code == 200
@@ -228,6 +229,17 @@ def test_dropping_counts_fail_records_kept(world):
     assert records["passed"] is False
     assert records["detail"]["dropped"] == {"notes": {"before": 3, "now": 2}}
     assert world.reopen().json()["error_code"] == "checks_not_passed"
+
+
+@pytest.mark.parametrize("table", ["transcripts", "feedback_responses", "feedback_answers"])
+def test_losing_a_transcript_or_a_ballot_fails_records_kept(world, table):
+    world.to_active()
+    before = len(world.db.tables[table])
+    world.db.tables[table].pop()
+    world.checks()
+    records = next(r for r in world.db.state["checks"]["results"] if r["name"] == "records_kept")
+    assert records["passed"] is False
+    assert records["detail"]["dropped"] == {table: {"before": before, "now": before - 1}}
 
 
 def test_dropping_counts_may_be_explained_only_for_reason_other(world):
