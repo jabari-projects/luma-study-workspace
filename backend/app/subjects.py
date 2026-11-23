@@ -26,7 +26,7 @@ LOCK_FILE = Path(__file__).resolve().parent / "data" / "subjects.lock.txt"
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 MAX_SLUG_LENGTH = 40
 MIN_SUBTOPICS = 5
-MAX_SUBTOPICS = 15
+MAX_SUBTOPICS = 24
 
 UNKNOWN_SUBJECT = "Pick a subject from the list."
 SUBJECT_FIRST = "Pick a subject first."
@@ -35,6 +35,28 @@ UNKNOWN_SUBTOPIC = "Pick a subtopic from the list for this subject."
 
 class SubjectListError(ValueError):
     """subjects.json is not shaped the way the app needs."""
+
+
+# Search words, folded the same way everywhere (this file, public_search.py, the SQL function,
+# the fake API and the website's picker): lower case, "." and "'" dropped (so "U.S." is "us" and
+# "Newton's" is "newtons"), anything else that isn't a letter or digit becomes a space.
+_FOLD_DROP = re.compile(r"[.'’]")
+_FOLD_SPACE = re.compile(r"[\W_]+")
+# Small words that mean no subject on their own ("the", "and" would match half the list).
+STOP_WORDS = frozenset({"a", "an", "and", "at", "by", "for", "in", "is", "of", "on", "or", "the", "to", "with"})
+
+
+def fold(text: str) -> str:
+    return " ".join(_FOLD_SPACE.sub(" ", _FOLD_DROP.sub("", text.lower())).split())
+
+
+def word_needle(folded: str) -> str:
+    """What a folded search word must find inside " " + folded text + " ".
+
+    Short words (1-2 letters, like "us" or "ap") must be a whole word; longer ones the start of
+    a word ("hist" finds "history", "art" never finds "earth").
+    """
+    return f" {folded} " if len(folded) < 3 else f" {folded}"
 
 
 def _check_slug(slug: Any, where: str) -> str:
@@ -92,6 +114,11 @@ def load_subject_list(raw: bytes) -> dict:
                 raise SubjectListError(f"subtopic {slug}/{sub} repeats")
             sub_slugs.add(sub)
             _check_name(subtopic.get("name"), f"subtopic {slug}/{sub}")
+            sub_aliases = subtopic.get("aliases", [])
+            if not isinstance(sub_aliases, list) or any(
+                not isinstance(a, str) or a != a.lower() or not a.strip() for a in sub_aliases
+            ):
+                raise SubjectListError(f"subtopic {slug}/{sub} aliases must be lower case words")
     if set(group_slugs) != used_groups:
         raise SubjectListError("every group needs at least one subject")
     return data
@@ -129,24 +156,35 @@ def check_pair(subject: Optional[str], subtopic: Optional[str]) -> tuple[Optiona
     return subject, subtopic
 
 
-def subjects_matching(text: str) -> list[tuple[str, Optional[str]]]:
-    """(subject, subtopic) pairs whose name or alias holds `text` (any case), for search.
+def _folded_words(entry: dict) -> str:
+    """Name and aliases, folded, each padded with spaces, for word_needle()."""
+    return "".join(f" {fold(text)} " for text in [entry["name"], *entry.get("aliases", [])])
 
-    A subject match is (subject, None): every item in that subject. Fewer than 3 letters
-    matches nothing here (it would match half the list).
+
+# (subject slug, its folded words, [(subtopic slug, its folded words)]) for search.
+_SEARCH_INDEX = [
+    (subject["slug"], _folded_words(subject), [(sub["slug"], _folded_words(sub)) for sub in subject["subtopics"]])
+    for subject in SUBJECT_LIST["subjects"]
+]
+
+
+def subjects_matching(word: str) -> list[tuple[str, Optional[str]]]:
+    """(subject, subtopic) pairs one search word points at, by name or alias, for Discover.
+
+    The word must be a whole word (1-2 letters) or the start of a word (3+) in a name or alias,
+    so "art" finds Art but not "eARTh", and "us" finds U.S. history. A subject match is
+    (subject, None): every item in that subject. Small words like "the" match nothing.
     """
-    wanted = " ".join(text.lower().split())
-    if len(wanted) < 3:
+    folded = fold(word)
+    if not folded or folded in STOP_WORDS:
         return []
+    needle = word_needle(folded)
     pairs: list[tuple[str, Optional[str]]] = []
-    for subject in SUBJECT_LIST["subjects"]:
-        words = [subject["name"].lower(), *subject.get("aliases", [])]
-        if any(wanted in word for word in words):
-            pairs.append((subject["slug"], None))
+    for slug, words, subtopics in _SEARCH_INDEX:
+        if needle in words:
+            pairs.append((slug, None))
             continue
-        for subtopic in subject["subtopics"]:
-            if wanted in subtopic["name"].lower():
-                pairs.append((subject["slug"], subtopic["slug"]))
+        pairs.extend((slug, sub) for sub, sub_words in subtopics if needle in sub_words)
     return pairs
 
 

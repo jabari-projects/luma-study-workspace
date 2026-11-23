@@ -15,7 +15,8 @@ import { SaveStatus } from "../work/SaveStatus"
 import { clearDraft, readDraft, sessionDraftStore } from "../work/drafts"
 import type { Draft } from "../work/drafts"
 import { newCreateKey, toReply, useAutosave } from "../work/useAutosave"
-import { markJustMade } from "../ui/shareAsk"
+import { forgetShareAsk, markJustMade, shouldAskToShare } from "../ui/shareAsk"
+import { ShareAskAfterMaking } from "../ui/Share"
 import { SubjectPicker } from "../subjects/SubjectPicker"
 import { NO_SUBJECT, choiceFrom, subjectBody } from "../subjects/subjects"
 import type { SubjectChoice } from "../subjects/subjects"
@@ -290,7 +291,12 @@ function NoteForm({
   const usedOffer = useRef(false)
   const copyKey = useRef<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const saveButton = useRef<HTMLButtonElement>(null)
   const { title, content, tags, subject } = fields
+  // Made a moment ago in this tab: ask "Share with the crowd?" here, right after "Saved at".
+  // The mark is forgotten at once, so the item's page never asks later (ui/shareAsk.ts).
+  const [askShare, setAskShare] = useState(() => !isNew && shouldAskToShare(accountId, kind, itemId))
+  useEffect(() => forgetShareAsk(accountId, kind, itemId), [accountId, kind, itemId])
 
   const autosave = useAutosave<Fields, NoteRow>({
     label: kind === "summary" ? "Your summary" : "Your note",
@@ -422,6 +428,22 @@ function NoteForm({
 
   return (
     <EditorFrame kind={kind} isNew={isNew} backTo={backTo} notice={notice}>
+      {askShare && itemId ? (
+        <ShareAskAfterMaking<NoteRow>
+          endpoint={endpoint}
+          studyType={kind}
+          noun={kind}
+          latest={async () => {
+            if (!(await autosave.flush())) return null
+            const now = autosave.peek()
+            return now?.itemId && typeof now.version === "number" ? { id: now.itemId, title: fields.title, version: now.version, is_public: false } : null
+          }}
+          onShared={(row) => autosave.adopt(row)}
+          setNotice={setNotice}
+          onClose={() => setAskShare(false)}
+          returnFocus={() => saveButton.current}
+        />
+      ) : null}
       {showConflict ? (
         <ConflictPanel
           noun={kind}
@@ -497,7 +519,7 @@ function NoteForm({
           </small>
         </div>
         <div className="button-row editor-actions">
-          <button type="submit" className="primary-button" disabled={saving || showConflict || (isNew && Boolean(autosave.editBlocked))}>
+          <button ref={saveButton} type="submit" className="primary-button" disabled={saving || showConflict || (isNew && Boolean(autosave.editBlocked))}>
             {saving ? "Saving..." : isNew ? "Save note" : "Save changes"}
           </button>
           {isNew ? (

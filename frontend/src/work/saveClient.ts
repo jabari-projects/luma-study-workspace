@@ -184,6 +184,9 @@ export class SaveClient<C, Row extends SavedRow> {
   change(content: C): void {
     if (this.disposed) return
     this.pending = this.pending !== null && this.opts.merge ? this.opts.merge(this.pending, content) : content
+    // A held reason follows the words waiting now: fixing the card clears it at once (a new
+    // reason still waits for the next try, so typing a new card doesn't nag).
+    if (this.held !== null) this.held = this.opts.hold?.(this.pending) ?? null
     if (this.state === "conflict" || this.state === "gone" || this.state === "signed_out") {
       // After a 409, 404 or 401 nothing saves by itself until the student picks.
       this.emit()

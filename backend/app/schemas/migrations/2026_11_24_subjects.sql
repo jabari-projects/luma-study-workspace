@@ -7,9 +7,9 @@
 --
 -- subject_slug, subtopic_slug  slugs from backend/app/data/subjects.json (the API checks the real
 --                               list; the database only checks the shape). Null = "No subject".
--- public_study_search(...)     Discover search: shared items only, matched on title, text, every
---                               card, tags and subject names, plus counts per subject, subtopic and
---                               type (never per person). Only the service role may run it; the API
+-- public_study_search(...)     Discover search: shared items only, matched word by word (any order)
+--                               on title, text, every card, tags and subject names, plus counts per
+--                               subject, subtopic and type (never per person). Only the service role may run it; the API
 --                               swaps each owner id for the current username and never sends the id.
 --
 -- The code that uses these is deployed AFTER this file runs. Old code ignores the columns and the
@@ -60,17 +60,21 @@ create index if not exists flashcards_public_subject_idx on public.flashcards (s
 create index if not exists summaries_public_subject_idx  on public.summaries  (subject_slug, subtopic_slug, published_at desc) where is_public;
 
 -- One search for Discover. Reads only; shared items with a title only.
---   p_pattern      an ilike pattern the API built from the search words (%, _ and \ escaped), or null for all
---   p_match_pairs  [{"subject": "math", "subtopic": "algebra" | null}, ...]: items in these subjects
---                  match too (the API finds them by subject name or alias), or [] for none
+--   p_terms    one entry per search word, built by the API (public_search.search_terms); an item
+--              must match EVERY entry, in any order. An entry matches when
+--                "like" (an ilike pattern, %, _ and \ escaped, or null) is found in the text as typed, or
+--                "word" (an ilike pattern, or null) is found in the folded words: lower case, "." and
+--                "'" dropped, every other mark a space, padded with spaces ("U.S. history" -> " us history "), or
+--                "pairs" ([{"subject": "math", "subtopic": "algebra" | null}, ...]) holds the item's subject.
+--              [] or null finds everything.
 --   p_subject, p_subtopic, p_type  the chosen filters, or null
 --   p_user_ids     only these owners (people search), or null for everyone
 -- Answer: {"total", "rows", "subjects", "subtopics", "types"}. total and rows follow every filter.
 -- subjects ignores the chosen subject and subtopic; subtopics (only with a subject) ignores the
 -- chosen subtopic; types ignores the chosen type. Counts are per subject or type, never per person.
+-- Cost: every call reads every shared row (fine at today's size; see HANDOFF for the planned index).
 create or replace function public.public_study_search(
-  p_pattern text,
-  p_match_pairs jsonb,
+  p_terms jsonb,
   p_subject text,
   p_subtopic text,
   p_type text,
@@ -100,14 +104,23 @@ language sql stable security invoker set search_path = public, pg_temp as $$
       from public.summaries s
      where s.is_public and btrim(coalesce(s.title, '')) <> ''
   ),
+  owned as (
+    select sh.*,
+           ' ' || regexp_replace(regexp_replace(lower(sh.hay), '[.''' || chr(8217) || ']', '', 'g'), '[^[:alnum:]]+', ' ', 'g') || ' ' as folded
+      from shared sh
+     where p_user_ids is null or sh.user_id = any(p_user_ids)
+  ),
   matched as (
-    select sh.* from shared sh
-     where (p_user_ids is null or sh.user_id = any(p_user_ids))
-       and (p_pattern is null
-            or sh.hay ilike p_pattern escape '\'
-            or exists (select 1 from jsonb_array_elements(coalesce(p_match_pairs, '[]'::jsonb)) m
-                        where m.value ->> 'subject' = sh.subject_slug
-                          and (m.value ->> 'subtopic' is null or m.value ->> 'subtopic' = sh.subtopic_slug)))
+    select o.study_type, o.id, o.user_id, o.title, o.body, o.tags, o.subject_slug, o.subtopic_slug, o.published_at, o.created_at
+      from owned o
+     where not exists (
+       select 1 from jsonb_array_elements(case when jsonb_typeof(p_terms) = 'array' then p_terms else '[]'::jsonb end) t
+        where not (
+          coalesce(o.hay ilike (t.value ->> 'like') escape '\', false)
+          or coalesce(o.folded ilike (t.value ->> 'word') escape '\', false)
+          or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(t.value -> 'pairs') = 'array' then t.value -> 'pairs' else '[]'::jsonb end) m
+                      where m.value ->> 'subject' = o.subject_slug
+                        and (m.value ->> 'subtopic' is null or m.value ->> 'subtopic' = o.subtopic_slug))))
   ),
   chosen as (
     select * from matched
@@ -143,15 +156,15 @@ $$;
 -- Only the API (service role) may run it: never anyone signed out, never a browser directly.
 do $grants$
 begin
-  execute 'revoke execute on function public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer) from public';
+  execute 'revoke execute on function public.public_study_search(jsonb, text, text, text, uuid[], integer, integer) from public';
   if exists (select 1 from pg_roles where rolname = 'anon') then
-    execute 'revoke execute on function public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer) from anon';
+    execute 'revoke execute on function public.public_study_search(jsonb, text, text, text, uuid[], integer, integer) from anon';
   end if;
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
-    execute 'revoke execute on function public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer) from authenticated';
+    execute 'revoke execute on function public.public_study_search(jsonb, text, text, text, uuid[], integer, integer) from authenticated';
   end if;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    execute 'grant execute on function public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer) to service_role';
+    execute 'grant execute on function public.public_study_search(jsonb, text, text, text, uuid[], integer, integer) to service_role';
   end if;
 end
 $grants$;
@@ -192,7 +205,7 @@ begin
   end if;
   if not exists (
     select 1 from pg_proc p
-     where p.oid = 'public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer)'::regprocedure
+     where p.oid = 'public.public_study_search(jsonb, text, text, text, uuid[], integer, integer)'::regprocedure
        and not p.prosecdef and p.provolatile = 's' and p.prorettype = 'jsonb'::regtype) then
     raise exception 'public_study_search is not as expected';
   end if;
@@ -215,5 +228,5 @@ notify pgrst, 'reload schema';
 --   select indexname from pg_indexes where schemaname = 'public' and indexname like '%_public_subject_idx' order by 1;
 --   -- expect 3 rows
 --   select count(*) from public.notes where subject_slug is not null;  -- expect 0 right after applying
---   select has_function_privilege('anon', 'public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer)', 'execute');
+--   select has_function_privilege('anon', 'public.public_study_search(jsonb, text, text, text, uuid[], integer, integer)', 'execute');
 --   -- expect false

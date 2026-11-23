@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import get_current_user_id
-from .subjects import subject_exists, subjects_matching, subtopic_exists
+from .subjects import STOP_WORDS, fold, subject_exists, subjects_matching, subtopic_exists, word_needle
 from .supabase_client import get_supabase
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -31,6 +31,10 @@ STUDY_TYPES = ("note", "flashcards", "summary")
 PAGE_SIZE = 30
 MAX_OFFSET = 400
 MAX_QUERY_LENGTH = 80
+# The most words one search looks at (the rest are ignored).
+MAX_SEARCH_WORDS = 8
+# A word with any of these is matched as typed ("1+1", "50%", "c++"); "." and "'" fold away.
+_LITERAL_MARKS = re.compile(r"[^\w.'’-]|_")
 # People search needs this many letters, so nobody can list every student who shared.
 MIN_USER_QUERY_LENGTH = 3
 # Usernames only ever use these characters (see the signup and rename rules in main.py).
@@ -177,9 +181,36 @@ def _username_for(profile: Optional[dict]) -> str:
     return "student"
 
 
-def search_words(raw: str) -> str:
-    """What a topic search looks for: spaces squeezed, a leading # (old tag habit) dropped."""
-    return " ".join(raw.split()).lstrip("#").strip()
+def search_words(raw: str) -> list[str]:
+    """The words a search looks for, in any order: each loses a leading # (old tag habit).
+
+    Small words ("the", "of") are dropped when other words are there. At most MAX_SEARCH_WORDS.
+    """
+    words = [word for word in (part.lstrip("#").lower() for part in raw.split()) if word]
+    kept = [word for word in words if fold(word) not in STOP_WORDS] or words
+    return list(dict.fromkeys(kept))[:MAX_SEARCH_WORDS]
+
+
+def search_terms(raw: str) -> list[dict]:
+    """One term per search word for public_study_search. Every term must match an item.
+
+    A term matches when the item's words hold it (see word_needle: whole word for 1-2 letters,
+    the start of a word for longer ones, with "U.S." folded to "us"), or, for words of 4+
+    letters, anywhere in the text as typed, or when the item's subject or subtopic is named by
+    it. A word with marks like "1+1" or "50%" only matches exactly as typed.
+    """
+    terms = []
+    for word in search_words(raw):
+        folded = fold(word)
+        literal = not folded or bool(_LITERAL_MARKS.search(word))
+        terms.append(
+            {
+                "like": f"%{_escape_like(word)}%" if literal or len(folded) >= 4 else None,
+                "word": None if literal else f"%{_escape_like(word_needle(folded))}%",
+                "pairs": [] if literal else [{"subject": slug, "subtopic": sub} for slug, sub in subjects_matching(folded)],
+            }
+        )
+    return terms
 
 
 def _run_search(
@@ -193,11 +224,8 @@ def _run_search(
     offset: int = 0,
 ) -> dict:
     """One call to public.public_study_search. Its rows carry owner ids: never send them on."""
-    wanted = search_words(text)
     params = {
-        "p_pattern": f"%{_escape_like(wanted)}%" if wanted else None,
-        # Items in a subject whose name or alias holds the words match too ("algebra" finds math/algebra).
-        "p_match_pairs": [{"subject": slug, "subtopic": sub} for slug, sub in subjects_matching(wanted)],
+        "p_terms": search_terms(text),
         "p_subject": subject,
         "p_subtopic": subtopic,
         "p_type": study_type,

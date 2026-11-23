@@ -15,6 +15,7 @@ const cssFiles: Record<string, string> = {
   "notes/notes.css": read("../notes/notes.css"),
   "study/study.css": read("../study/study.css"),
   "feedback/feedback.css": read("../feedback/feedback.css"),
+  "subjects/subjects.css": read("../subjects/subjects.css"),
 }
 
 type Tokens = Record<string, string>
@@ -304,6 +305,28 @@ describe("theme colors", () => {
   it("text on every accent-filled button is 4.5:1 or more", () => {
     for (const swatch of themeColors) {
       expectContrast(textOnAccent(swatch.value), swatch.value, 4.5, `text on ${swatch.name}`)
+    }
+  })
+
+  it("a chosen Discover filter chip is filled with the accent and uses the accent's text color", () => {
+    const rules = rulesOf(cssFiles)
+    const chip = rules.find((rule) => rule.file === "subjects/subjects.css" && rule.selector === '.filter-chip[aria-pressed="true"]')
+    assert.ok(chip, "no pressed filter chip rule")
+    assert.match(chip.body, /background:\s*var\(--accent\)\s*;/)
+    assert.match(chip.body, /(^|[\s;])color:\s*var\(--on-accent\)/)
+    // The pair holds in light and dark for every theme color (the page uses the same --accent in both).
+    for (const swatch of themeColors) expectContrast(textOnAccent(swatch.value), swatch.value, 4.5, `chip on ${swatch.name}`)
+  })
+
+  it('"Not filled in" red is 4.5:1 or more on paper, cards and its own tint, light and dark', () => {
+    for (const [name, tokens] of Object.entries(themes)) {
+      const red = resolve("var(--error)", tokens)
+      for (const bg of ["--paper", "--card", "--error-soft"]) {
+        expectContrast(red, resolve(`var(${bg})`, tokens), 4.5, `${name} --error on ${bg}`)
+      }
+      // A true red: much more red than green or blue.
+      const [r, g, b] = hexToRgb(red)
+      assert.ok(r > 2 * g && r > 2 * b, `${name} --error is not red: ${red}`)
     }
   })
 

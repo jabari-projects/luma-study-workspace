@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react"
 import type { KeyboardEvent as ReactKeyboardEvent } from "react"
 import { CaretDown, CaretLeft, X } from "@phosphor-icons/react"
 
-import { NO_SUBJECT, findSubject, groupedSubjects, matchLabel, searchSubjects, subjectLabel } from "./subjects"
+import { NO_SUBJECT, findSubject, groupedSubjects, matchLabel, searchSubjects, searchSubtopics, subjectLabel } from "./subjects"
 import type { Subject, SubjectChoice, SubjectList } from "./subjects"
 import { useSubjects } from "./useSubjects"
 
@@ -134,7 +134,7 @@ function SubjectPanel({
     if (!list) return []
     if (subject) {
       const wanted = text.trim().toLowerCase()
-      const subs = subject.subtopics.filter((sub) => !sub.retired && (!wanted || sub.name.toLowerCase().includes(wanted)))
+      const subs = searchSubtopics(subject, text)
       return [
         ...(wanted ? [] : [{ key: "just", label: `Just ${subject.name}`, detail: "No subtopic", onPick: () => onPick({ subject: subject.slug, subtopic: null }) }]),
         ...subs.map((sub) => ({ key: sub.slug, label: sub.name, onPick: () => onPick({ subject: subject.slug, subtopic: sub.slug }) })),
@@ -203,6 +203,12 @@ function SubjectPanel({
     <>
       <div className="subject-scrim" aria-hidden="true" />
       <div ref={panelRef} className="subject-panel" role="dialog" aria-label={subject ? `Pick a topic in ${subject.name}` : "Pick a subject"}>
+        {/* The sheet's title on phones (the dialog's name already says it to screen readers). */}
+        {subject ? null : (
+          <p className="subject-sheet-title" aria-hidden="true">
+            Pick a subject
+          </p>
+        )}
         {subject ? (
           <div className="subject-step">
             <button type="button" className="text-button subject-back" onClick={back}>
@@ -265,7 +271,7 @@ function SubjectPanel({
         </div>
         <div className="subject-done">
           <button type="button" className="secondary-button small" onClick={() => onClose()}>
-            Done
+            Close
           </button>
         </div>
       </div>

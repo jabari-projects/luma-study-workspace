@@ -159,6 +159,26 @@ R8. Turn auto-deploy back on for both. Skip steps 4, 5 and 8 below for this rele
    check that any events that got "try again later" during the break were sent again and
    worked. Resend any that still failed. Never turn the webhook off.
 
+## Subjects and Discover search (`claude/subjects-search`, migration `2026_11_24_subjects.sql`)
+
+This backend cannot run on a database without this file: Discover search, people search and any
+save that sends a subject would fail. Do these in this order, with the owner's OK for each:
+
+1. Release 1 is live and its three files are applied (this file comes after them).
+2. Fresh backup, restore test passed, and `rehearse_migrations.py` passed with
+   `--after 2026_11_19_student_work_versions` (or the last file that is live). The PGlite checker
+   `backend/scripts/check_subjects_migration.mjs` passes on the branch.
+3. Auto-deploy off on Render and Vercel.
+4. Apply `2026_11_24_subjects.sql` by hand (steps 4 to 6 above, with maintenance mode).
+5. Run its VERIFY part. A wrong number stops here.
+6. Merge, then deploy the backend by hand. `/health/ready` must answer 200: a backend that reached
+   the database before the file ran answers 503 with `"database": "needs_update"`. If you see
+   that, stop: the file did not run.
+7. Only then deploy the website. Then turn auto-deploy back on.
+
+Rolling back: website first, then backend. The file never needs undoing: old code ignores the
+new columns and the search function.
+
 ## Later
 
 9. **Clean up** (a normal update, its own OK): make the version check required, remove the

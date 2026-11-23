@@ -1995,22 +1995,34 @@ def health_check():
 
 
 DB_READINESS_DEADLINE_SECONDS = 5.0
+# (table, columns) added by the newest database change this code needs (2026_11_24_subjects.sql).
+# That file runs as one transaction, so its columns being there means its search function is too.
+READINESS_COLUMNS = ("summaries", "subject_slug,subtopic_slug")
+# Postgres "no such column" and PostgREST "column not in the schema cache".
+MISSING_COLUMN_CODES = frozenset({"42703", "PGRST204"})
 
 
 @app.get("/health/ready")
 def readiness_check():
-    """Readiness: can the server actually reach the database? Returns 200 only if a tiny
-    read-only query (no rows) succeeds within 5 seconds; otherwise 503. No details or
-    error text are returned, so nothing about the setup leaks."""
+    """Readiness: can the server actually reach the database, and has the database had the
+    changes this code needs? Returns 200 only if two tiny read-only queries (no rows) succeed
+    within 5 seconds each; otherwise 503. A backend deployed before its migration ran answers
+    "needs_update" instead of serving 500s on Discover and saves. No details or error text are
+    returned, so nothing about the setup leaks."""
     checked_at = datetime.utcnow().isoformat()
     if not is_supabase_configured():
         return JSONResponse(
             status_code=503,
             content={"status": "not_ready", "database": "not_configured", "timestamp": checked_at},
         )
+    table, columns = READINESS_COLUMNS
     try:
         run_with_deadline(
             lambda: supabase.table("users").select("id").limit(0).execute(),
+            DB_READINESS_DEADLINE_SECONDS,
+        )
+        run_with_deadline(
+            lambda: supabase.table(table).select(columns).limit(0).execute(),
             DB_READINESS_DEADLINE_SECONDS,
         )
     except DeadlineExceeded:
@@ -2020,6 +2032,12 @@ def readiness_check():
             content={"status": "not_ready", "database": "timeout", "timestamp": checked_at},
         )
     except Exception as exc:
+        if str(getattr(exc, "code", "") or "") in MISSING_COLUMN_CODES:
+            logger.warning("Readiness check: the database is missing this release's columns")
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "database": "needs_update", "timestamp": checked_at},
+            )
         logger.warning("Readiness check: database unreachable (%s)", type(exc).__name__)
         return JSONResponse(
             status_code=503,

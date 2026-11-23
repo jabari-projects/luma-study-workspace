@@ -260,3 +260,38 @@ def test_ready_is_200_when_database_answers(monkeypatch):
     res = TestClient(main.app).get("/health/ready")
     assert res.status_code == 200
     assert res.json()["status"] == "ready"
+
+
+@pytest.mark.parametrize("code", ["42703", "PGRST204"])
+def test_ready_is_503_needs_update_when_the_subjects_migration_has_not_run(monkeypatch, code):
+    # A backend deployed before 2026_11_24_subjects.sql must fail its health check, not serve 500s.
+    asked = []
+
+    class Missing(Exception):
+        pass
+
+    class Query:
+        def __init__(self, name):
+            self.name = name
+
+        def select(self, columns):
+            asked.append((self.name, columns))
+            return self
+
+        def limit(self, n):
+            return self
+
+        def execute(self):
+            if self.name == "summaries":
+                error = Missing("column summaries.subject_slug does not exist")
+                error.code = code
+                raise error
+            return SimpleNamespace(data=[])
+
+    monkeypatch.setattr(main, "is_supabase_configured", lambda: True)
+    monkeypatch.setattr(main, "supabase", SimpleNamespace(table=Query))
+    res = TestClient(main.app).get("/health/ready")
+    assert res.status_code == 503
+    assert res.json()["database"] == "needs_update"
+    assert "subject_slug" not in res.text
+    assert ("summaries", "subject_slug,subtopic_slug") in asked

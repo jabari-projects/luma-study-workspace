@@ -72,6 +72,9 @@
 
   --danger: #b3400b;
   --danger-soft: #fff1e8;
+  /* "Not filled in" and other form errors: a true red (5:1 or more on paper and on --error-soft). */
+  --error: #c62828;
+  --error-soft: #fdecea;
   --success: #15803d;
   --success-soft: #eaf8ee;
 
@@ -113,6 +116,8 @@
   --accent-ink: color-mix(in srgb, var(--accent) 55%, white);
   --danger: #fb923c;
   --danger-soft: #3a2119;
+  --error: #ff6b6b;
+  --error-soft: #3a1a1a;
   --success: #4ade80;
   --success-soft: #16301f;
   --glow-new: #4a4539;
@@ -3379,7 +3384,7 @@ input[type="radio"] {
 
 input[aria-invalid="true"],
 textarea[aria-invalid="true"] {
-  border-color: var(--danger);
+  border-color: var(--error);
 }
 
 .password-field {
@@ -4223,6 +4228,16 @@ button.account-row:hover {
 /* Discover: the list heading sits on the rule, and "Show newest" goes back to browsing. */
 .discover-page .section-head {
   margin-bottom: 0;
+}
+
+/* The count, the chips and the list sit close together (no empty gap before the results). */
+.discover-page .search-results {
+  gap: 14px;
+}
+
+.discover-page .result-line {
+  margin: 0;
+  font-weight: 700;
 }
 
 /* Empty and "nothing found" sit on the ruled list like a row, not in a dashed box. */

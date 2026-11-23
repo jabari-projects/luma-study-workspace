@@ -44,9 +44,10 @@ describe("Discover address", () => {
     assert.match(nav, /const SEARCH: NavItem = \{ to: DISCOVER, label: "Search"/)
   })
 
-  it("the page heading is Discover notes", () => {
+  it("the page heading is Discover (it holds notes, decks and summaries)", () => {
     const page = read("./DiscoverPage.tsx")
-    assert.match(page, /Discover <Scribble type="underline">notes<\/Scribble>/)
+    assert.match(page, /<Scribble type="underline">Discover<\/Scribble>/)
+    assert.match(page, /Notes, flashcards and summaries other students shared/)
   })
 })
 

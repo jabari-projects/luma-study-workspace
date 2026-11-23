@@ -2,7 +2,7 @@
 // No window or React here, so `node --test` can run it. The list itself comes from the API
 // (GET /subjects, the backend's app/data/subjects.json); see useSubjects.ts.
 
-export type Subtopic = { slug: string; name: string; retired?: boolean }
+export type Subtopic = { slug: string; name: string; aliases?: string[]; retired?: boolean }
 export type Subject = {
   slug: string
   name: string
@@ -65,35 +65,83 @@ export type SubjectMatch =
   | { kind: "subject"; subject: Subject }
   | { kind: "subtopic"; subject: Subject; subtopic: Subtopic }
 
-const squeeze = (text: string) => text.toLowerCase().split(/\s+/).filter(Boolean).join(" ")
+/** Like the backend's subjects.fold: lower case, "." and "'" dropped ("U.S." is "us"), any other mark a space. */
+export function fold(text: string): string {
+  return text.toLowerCase().replace(/[.'’]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+}
+
+// Words that only say a level or a class type ("spanish 2", "chem honors"): nice to match, never needed.
+const LEVEL_WORDS = new Set(["honors", "honor", "hon", "h", "regular", "level", "cp", "i", "ii", "iii", "iv"])
+// Small words that never decide a match on their own.
+const SMALL_WORDS = new Set(["a", "an", "and", "at", "by", "for", "in", "is", "of", "on", "or", "the", "to", "with"])
+const isLevel = (word: string) => /^\d+$/.test(word) || LEVEL_WORDS.has(word)
+
+/** True when every word starts a word somewhere in `texts` (all folded). */
+const allStart = (texts: string[], words: string[]) => words.every((word) => texts.some((text) => ` ${text}`.includes(` ${word}`)))
+
+type Query = { whole: string; needed: string[]; extra: string[] }
+
+function readQuery(text: string): Query | null {
+  const whole = fold(text)
+  if (!whole) return null
+  const words = whole.split(" ")
+  const needed = words.filter((word) => !isLevel(word) && !SMALL_WORDS.has(word))
+  const kept = needed.length ? needed : words
+  return { whole, needed: kept, extra: words.filter((word) => !kept.includes(word)) }
+}
 
 /**
- * Picker search: subject names, aliases, group names and subtopic names that hold the words.
- * Best first: starts-with before contains, and a subject before a subtopic. A group name
- * ("science") lists every subject in that group. Retired entries are hidden.
+ * How well one entry fits, best 0, or null. `own` is the entry's name and aliases, `wider` the
+ * names it sits under (a subtopic's subject, a subject's group). All folded.
+ */
+function fit(query: Query, own: string[], wider: string[]): number | null {
+  let tier: number | null = null
+  if (own.includes(query.whole)) tier = 0
+  else if (own.some((text) => text.startsWith(query.whole))) tier = 1
+  else if (allStart(own, query.needed)) tier = 2
+  else if (wider.length > 0 && allStart([...own, ...wider], query.needed)) tier = 3
+  else if (query.whole.length >= 3 && own.some((text) => text.includes(query.whole))) tier = 4
+  if (tier === null) return null
+  // "spanish 2": Spanish fits, but an entry that also has the "2" fits better.
+  const missedExtra = query.extra.length > 0 && !allStart([...own, ...wider], query.extra)
+  return tier * 2 + (missedExtra ? 1 : 0)
+}
+
+const ownWords = (entry: { name: string; aliases?: string[] }) => [fold(entry.name), ...(entry.aliases ?? []).map(fold)]
+
+/** Picker search inside one subject: its subtopics whose name or alias fits the words, best first. */
+export function searchSubtopics(subject: Subject, text: string): Subtopic[] {
+  const query = readQuery(text)
+  const open = subject.subtopics.filter((subtopic) => !subtopic.retired)
+  if (!query) return open
+  return open
+    .map((subtopic, order) => ({ subtopic, order, score: fit(query, ownWords(subtopic), []) }))
+    .filter((entry): entry is { subtopic: Subtopic; order: number; score: number } => entry.score !== null)
+    .sort((a, b) => a.score - b.score || a.order - b.order)
+    .map((entry) => entry.subtopic)
+}
+
+/**
+ * Picker search, word by word in any order: subject names and aliases, subtopic names and
+ * aliases ("ap calc", "trig", "texas history"), and group names ("science" lists every subject
+ * in Science). Level words like "2" or "honors" help but are never needed ("spanish 2" finds
+ * Spanish). Best first: a whole name, then a name that starts with the words, then every word
+ * starting a word, and a subject before a subtopic. Retired entries are hidden.
  */
 export function searchSubjects(list: SubjectList, text: string, limit = 40): SubjectMatch[] {
-  const wanted = squeeze(text)
-  if (!wanted) return []
+  const query = readQuery(text)
+  if (!query) return []
   const scored: { score: number; order: number; match: SubjectMatch }[] = []
-  const groupNames = new Map(list.groups.map((group) => [group.slug, group.name.toLowerCase()]))
+  const groupNames = new Map(list.groups.map((group) => [group.slug, fold(group.name)]))
   let order = 0
-  const scoreOf = (words: string[]) => {
-    if (words.some((word) => word === wanted)) return 0
-    if (words.some((word) => word.startsWith(wanted))) return 1
-    if (words.some((word) => word.split(/[\s(,-]+/).some((part) => part.startsWith(wanted)))) return 2
-    if (words.some((word) => word.includes(wanted))) return 3
-    return null
-  }
   for (const subject of list.subjects) {
     if (subject.retired) continue
-    const own = scoreOf([subject.name.toLowerCase(), ...(subject.aliases ?? [])])
-    const viaGroup = scoreOf([groupNames.get(subject.group) ?? ""])
-    const best = own ?? (viaGroup === null ? null : viaGroup + 1)
+    const subjectWords = ownWords(subject)
+    const best = fit(query, subjectWords, [groupNames.get(subject.group) ?? ""])
     if (best !== null) scored.push({ score: best * 2, order: order++, match: { kind: "subject", subject } })
     for (const subtopic of subject.subtopics) {
       if (subtopic.retired) continue
-      const score = scoreOf([subtopic.name.toLowerCase()])
+      const score = fit(query, ownWords(subtopic), subjectWords)
       if (score !== null) scored.push({ score: score * 2 + 1, order: order++, match: { kind: "subtopic", subject, subtopic } })
     }
   }

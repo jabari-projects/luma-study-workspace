@@ -157,3 +157,46 @@ test("AI limits and errors show in the panel, and the free finder still works", 
   await expect(field(page, "Question 2")).toHaveValue("Moon")
   expect(ai.count).toBe(3)
 })
+
+test("an empty deck shows Make cards from my notes at the top; new suggestions come into view; Save deck points at them", async ({ page }, info) => {
+  const { email } = await makeAccount(page, info, "maketop")
+  await loginAndWait(page, email)
+  await page.goto("/flashcards/new")
+  // The big button sits above the empty cards, with one line of help; no second link below.
+  const open = page.getByRole("button", { name: "Make cards from my notes", exact: true })
+  await expect(open).toHaveCount(1)
+  await expect(page.getByText("Paste notes and Luma suggests cards. Or type your own cards below.")).toBeVisible()
+  const openBox = await open.boundingBox()
+  const firstCard = await field(page, "Question 1").boundingBox()
+  expect(openBox!.y).toBeLessThan(firstCard!.y)
+
+  await openPanel(page)
+  await panel(page).getByRole("textbox", { name: "Your notes" }).fill(NOTES)
+  await panel(page).getByRole("button", { name: "Make cards with AI" }).click()
+  await expect(panel(page).getByText("Keeping 5 of 5")).toBeVisible({ timeout: 15_000 })
+  // The suggestions come into view with focus on their heading (never hidden under the bars).
+  const heading = panel(page).getByRole("heading", { name: "Cards Luma suggests" })
+  await expect(heading).toBeFocused()
+  await expect(heading).toBeInViewport()
+  // Now "Add 5 cards" is the main button; another AI turn is a plain choice.
+  await expect(panel(page).getByRole("button", { name: "Add 5 cards" })).toHaveClass(/primary-button/)
+  await expect(panel(page).getByRole("button", { name: "Make more with AI" })).toHaveClass(/secondary-button/)
+
+  const narrow = (page.viewportSize()?.width ?? 1280) < 720
+  if (narrow) {
+    // On a phone the save bar steps aside while the panel is open (it has its own Add button).
+    await expect(page.locator(".sticky-save")).toBeHidden()
+  } else {
+    await expect(page.locator(".sticky-save")).toContainText("5 suggested cards not added yet")
+    await field(page, "Title").fill("Plants")
+    await page.getByRole("button", { name: "Save deck" }).click()
+    await expect(page.getByText("You have 5 suggested cards. Tap Add 5 cards first.")).toBeVisible()
+    await expect(panel(page).getByRole("button", { name: "Add 5 cards" })).toBeFocused()
+    await expect(page).toHaveURL(/\/flashcards\/new$/)
+  }
+  await panel(page).getByRole("button", { name: "Add 5 cards" }).click()
+  await expect(page.getByText("Added 5 cards.")).toBeVisible()
+  await expect(page.getByText(/You have \d+ suggested card/)).toHaveCount(0)
+  await expect(page.locator(".sticky-save")).toBeVisible()
+  await expect(page.locator(".sticky-save")).toContainText("5 cards ready")
+})

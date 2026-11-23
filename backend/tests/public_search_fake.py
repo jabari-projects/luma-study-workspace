@@ -27,6 +27,15 @@ def _like_to_regex(pattern: str) -> re.Pattern:
     return re.compile("^" + "".join(out) + "$", re.IGNORECASE | re.DOTALL)
 
 
+_FOLD_DROP = re.compile("[.'’]")
+_FOLD_SPACE = re.compile(r"[\W_]+")
+
+
+def _folded(hay: str) -> str:
+    """Like the SQL: lower case, "." and "'" dropped, other marks a space, padded with spaces."""
+    return " " + _FOLD_SPACE.sub(" ", _FOLD_DROP.sub("", hay.lower())) + " "
+
+
 def _text(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
@@ -64,6 +73,7 @@ def _shared(tables: dict) -> list[dict]:
                     "published_at": row.get("published_at"),
                     "created_at": row.get("created_at"),
                     "_hay": _hay(row, study_type),
+                    "_folded": _folded(_hay(row, study_type)),
                 }
             )
     return rows
@@ -78,26 +88,35 @@ def _counts(rows: list[dict], key: str, out_key: str) -> list[dict]:
 
 
 def public_study_search(tables: dict, params: dict) -> dict:
-    pattern = params.get("p_pattern")
-    regex = _like_to_regex(pattern) if pattern else None
-    pairs = params.get("p_match_pairs") or []
+    terms = params.get("p_terms") or []
+    compiled = [
+        (
+            _like_to_regex(term["like"]) if term.get("like") else None,
+            _like_to_regex(term["word"]) if term.get("word") else None,
+            term.get("pairs") or [],
+        )
+        for term in terms
+    ]
     subject, subtopic, study_type = params.get("p_subject"), params.get("p_subtopic"), params.get("p_type")
     user_ids = params.get("p_user_ids")
     limit = max(min(int(params.get("p_limit") or 30), 500), 0)
     offset = max(int(params.get("p_offset") or 0), 0)
 
-    def pair_match(row: dict) -> bool:
+    def pair_match(row: dict, pairs: list) -> bool:
         return any(
             pair.get("subject") == row["subject_slug"]
             and (pair.get("subtopic") is None or pair.get("subtopic") == row["subtopic_slug"])
             for pair in pairs
         )
 
+    def term_match(row: dict, like, word, pairs) -> bool:
+        return bool((like and like.match(row["_hay"])) or (word and word.match(row["_folded"])) or pair_match(row, pairs))
+
     matched = [
         row
         for row in _shared(tables)
         if (user_ids is None or row["user_id"] in user_ids)
-        and (regex is None or regex.match(row["_hay"]) or pair_match(row))
+        and all(term_match(row, *term) for term in compiled)
     ]
     chosen = [
         row
@@ -106,8 +125,10 @@ def public_study_search(tables: dict, params: dict) -> dict:
         and (subtopic is None or row["subtopic_slug"] == subtopic)
         and (study_type is None or row["study_type"] == study_type)
     ]
-    chosen.sort(key=lambda row: (str(row["published_at"] or ""), str(row["created_at"] or ""), str(row["id"])), reverse=True)
-    page = [{k: v for k, v in row.items() if k != "_hay"} for row in chosen[offset : offset + limit]]
+    # Like the SQL: newest shared first, then newest made, then id A to Z.
+    chosen.sort(key=lambda row: str(row["id"]))
+    chosen.sort(key=lambda row: (str(row["published_at"] or ""), str(row["created_at"] or "")), reverse=True)
+    page = [{k: v for k, v in row.items() if not k.startswith("_")} for row in chosen[offset : offset + limit]]
     of_type = [row for row in matched if study_type is None or row["study_type"] == study_type]
     in_subject = [row for row in matched if (subject is None or row["subject_slug"] == subject) and (subtopic is None or row["subtopic_slug"] == subtopic)]
     return {

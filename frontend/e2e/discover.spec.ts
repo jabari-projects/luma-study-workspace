@@ -5,7 +5,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test"
 
 import { API, PASSWORD, SEEDED, expectNoSeriousA11yIssues, fakeEmail, latestMail, loginAndWait, setThemeMode } from "./helpers"
 
-const heading = (page: Page) => page.getByRole("heading", { level: 1, name: "Discover notes" })
+const heading = (page: Page) => page.getByRole("heading", { level: 1, name: "Discover", exact: true })
 /** The status line screen readers hear (it is always on the page, but visually hidden). */
 const status = (page: Page) => page.getByTestId("discover-status")
 const row = (page: Page, title: string) =>
@@ -79,7 +79,7 @@ test("Discover opens on the newest shared items, each with @username only", asyn
   await expect(status(page)).toHaveText(/^\d+ shared items?\.$/)
   await page.getByLabel("Search", { exact: true }).fill("spanish")
   await page.getByRole("button", { name: "Search", exact: true }).click()
-  await expect(page.getByRole("heading", { level: 2, name: "Shared notes about “spanish”" })).toBeVisible()
+  await expect(page.getByRole("heading", { level: 2, name: "Shared about “spanish”" })).toBeVisible()
   await expect(row(page, "Spanish Basics")).toBeVisible()
   await expect(status(page)).toHaveText(/^\d+ shared items? for “spanish”\.$/)
 
@@ -189,7 +189,7 @@ test("a slow server shows placeholder rows and says Luma is waking up", async ({
   await expect(page.getByText("Type at least 3 letters of a username.")).toBeVisible()
   await expect(page.locator(".skeleton-list")).toHaveCount(0)
   await expect(status(page)).toHaveText("")
-  await page.getByRole("button", { name: "Notes and cards", exact: true }).click()
+  await page.getByRole("button", { name: "Shared work", exact: true }).click()
 
   await expect(status(page)).toHaveText("Waking up Luma… This can take a minute.", { timeout: 4000 })
   await expect(page.locator(".skeleton-list")).toBeVisible()

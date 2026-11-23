@@ -418,10 +418,10 @@ test.describe("making notes", () => {
     // The first save makes the note and keeps writing open; it saves by itself from now on.
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}\/edit$/)
     await expect(page.getByText(/^Saved at /)).toBeVisible()
+    // A new item: "Share with the crowd?" asks right after its first save. Not now keeps it private.
+    await answerSharePrompt(page)
     await page.getByRole("button", { name: "Save changes" }).click()
     await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
-    // A new item: "Share with the crowd?" asks once. Not now keeps it private.
-    await answerSharePrompt(page)
     await expect(pageTitle(page)).toHaveText(myTitle)
     await expect(page.getByText(/We found 2 cards in your note/)).toBeVisible()
     await expect(page.getByRole("button", { name: "Make a deck (2)" })).toBeEnabled()

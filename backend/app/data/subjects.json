@@ -15,20 +15,25 @@
   ],
   "subjects": [
     {"slug": "math", "name": "Math", "group": "math", "aliases": ["maths", "mathematics", "math class"], "subtopics": [
-      {"slug": "basic-math", "name": "Arithmetic and basic math"},
+      {"slug": "basic-math", "name": "Arithmetic and basic math", "aliases": ["arithmetic", "basic math"]},
       {"slug": "fractions", "name": "Fractions, decimals and percents"},
       {"slug": "pre-algebra", "name": "Pre-algebra"},
-      {"slug": "algebra", "name": "Algebra 1"},
-      {"slug": "algebra-2", "name": "Algebra 2"},
-      {"slug": "geometry", "name": "Geometry"},
-      {"slug": "trigonometry", "name": "Trigonometry"},
-      {"slug": "precalculus", "name": "Precalculus"},
-      {"slug": "calculus", "name": "Calculus"},
-      {"slug": "statistics", "name": "Statistics and probability"},
-      {"slug": "word-problems", "name": "Word problems"}
+      {"slug": "algebra", "name": "Algebra 1", "aliases": ["algebra 1", "alg 1", "alg"]},
+      {"slug": "algebra-2", "name": "Algebra 2", "aliases": ["alg 2"]},
+      {"slug": "geometry", "name": "Geometry", "aliases": ["geo"]},
+      {"slug": "trigonometry", "name": "Trigonometry", "aliases": ["trig"]},
+      {"slug": "precalculus", "name": "Precalculus", "aliases": ["precalc", "pre calc", "ap precalc", "ap precalculus"]},
+      {"slug": "calculus", "name": "Calculus", "aliases": ["calc", "ap calc", "ap calc ab", "ap calc bc", "calc ab", "calc bc", "ap calculus", "ib math"]},
+      {"slug": "statistics", "name": "Statistics and probability", "aliases": ["stats", "ap stats", "ap statistics"]},
+      {"slug": "word-problems", "name": "Word problems"},
+      {"slug": "integrated-math", "name": "Integrated math I, II and III", "aliases": ["integrated math", "math 1", "math 2", "math 3", "im1", "im2", "im3"]},
+      {"slug": "ratios", "name": "Ratios, rates and proportions", "aliases": ["ratio", "proportion", "rates", "unit rate"]},
+      {"slug": "functions", "name": "Functions and graphs", "aliases": ["function", "graphing", "linear functions"]},
+      {"slug": "business-math", "name": "Business and consumer math", "aliases": ["consumer math", "business math", "financial math"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "college-math", "name": "College math", "group": "math", "aliases": ["higher math", "university math"], "subtopics": [
-      {"slug": "multivariable-calculus", "name": "Multivariable calculus"},
+      {"slug": "multivariable-calculus", "name": "Multivariable calculus", "aliases": ["calc 3", "calculus 3"]},
       {"slug": "linear-algebra", "name": "Linear algebra"},
       {"slug": "differential-equations", "name": "Differential equations"},
       {"slug": "discrete-math", "name": "Discrete math"},
@@ -39,9 +44,10 @@
       {"slug": "complex-analysis", "name": "Complex analysis"},
       {"slug": "topology", "name": "Topology"},
       {"slug": "numerical-methods", "name": "Numerical methods"},
-      {"slug": "applied-math", "name": "Applied math and modeling"}
+      {"slug": "applied-math", "name": "Applied math and modeling"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "statistics", "name": "Statistics and data science", "group": "math", "aliases": ["stats", "data science", "data"], "subtopics": [
+    {"slug": "statistics", "name": "Statistics and data science", "group": "math", "aliases": ["stats", "data science", "data", "ap stats", "ap statistics"], "subtopics": [
       {"slug": "describing-data", "name": "Describing data"},
       {"slug": "probability", "name": "Probability"},
       {"slug": "sampling", "name": "Sampling and surveys"},
@@ -51,7 +57,9 @@
       {"slug": "data-visualization", "name": "Charts and data visualization"},
       {"slug": "working-with-data", "name": "Working with data"},
       {"slug": "machine-learning", "name": "Machine learning basics"},
-      {"slug": "coding-for-data", "name": "Coding for data (R, Python, SQL)"}
+      {"slug": "coding-for-data", "name": "Coding for data (R, Python, SQL)"},
+      {"slug": "actuarial-science", "name": "Actuarial science", "aliases": ["actuary", "actuarial"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "general-science", "name": "General science", "group": "science", "aliases": ["science", "physical science", "life science"], "subtopics": [
       {"slug": "scientific-method", "name": "The scientific method"},
@@ -62,9 +70,10 @@
       {"slug": "ecosystems", "name": "Ecosystems"},
       {"slug": "earth", "name": "Earth, rocks and weather"},
       {"slug": "space", "name": "Space"},
-      {"slug": "science-fair", "name": "Science fair projects"}
+      {"slug": "science-fair", "name": "Science fair projects"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "biology", "name": "Biology", "group": "science", "aliases": ["bio", "life science", "ap bio"], "subtopics": [
+    {"slug": "biology", "name": "Biology", "group": "science", "aliases": ["bio", "life science", "ap bio", "ap biology"], "subtopics": [
       {"slug": "cells", "name": "Cells"},
       {"slug": "molecules-of-life", "name": "Molecules of life"},
       {"slug": "genetics", "name": "Genetics and DNA"},
@@ -77,9 +86,10 @@
       {"slug": "molecular-biology", "name": "Molecular and cell biology"},
       {"slug": "biotechnology", "name": "Biotechnology"},
       {"slug": "marine-biology", "name": "Marine biology"},
-      {"slug": "neuroscience", "name": "Brain and nerves (neuroscience)"}
+      {"slug": "neuroscience", "name": "Brain and nerves (neuroscience)"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "chemistry", "name": "Chemistry", "group": "science", "aliases": ["chem", "ap chem"], "subtopics": [
+    {"slug": "chemistry", "name": "Chemistry", "group": "science", "aliases": ["chem", "ap chem", "ap chemistry", "chem honors"], "subtopics": [
       {"slug": "atoms", "name": "Atoms and the periodic table"},
       {"slug": "bonding", "name": "Chemical bonds"},
       {"slug": "reactions", "name": "Chemical reactions"},
@@ -94,9 +104,10 @@
       {"slug": "organic", "name": "Organic chemistry"},
       {"slug": "biochemistry", "name": "Biochemistry"},
       {"slug": "analytical", "name": "Analytical chemistry"},
-      {"slug": "physical-chemistry", "name": "Physical chemistry"}
+      {"slug": "physical-chemistry", "name": "Physical chemistry"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "physics", "name": "Physics", "group": "science", "aliases": ["phys", "ap physics"], "subtopics": [
+    {"slug": "physics", "name": "Physics", "group": "science", "aliases": ["phys", "ap physics", "ap physics 1", "ap physics 2", "ap physics c"], "subtopics": [
       {"slug": "motion", "name": "Motion (kinematics)"},
       {"slug": "forces", "name": "Forces and Newton's laws"},
       {"slug": "energy", "name": "Work, energy and power"},
@@ -111,7 +122,8 @@
       {"slug": "modern-physics", "name": "Modern physics (atoms and nuclei)"},
       {"slug": "quantum", "name": "Quantum physics"},
       {"slug": "relativity", "name": "Relativity"},
-      {"slug": "astrophysics", "name": "Astrophysics"}
+      {"slug": "astrophysics", "name": "Astrophysics"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "earth-space", "name": "Earth and space science", "group": "science", "aliases": ["earth science", "geology", "astronomy", "space"], "subtopics": [
       {"slug": "rocks-minerals", "name": "Rocks and minerals"},
@@ -125,9 +137,10 @@
       {"slug": "solar-system", "name": "The solar system"},
       {"slug": "stars-galaxies", "name": "Stars and galaxies"},
       {"slug": "cosmology", "name": "The universe and the Big Bang"},
-      {"slug": "space-exploration", "name": "Space exploration"}
+      {"slug": "space-exploration", "name": "Space exploration"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "environmental-science", "name": "Environmental science", "group": "science", "aliases": ["apes", "environment", "ecology"], "subtopics": [
+    {"slug": "environmental-science", "name": "Environmental science", "group": "science", "aliases": ["apes", "environment", "ecology", "ap environmental science"], "subtopics": [
       {"slug": "ecosystems", "name": "Ecosystems and food webs"},
       {"slug": "biodiversity", "name": "Biodiversity and conservation"},
       {"slug": "population", "name": "Human population"},
@@ -137,7 +150,8 @@
       {"slug": "pollution", "name": "Air, water and soil pollution"},
       {"slug": "climate-change", "name": "Climate change"},
       {"slug": "sustainability", "name": "Sustainability"},
-      {"slug": "policy", "name": "Environmental laws and policy"}
+      {"slug": "policy", "name": "Environmental laws and policy"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "nanotech", "name": "Nanotechnology and materials", "group": "science", "aliases": ["nanotechnology", "nano", "materials science"], "subtopics": [
       {"slug": "nanoscale", "name": "What is the nanoscale"},
@@ -147,9 +161,22 @@
       {"slug": "semiconductors", "name": "Semiconductors and chips"},
       {"slug": "nanomedicine", "name": "Nanomedicine"},
       {"slug": "tools", "name": "Microscopes and lab tools"},
-      {"slug": "safety-ethics", "name": "Safety and ethics"}
+      {"slug": "safety-ethics", "name": "Safety and ethics"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "us-history", "name": "U.S. history", "group": "history", "aliases": ["american history", "apush", "united states history"], "subtopics": [
+    {"slug": "agriculture", "name": "Agriculture and natural resources", "group": "science", "aliases": ["ag", "ag science", "agriscience", "ffa", "farming", "agricultural science"], "subtopics": [
+      {"slug": "plant-science", "name": "Plant and crop science", "aliases": ["agronomy", "crops"]},
+      {"slug": "animal-science", "name": "Animal science", "aliases": ["livestock", "animal husbandry"]},
+      {"slug": "food-science", "name": "Food science", "aliases": ["food technology"]},
+      {"slug": "soil-science", "name": "Soil science", "aliases": ["soils"]},
+      {"slug": "horticulture", "name": "Horticulture and gardening", "aliases": ["gardening", "greenhouse"]},
+      {"slug": "forestry", "name": "Forestry", "aliases": ["forests"]},
+      {"slug": "natural-resources", "name": "Natural resources and wildlife", "aliases": ["wildlife", "fisheries", "conservation"]},
+      {"slug": "ag-business", "name": "Agribusiness", "aliases": ["agribusiness", "farm business"]},
+      {"slug": "ag-mechanics", "name": "Ag mechanics", "aliases": ["agricultural mechanics"]},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "us-history", "name": "U.S. history", "group": "history", "aliases": ["american history", "apush", "united states history", "us history", "usa history", "ap us history"], "subtopics": [
       {"slug": "native-america", "name": "Native America before 1492"},
       {"slug": "colonial", "name": "Colonial America (1492-1763)"},
       {"slug": "revolution", "name": "Revolution and the Constitution (1763-1789)"},
@@ -160,9 +187,12 @@
       {"slug": "world-war-2", "name": "World War II (1941-1945)"},
       {"slug": "cold-war-civil-rights", "name": "Cold War and civil rights (1945-1980)"},
       {"slug": "recent", "name": "Recent America (1980-today)"},
-      {"slug": "documents", "name": "Key documents and speeches"}
+      {"slug": "documents", "name": "Key documents and speeches"},
+      {"slug": "state-history", "name": "State history (Texas, California and more)", "aliases": ["texas history", "california history", "florida history", "new york history", "state history", "georgia history", "oklahoma history"]},
+      {"slug": "native-nations", "name": "Native nations after 1492", "aliases": ["native american history", "indigenous history", "american indian history"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "world-history", "name": "World history", "group": "history", "aliases": ["global history", "ap world"], "subtopics": [
+    {"slug": "world-history", "name": "World history", "group": "history", "aliases": ["global history", "ap world", "ap world history", "whap"], "subtopics": [
       {"slug": "early-humans", "name": "Early humans and prehistory"},
       {"slug": "ancient", "name": "Ancient civilizations (to 500 BCE)"},
       {"slug": "classical", "name": "Classical empires (500 BCE-600 CE)"},
@@ -175,9 +205,12 @@
       {"slug": "world-war-2", "name": "World War II"},
       {"slug": "cold-war", "name": "Cold War and decolonization (1945-1991)"},
       {"slug": "since-1991", "name": "The world since 1991"},
-      {"slug": "historical-thinking", "name": "Using sources (historical thinking)"}
+      {"slug": "historical-thinking", "name": "Using sources (historical thinking)"},
+      {"slug": "holocaust-genocide", "name": "The Holocaust and genocide", "aliases": ["holocaust", "genocide", "shoah"]},
+      {"slug": "canada", "name": "Canadian history", "aliases": ["canada history", "canadian history"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "european-history", "name": "European history", "group": "history", "aliases": ["europe", "ap euro"], "subtopics": [
+    {"slug": "european-history", "name": "European history", "group": "history", "aliases": ["europe", "ap euro", "ap european history"], "subtopics": [
       {"slug": "ancient-greece", "name": "Ancient Greece"},
       {"slug": "ancient-rome", "name": "Ancient Rome"},
       {"slug": "middle-ages", "name": "Middle Ages (500-1450)"},
@@ -190,7 +223,8 @@
       {"slug": "world-wars", "name": "World wars (1914-1945)"},
       {"slug": "cold-war", "name": "Cold War Europe (1945-1991)"},
       {"slug": "europe-today", "name": "Europe today and the EU"},
-      {"slug": "russia-eastern-europe", "name": "Russia and Eastern Europe"}
+      {"slug": "russia-eastern-europe", "name": "Russia and Eastern Europe"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "asian-history", "name": "Asian and Pacific history", "group": "history", "aliases": ["asia", "china history", "japan history", "india history"], "subtopics": [
       {"slug": "ancient-china", "name": "Ancient China"},
@@ -204,7 +238,8 @@
       {"slug": "southeast-asia", "name": "Southeast Asia"},
       {"slug": "central-asia", "name": "Central Asia and the Mongols"},
       {"slug": "pacific", "name": "Australia, New Zealand and the Pacific Islands"},
-      {"slug": "asia-since-1945", "name": "Asia since 1945"}
+      {"slug": "asia-since-1945", "name": "Asia since 1945"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "african-history", "name": "African history", "group": "history", "aliases": ["africa"], "subtopics": [
       {"slug": "ancient-egypt-nubia", "name": "Ancient Egypt and Nubia"},
@@ -214,7 +249,8 @@
       {"slug": "colonial-africa", "name": "Colonial Africa"},
       {"slug": "independence", "name": "Independence movements"},
       {"slug": "south-africa", "name": "South Africa and apartheid"},
-      {"slug": "africa-today", "name": "Africa today"}
+      {"slug": "africa-today", "name": "Africa today"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "latin-american-history", "name": "Latin American and Caribbean history", "group": "history", "aliases": ["latin america", "caribbean", "mexico history"], "subtopics": [
       {"slug": "early-peoples", "name": "Maya, Aztec and Inca"},
@@ -225,7 +261,8 @@
       {"slug": "revolutions", "name": "Mexican and Cuban revolutions"},
       {"slug": "cold-war", "name": "Cold War in Latin America"},
       {"slug": "caribbean", "name": "The Caribbean"},
-      {"slug": "today", "name": "Latin America today"}
+      {"slug": "today", "name": "Latin America today"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "middle-east-history", "name": "Middle Eastern history", "group": "history", "aliases": ["middle east", "mesopotamia"], "subtopics": [
       {"slug": "mesopotamia", "name": "Mesopotamia"},
@@ -235,9 +272,10 @@
       {"slug": "caliphates", "name": "Caliphates and the golden age"},
       {"slug": "crusades", "name": "The Crusades"},
       {"slug": "ottoman", "name": "Ottoman Empire"},
-      {"slug": "modern", "name": "Modern Middle East (1918-today)"}
+      {"slug": "modern", "name": "Modern Middle East (1918-today)"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "government", "name": "Government and politics", "group": "social", "aliases": ["civics", "gov", "ap gov", "political science", "poli sci"], "subtopics": [
+    {"slug": "government", "name": "Government and politics", "group": "social", "aliases": ["civics", "gov", "ap gov", "political science", "poli sci", "ap us gov", "ap comparative government", "ap comp gov"], "subtopics": [
       {"slug": "constitution", "name": "The U.S. Constitution"},
       {"slug": "branches", "name": "Three branches of government"},
       {"slug": "rights", "name": "Rights and civil liberties"},
@@ -250,7 +288,8 @@
       {"slug": "comparative", "name": "Comparing governments"},
       {"slug": "international-relations", "name": "International relations"},
       {"slug": "political-theory", "name": "Political ideas and theory"},
-      {"slug": "public-policy", "name": "Public policy"}
+      {"slug": "public-policy", "name": "Public policy"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "economics", "name": "Economics", "group": "social", "aliases": ["econ", "ap macro", "ap micro"], "subtopics": [
       {"slug": "basics", "name": "Scarcity and choices"},
@@ -264,9 +303,10 @@
       {"slug": "trade", "name": "Trade and globalization"},
       {"slug": "behavioral", "name": "Behavioral economics"},
       {"slug": "development", "name": "Development economics"},
-      {"slug": "econometrics", "name": "Econometrics"}
+      {"slug": "econometrics", "name": "Econometrics"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "geography", "name": "Geography", "group": "social", "aliases": ["geo", "ap human geography", "maps"], "subtopics": [
+    {"slug": "geography", "name": "Geography", "group": "social", "aliases": ["ap human geography", "maps", "ap human geo", "aphug", "human geography"], "subtopics": [
       {"slug": "maps", "name": "Maps and map skills"},
       {"slug": "physical", "name": "Physical geography"},
       {"slug": "human", "name": "Human geography"},
@@ -276,7 +316,8 @@
       {"slug": "countries", "name": "Countries and capitals"},
       {"slug": "regions", "name": "World regions"},
       {"slug": "resources", "name": "Resources and land use"},
-      {"slug": "gis", "name": "GIS and mapping technology"}
+      {"slug": "gis", "name": "GIS and mapping technology"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "psychology", "name": "Psychology", "group": "social", "aliases": ["psych", "ap psych"], "subtopics": [
       {"slug": "research-methods", "name": "Research methods"},
@@ -290,7 +331,8 @@
       {"slug": "personality", "name": "Personality"},
       {"slug": "social", "name": "Social psychology"},
       {"slug": "mental-health", "name": "Mental health and disorders"},
-      {"slug": "treatment", "name": "Therapy and treatment"}
+      {"slug": "treatment", "name": "Therapy and treatment"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "sociology", "name": "Sociology and anthropology", "group": "social", "aliases": ["sociology", "anthropology", "archaeology", "social work"], "subtopics": [
       {"slug": "culture", "name": "Culture"},
@@ -306,13 +348,25 @@
       {"slug": "archaeology", "name": "Archaeology"},
       {"slug": "human-origins", "name": "Human origins"},
       {"slug": "social-work", "name": "Social work and human services"},
-      {"slug": "research-methods", "name": "Research methods"}
+      {"slug": "research-methods", "name": "Research methods"},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "ethnic-studies", "name": "Ethnic, gender and cultural studies", "group": "social", "aliases": ["ethnic studies", "african american studies", "black studies", "ap afam", "ap african american studies", "womens studies", "gender studies", "chicano studies", "latino studies", "asian american studies", "native american studies", "indigenous studies", "cultural studies"], "subtopics": [
+      {"slug": "african-american", "name": "African American studies", "aliases": ["black studies", "african american studies"]},
+      {"slug": "ap-african-american", "name": "AP African American Studies", "aliases": ["ap afam", "ap african american studies"]},
+      {"slug": "latino-chicano", "name": "Latino and Chicano studies", "aliases": ["latinx studies", "chicano studies", "mexican american studies"]},
+      {"slug": "asian-american", "name": "Asian American studies"},
+      {"slug": "native-indigenous", "name": "Native American and Indigenous studies", "aliases": ["indigenous studies"]},
+      {"slug": "womens-gender", "name": "Women's and gender studies", "aliases": ["womens studies", "gender studies"]},
+      {"slug": "identity-culture", "name": "Identity and culture"},
+      {"slug": "social-movements", "name": "Social movements"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "philosophy", "name": "Philosophy and religion", "group": "social", "aliases": ["philosophy", "religion", "world religions", "ethics", "theology"], "subtopics": [
       {"slug": "logic", "name": "Logic and reasoning"},
       {"slug": "ethics", "name": "Ethics"},
       {"slug": "metaphysics", "name": "Reality and existence"},
-      {"slug": "knowledge", "name": "Knowledge (epistemology)"},
+      {"slug": "knowledge", "name": "Knowledge (epistemology)", "aliases": ["theory of knowledge", "tok"]},
       {"slug": "mind", "name": "Mind and free will"},
       {"slug": "political", "name": "Political philosophy"},
       {"slug": "ancient", "name": "Ancient philosophy"},
@@ -323,7 +377,8 @@
       {"slug": "south-asian-religions", "name": "Hinduism, Buddhism, Jainism and Sikhism"},
       {"slug": "east-asian-traditions", "name": "Confucianism, Taoism and Shinto"},
       {"slug": "indigenous-traditions", "name": "Indigenous traditions"},
-      {"slug": "religion-society", "name": "Religion and society"}
+      {"slug": "religion-society", "name": "Religion and society"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "law", "name": "Law and criminal justice", "group": "social", "aliases": ["legal studies", "criminal justice", "criminology", "pre-law"], "subtopics": [
       {"slug": "legal-system", "name": "How the legal system works"},
@@ -339,7 +394,16 @@
       {"slug": "corrections", "name": "Prisons and corrections"},
       {"slug": "juvenile-justice", "name": "Juvenile justice"},
       {"slug": "forensics", "name": "Forensic science"},
-      {"slug": "mock-trial", "name": "Mock trial"}
+      {"slug": "mock-trial", "name": "Mock trial"},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "library-science", "name": "Library and information science", "group": "social", "aliases": ["library science", "information science", "mlis", "library"], "subtopics": [
+      {"slug": "information-literacy", "name": "Finding and checking information", "aliases": ["information literacy"]},
+      {"slug": "research-reference", "name": "Research and reference help"},
+      {"slug": "cataloging", "name": "Cataloging and organizing"},
+      {"slug": "archives", "name": "Archives and records"},
+      {"slug": "digital-libraries", "name": "Digital libraries"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "education", "name": "Education and teaching", "group": "social", "aliases": ["teaching", "teacher", "early childhood"], "subtopics": [
       {"slug": "how-people-learn", "name": "How people learn"},
@@ -351,7 +415,8 @@
       {"slug": "teaching-reading", "name": "Teaching reading"},
       {"slug": "edtech", "name": "Education technology"},
       {"slug": "assessment", "name": "Testing and assessment"},
-      {"slug": "early-childhood", "name": "Early childhood education"}
+      {"slug": "early-childhood", "name": "Early childhood education"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "communication", "name": "Media and communication", "group": "social", "aliases": ["communications", "journalism", "media", "film studies", "speech", "debate"], "subtopics": [
       {"slug": "public-speaking", "name": "Public speaking"},
@@ -364,9 +429,10 @@
       {"slug": "rhetoric", "name": "Rhetoric and persuasion"},
       {"slug": "film-studies", "name": "Film history and analysis"},
       {"slug": "filmmaking", "name": "Video and filmmaking"},
-      {"slug": "broadcasting", "name": "Radio, podcasts and TV"}
+      {"slug": "broadcasting", "name": "Radio, podcasts and TV"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "english", "name": "English language arts", "group": "english", "aliases": ["ela", "language arts", "reading", "writing", "english class"], "subtopics": [
+    {"slug": "english", "name": "English language arts", "group": "english", "aliases": ["ela", "language arts", "reading", "writing", "english class", "ap lang", "ap language"], "subtopics": [
       {"slug": "reading", "name": "Reading skills"},
       {"slug": "grammar", "name": "Grammar and punctuation"},
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -378,9 +444,12 @@
       {"slug": "drama", "name": "Plays"},
       {"slug": "nonfiction", "name": "Nonfiction and articles"},
       {"slug": "literary-devices", "name": "Literary devices"},
-      {"slug": "speaking-listening", "name": "Speaking and listening"}
+      {"slug": "speaking-listening", "name": "Speaking and listening"},
+      {"slug": "rhetoric-argument", "name": "Rhetoric and argument (AP Lang)", "aliases": ["ap lang", "ap language", "ap english language", "rhetoric", "argument"]},
+      {"slug": "ap-seminar-research", "name": "AP Seminar and AP Research", "aliases": ["ap seminar", "ap research", "ap capstone"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
-    {"slug": "literature", "name": "Literature", "group": "english", "aliases": ["lit", "books", "ap lit", "english literature"], "subtopics": [
+    {"slug": "literature", "name": "Literature", "group": "english", "aliases": ["lit", "books", "ap lit", "english literature", "ap english literature", "ap literature"], "subtopics": [
       {"slug": "american", "name": "American literature"},
       {"slug": "british", "name": "British literature"},
       {"slug": "world", "name": "World literature"},
@@ -392,7 +461,8 @@
       {"slug": "mythology", "name": "Myths and legends"},
       {"slug": "african-american", "name": "African American literature"},
       {"slug": "latin-american", "name": "Latin American literature"},
-      {"slug": "literary-theory", "name": "Literary theory"}
+      {"slug": "literary-theory", "name": "Literary theory"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "linguistics", "name": "Linguistics", "group": "english", "aliases": ["language science"], "subtopics": [
       {"slug": "phonetics", "name": "Speech sounds (phonetics)"},
@@ -404,7 +474,8 @@
       {"slug": "sociolinguistics", "name": "Language and society"},
       {"slug": "language-learning", "name": "How we learn language"},
       {"slug": "history", "name": "Language history"},
-      {"slug": "writing-systems", "name": "Writing systems"}
+      {"slug": "writing-systems", "name": "Writing systems"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "spanish", "name": "Spanish", "group": "languages", "aliases": ["espanol", "ap spanish"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -414,7 +485,8 @@
       {"slug": "reading-writing", "name": "Reading and writing"},
       {"slug": "culture", "name": "Culture"},
       {"slug": "literature", "name": "Literature"},
-      {"slug": "exam-prep", "name": "AP and other exams"}
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "french", "name": "French", "group": "languages", "aliases": ["francais", "ap french"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -424,7 +496,8 @@
       {"slug": "reading-writing", "name": "Reading and writing"},
       {"slug": "culture", "name": "Culture"},
       {"slug": "literature", "name": "Literature"},
-      {"slug": "exam-prep", "name": "AP and other exams"}
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "german", "name": "German", "group": "languages", "aliases": ["deutsch", "ap german"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -434,7 +507,30 @@
       {"slug": "reading-writing", "name": "Reading and writing"},
       {"slug": "culture", "name": "Culture"},
       {"slug": "literature", "name": "Literature"},
-      {"slug": "exam-prep", "name": "AP and other exams"}
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "italian", "name": "Italian", "group": "languages", "aliases": ["italiano", "ap italian"], "subtopics": [
+      {"slug": "vocabulary", "name": "Vocabulary"},
+      {"slug": "grammar", "name": "Grammar"},
+      {"slug": "verbs", "name": "Verbs and tenses"},
+      {"slug": "speaking-listening", "name": "Speaking and listening"},
+      {"slug": "reading-writing", "name": "Reading and writing"},
+      {"slug": "culture", "name": "Culture"},
+      {"slug": "literature", "name": "Literature"},
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "portuguese", "name": "Portuguese", "group": "languages", "aliases": ["portugues", "brazilian portuguese"], "subtopics": [
+      {"slug": "vocabulary", "name": "Vocabulary"},
+      {"slug": "grammar", "name": "Grammar"},
+      {"slug": "verbs", "name": "Verbs and tenses"},
+      {"slug": "speaking-listening", "name": "Speaking and listening"},
+      {"slug": "reading-writing", "name": "Reading and writing"},
+      {"slug": "culture", "name": "Culture"},
+      {"slug": "literature", "name": "Literature"},
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "chinese", "name": "Chinese (Mandarin)", "group": "languages", "aliases": ["mandarin", "chinese language"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -445,7 +541,8 @@
       {"slug": "reading-writing", "name": "Reading and writing"},
       {"slug": "culture", "name": "Culture"},
       {"slug": "literature", "name": "Literature"},
-      {"slug": "exam-prep", "name": "AP and other exams"}
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "japanese", "name": "Japanese", "group": "languages", "aliases": ["nihongo"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -456,7 +553,8 @@
       {"slug": "speaking-listening", "name": "Speaking and listening"},
       {"slug": "reading-writing", "name": "Reading and writing"},
       {"slug": "culture", "name": "Culture"},
-      {"slug": "exam-prep", "name": "AP and other exams"}
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "korean", "name": "Korean", "group": "languages", "aliases": ["hangul", "hangeul"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -465,7 +563,8 @@
       {"slug": "verbs", "name": "Verbs and endings"},
       {"slug": "speaking-listening", "name": "Speaking and listening"},
       {"slug": "reading-writing", "name": "Reading and writing"},
-      {"slug": "culture", "name": "Culture"}
+      {"slug": "culture", "name": "Culture"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "arabic", "name": "Arabic", "group": "languages", "aliases": ["arabic language"], "subtopics": [
       {"slug": "alphabet", "name": "Alphabet and script"},
@@ -474,7 +573,8 @@
       {"slug": "verbs", "name": "Verbs"},
       {"slug": "speaking-listening", "name": "Speaking and listening"},
       {"slug": "reading-writing", "name": "Reading and writing"},
-      {"slug": "culture", "name": "Culture"}
+      {"slug": "culture", "name": "Culture"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "latin", "name": "Latin", "group": "languages", "aliases": ["ap latin"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -483,14 +583,16 @@
       {"slug": "translation", "name": "Translation"},
       {"slug": "roman-life", "name": "Roman life and culture"},
       {"slug": "authors", "name": "Latin authors"},
-      {"slug": "exam-prep", "name": "AP and other exams"}
+      {"slug": "exam-prep", "name": "AP and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "asl", "name": "American Sign Language", "group": "languages", "aliases": ["sign language", "asl"], "subtopics": [
       {"slug": "signs", "name": "Signs and vocabulary"},
       {"slug": "fingerspelling", "name": "Fingerspelling"},
       {"slug": "grammar", "name": "Grammar"},
       {"slug": "conversation", "name": "Signing conversations"},
-      {"slug": "deaf-culture", "name": "Deaf culture"}
+      {"slug": "deaf-culture", "name": "Deaf culture"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "esl", "name": "English as a new language", "group": "languages", "aliases": ["esl", "ell", "english learner", "toefl"], "subtopics": [
       {"slug": "vocabulary", "name": "Vocabulary"},
@@ -500,11 +602,12 @@
       {"slug": "reading-writing", "name": "Reading and writing"},
       {"slug": "idioms", "name": "Idioms and slang"},
       {"slug": "everyday", "name": "Everyday English"},
-      {"slug": "exam-prep", "name": "TOEFL and other exams"}
+      {"slug": "exam-prep", "name": "TOEFL and other exams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "more-languages", "name": "More languages", "group": "languages", "aliases": ["foreign language", "world language"], "subtopics": [
-      {"slug": "italian", "name": "Italian"},
-      {"slug": "portuguese", "name": "Portuguese"},
+      {"slug": "italian", "name": "Italian", "retired": true},
+      {"slug": "portuguese", "name": "Portuguese", "retired": true},
       {"slug": "russian", "name": "Russian"},
       {"slug": "hindi", "name": "Hindi"},
       {"slug": "urdu", "name": "Urdu"},
@@ -516,26 +619,34 @@
       {"slug": "turkish", "name": "Turkish"},
       {"slug": "persian", "name": "Persian (Farsi)"},
       {"slug": "haitian-creole", "name": "Haitian Creole"},
+      {"slug": "polish", "name": "Polish"},
+      {"slug": "dutch", "name": "Dutch"},
+      {"slug": "bengali", "name": "Bengali"},
+      {"slug": "punjabi", "name": "Punjabi"},
+      {"slug": "hmong", "name": "Hmong"},
+      {"slug": "somali", "name": "Somali"},
+      {"slug": "navajo", "name": "Navajo (Dine)", "aliases": ["dine", "dine bizaad"]},
       {"slug": "other", "name": "Another language"}
     ]},
     {"slug": "art", "name": "Art and design", "group": "arts", "aliases": ["art class", "studio art", "ap art", "design"], "subtopics": [
-      {"slug": "drawing", "name": "Drawing"},
+      {"slug": "drawing", "name": "Drawing", "aliases": ["ap drawing"]},
       {"slug": "painting", "name": "Painting"},
-      {"slug": "sculpture", "name": "Sculpture"},
+      {"slug": "sculpture", "name": "Sculpture", "aliases": ["ap 3d art", "3d art"]},
       {"slug": "ceramics", "name": "Ceramics"},
       {"slug": "printmaking", "name": "Printmaking"},
       {"slug": "photography", "name": "Photography"},
-      {"slug": "digital-art", "name": "Digital art"},
-      {"slug": "art-history", "name": "Art history"},
+      {"slug": "digital-art", "name": "Digital art", "aliases": ["ap 2d art", "2d art"]},
+      {"slug": "art-history", "name": "Art history", "aliases": ["ap art history"]},
       {"slug": "art-theory", "name": "Art theory (color and design)"},
       {"slug": "graphic-design", "name": "Graphic design"},
       {"slug": "fashion-design", "name": "Fashion design"},
       {"slug": "interior-design", "name": "Interior design"},
       {"slug": "ux-design", "name": "UX and UI design"},
-      {"slug": "portfolio", "name": "Portfolio and critique"}
+      {"slug": "portfolio", "name": "Portfolio and critique"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "music", "name": "Music", "group": "arts", "aliases": ["band", "choir", "orchestra"], "subtopics": [
-      {"slug": "theory", "name": "Music theory"},
+      {"slug": "theory", "name": "Music theory", "aliases": ["ap music theory", "music theory"]},
       {"slug": "history", "name": "Music history"},
       {"slug": "ear-training", "name": "Ear training"},
       {"slug": "composition", "name": "Composing and songwriting"},
@@ -544,7 +655,8 @@
       {"slug": "ensembles", "name": "Band, choir and orchestra"},
       {"slug": "production", "name": "Music technology and production"},
       {"slug": "world-music", "name": "World music"},
-      {"slug": "jazz-popular", "name": "Jazz and popular music"}
+      {"slug": "jazz-popular", "name": "Jazz and popular music"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "theater", "name": "Theater and dance", "group": "arts", "aliases": ["drama", "theatre", "dance"], "subtopics": [
       {"slug": "acting", "name": "Acting"},
@@ -556,7 +668,8 @@
       {"slug": "improv", "name": "Improv"},
       {"slug": "dance-styles", "name": "Dance styles"},
       {"slug": "choreography", "name": "Choreography"},
-      {"slug": "dance-history", "name": "Dance history"}
+      {"slug": "dance-history", "name": "Dance history"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "architecture", "name": "Architecture", "group": "arts", "aliases": ["architect", "urban planning"], "subtopics": [
       {"slug": "history", "name": "Architecture history"},
@@ -566,12 +679,13 @@
       {"slug": "materials-methods", "name": "Building materials and methods"},
       {"slug": "sustainable", "name": "Green and sustainable design"},
       {"slug": "urban-planning", "name": "Cities and urban planning"},
-      {"slug": "landscape", "name": "Landscape architecture"}
+      {"slug": "landscape", "name": "Landscape architecture"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "computer-science", "name": "Computer science", "group": "tech", "aliases": ["cs", "comp sci", "coding", "programming", "ap csp", "ap csa", "it", "cybersecurity"], "subtopics": [
-      {"slug": "programming", "name": "Programming basics"},
+      {"slug": "programming", "name": "Programming basics", "aliases": ["ap csp", "ap computer science principles", "coding"]},
       {"slug": "python", "name": "Python"},
-      {"slug": "java", "name": "Java"},
+      {"slug": "java", "name": "Java", "aliases": ["ap csa", "ap computer science a"]},
       {"slug": "web-development", "name": "Web development (HTML, CSS, JavaScript)"},
       {"slug": "data-structures", "name": "Data structures"},
       {"slug": "algorithms", "name": "Algorithms"},
@@ -583,7 +697,12 @@
       {"slug": "cybersecurity", "name": "Cybersecurity"},
       {"slug": "ai", "name": "AI and machine learning"},
       {"slug": "theory", "name": "Theory of computation"},
-      {"slug": "it-support", "name": "IT and computer support"}
+      {"slug": "it-support", "name": "IT and computer support"},
+      {"slug": "game-development", "name": "Game design and development", "aliases": ["game design", "game dev", "gamedev", "unity", "video games"]},
+      {"slug": "mobile-apps", "name": "Mobile apps", "aliases": ["app development", "ios", "android", "apps"]},
+      {"slug": "other-languages", "name": "C, C++ and other languages", "aliases": ["cpp", "c sharp", "javascript", "rust", "c language"]},
+      {"slug": "graphics-animation", "name": "Computer graphics and animation", "aliases": ["animation", "3d modeling", "computer graphics"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "engineering", "name": "Engineering", "group": "tech", "aliases": ["engineering basics", "pltw", "robotics"], "subtopics": [
       {"slug": "design-process", "name": "The engineering design process"},
@@ -598,7 +717,8 @@
       {"slug": "biomedical", "name": "Biomedical engineering"},
       {"slug": "industrial", "name": "Industrial engineering"},
       {"slug": "nuclear", "name": "Nuclear engineering"},
-      {"slug": "ethics", "name": "Engineering ethics"}
+      {"slug": "ethics", "name": "Engineering ethics"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "mechanical-engineering", "name": "Mechanical and aerospace engineering", "group": "tech", "aliases": ["mechanical engineering", "aerospace", "mech e"], "subtopics": [
       {"slug": "mechanics", "name": "Mechanics"},
@@ -610,7 +730,8 @@
       {"slug": "vibrations", "name": "Vibrations"},
       {"slug": "aerodynamics", "name": "Aerodynamics"},
       {"slug": "flight-propulsion", "name": "Flight and propulsion"},
-      {"slug": "spacecraft", "name": "Orbits and spacecraft"}
+      {"slug": "spacecraft", "name": "Orbits and spacecraft"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "electrical-engineering", "name": "Electrical and computer engineering", "group": "tech", "aliases": ["electrical engineering", "ece", "computer engineering", "double e"], "subtopics": [
       {"slug": "circuits", "name": "Circuits"},
@@ -622,7 +743,8 @@
       {"slug": "electromagnetics", "name": "Electromagnetics"},
       {"slug": "communications", "name": "Communication systems"},
       {"slug": "computer-engineering", "name": "Computer engineering"},
-      {"slug": "controls", "name": "Control systems"}
+      {"slug": "controls", "name": "Control systems"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "civil-engineering", "name": "Civil and environmental engineering", "group": "tech", "aliases": ["civil engineering", "environmental engineering"], "subtopics": [
       {"slug": "structures", "name": "Structural engineering"},
@@ -632,7 +754,8 @@
       {"slug": "environmental", "name": "Environmental engineering"},
       {"slug": "construction", "name": "Construction management"},
       {"slug": "surveying", "name": "Surveying"},
-      {"slug": "concrete-steel", "name": "Concrete and steel"}
+      {"slug": "concrete-steel", "name": "Concrete and steel"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "business", "name": "Business and management", "group": "business", "aliases": ["business class", "management", "marketing", "entrepreneurship"], "subtopics": [
       {"slug": "how-business-works", "name": "How businesses work"},
@@ -647,7 +770,8 @@
       {"slug": "hospitality-tourism", "name": "Hospitality and tourism"},
       {"slug": "sports-entertainment", "name": "Sports and entertainment business"},
       {"slug": "information-systems", "name": "Business information systems"},
-      {"slug": "strategy", "name": "Strategy"}
+      {"slug": "strategy", "name": "Strategy"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "accounting-finance", "name": "Accounting and finance", "group": "business", "aliases": ["accounting", "finance", "investing"], "subtopics": [
       {"slug": "accounting-basics", "name": "Accounting basics"},
@@ -663,7 +787,8 @@
       {"slug": "time-value", "name": "Time value of money"},
       {"slug": "risk-insurance", "name": "Risk and insurance"},
       {"slug": "real-estate", "name": "Real estate"},
-      {"slug": "fintech", "name": "Fintech"}
+      {"slug": "fintech", "name": "Fintech"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "personal-finance", "name": "Personal finance", "group": "business", "aliases": ["money", "money skills", "financial literacy"], "subtopics": [
       {"slug": "budgeting", "name": "Budgeting"},
@@ -674,7 +799,8 @@
       {"slug": "paying-for-college", "name": "Paying for college"},
       {"slug": "investing-basics", "name": "Investing basics"},
       {"slug": "insurance", "name": "Insurance"},
-      {"slug": "smart-shopping", "name": "Smart shopping and scams"}
+      {"slug": "smart-shopping", "name": "Smart shopping and scams"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "health", "name": "Health and wellness", "group": "health", "aliases": ["health class", "wellness"], "subtopics": [
       {"slug": "nutrition", "name": "Nutrition"},
@@ -686,7 +812,8 @@
       {"slug": "substance-safety", "name": "Alcohol, drugs and vaping"},
       {"slug": "disease-prevention", "name": "Disease prevention"},
       {"slug": "first-aid", "name": "First aid and safety"},
-      {"slug": "community-health", "name": "Community health"}
+      {"slug": "community-health", "name": "Community health"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "physical-education", "name": "Physical education and sports", "group": "health", "aliases": ["pe", "gym", "sports", "kinesiology"], "subtopics": [
       {"slug": "sports-rules", "name": "Sports rules and skills"},
@@ -696,7 +823,8 @@
       {"slug": "exercise-science", "name": "Exercise science (kinesiology)"},
       {"slug": "sports-nutrition", "name": "Sports nutrition"},
       {"slug": "sports-medicine", "name": "Sports medicine and injuries"},
-      {"slug": "coaching", "name": "Coaching"}
+      {"slug": "coaching", "name": "Coaching"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "medicine", "name": "Medicine and health careers", "group": "health", "aliases": ["pre-med", "premed", "medical", "health science", "anatomy"], "subtopics": [
       {"slug": "anatomy", "name": "Anatomy"},
@@ -712,7 +840,13 @@
       {"slug": "pharmacy", "name": "Pharmacy"},
       {"slug": "physical-therapy", "name": "Physical therapy"},
       {"slug": "veterinary", "name": "Veterinary medicine"},
-      {"slug": "medical-assisting", "name": "Medical and nursing assistants"}
+      {"slug": "medical-assisting", "name": "Medical and nursing assistants"},
+      {"slug": "occupational-therapy", "name": "Occupational therapy", "aliases": ["ot"]},
+      {"slug": "speech-language", "name": "Speech-language pathology", "aliases": ["slp", "speech therapy"]},
+      {"slug": "radiology", "name": "Radiology and imaging", "aliases": ["x-ray", "xray", "imaging", "sonography"]},
+      {"slug": "respiratory-therapy", "name": "Respiratory therapy", "aliases": ["rt"]},
+      {"slug": "nutrition-dietetics", "name": "Nutrition and dietetics", "aliases": ["dietetics", "dietitian", "nutrition science"]},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "nursing", "name": "Nursing", "group": "health", "aliases": ["rn", "bsn", "nurse"], "subtopics": [
       {"slug": "fundamentals", "name": "Nursing fundamentals"},
@@ -725,7 +859,8 @@
       {"slug": "community", "name": "Community health nursing"},
       {"slug": "leadership", "name": "Leadership and management"},
       {"slug": "nclex", "name": "NCLEX prep"},
-      {"slug": "clinical-skills", "name": "Clinical skills"}
+      {"slug": "clinical-skills", "name": "Clinical skills"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "public-health", "name": "Public health", "group": "health", "aliases": ["epidemiology", "global health"], "subtopics": [
       {"slug": "epidemiology", "name": "Epidemiology (how diseases spread)"},
@@ -734,7 +869,8 @@
       {"slug": "health-policy", "name": "Health policy and systems"},
       {"slug": "environmental-health", "name": "Environmental health"},
       {"slug": "health-education", "name": "Health education"},
-      {"slug": "community-nutrition", "name": "Food and nutrition in communities"}
+      {"slug": "community-nutrition", "name": "Food and nutrition in communities"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "study-skills", "name": "Study skills", "group": "life", "aliases": ["how to study", "studying"], "subtopics": [
       {"slug": "note-taking", "name": "Taking notes"},
@@ -744,7 +880,8 @@
       {"slug": "reading-strategies", "name": "Reading strategies"},
       {"slug": "focus", "name": "Focus and motivation"},
       {"slug": "research-skills", "name": "Finding good sources"},
-      {"slug": "group-projects", "name": "Group projects"}
+      {"slug": "group-projects", "name": "Group projects"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "test-prep", "name": "Test prep", "group": "life", "aliases": ["sat", "act", "ap exams", "standardized tests"], "subtopics": [
       {"slug": "sat", "name": "SAT"},
@@ -757,7 +894,8 @@
       {"slug": "college-placement", "name": "College placement tests"},
       {"slug": "gre-gmat", "name": "GRE and GMAT"},
       {"slug": "lsat", "name": "LSAT"},
-      {"slug": "mcat", "name": "MCAT"}
+      {"slug": "mcat", "name": "MCAT"},
+      {"slug": "something-else", "name": "Something else"}
     ]},
     {"slug": "career-life", "name": "Career and life skills", "group": "life", "aliases": ["career", "cte", "trades", "life skills", "ffa"], "subtopics": [
       {"slug": "career-planning", "name": "Picking a career"},
@@ -771,7 +909,28 @@
       {"slug": "cosmetology", "name": "Cosmetology"},
       {"slug": "child-care", "name": "Child care"},
       {"slug": "drivers-ed", "name": "Driver's ed"},
-      {"slug": "digital-citizenship", "name": "Being safe and kind online"}
+      {"slug": "digital-citizenship", "name": "Being safe and kind online"},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "family-consumer-sciences", "name": "Family and consumer sciences", "group": "life", "aliases": ["facs", "fcs", "home ec", "home economics", "consumer science", "fccla"], "subtopics": [
+      {"slug": "cooking-nutrition", "name": "Cooking and nutrition", "aliases": ["foods", "cooking"]},
+      {"slug": "food-safety", "name": "Food safety"},
+      {"slug": "sewing-textiles", "name": "Sewing and textiles", "aliases": ["sewing", "fashion"]},
+      {"slug": "housing-interiors", "name": "Housing and interiors"},
+      {"slug": "child-development", "name": "Child development", "aliases": ["parenting"]},
+      {"slug": "family-relationships", "name": "Family and relationships"},
+      {"slug": "consumer-skills", "name": "Consumer skills", "aliases": ["consumer skills", "shopping"]},
+      {"slug": "something-else", "name": "Something else"}
+    ]},
+    {"slug": "military-science", "name": "Military science and JROTC", "group": "life", "aliases": ["jrotc", "rotc", "military", "military science", "njrotc", "afjrotc"], "subtopics": [
+      {"slug": "leadership", "name": "Leadership"},
+      {"slug": "military-history", "name": "Military history"},
+      {"slug": "drill-ceremony", "name": "Drill and ceremony", "aliases": ["drill"]},
+      {"slug": "citizenship", "name": "Citizenship and service"},
+      {"slug": "fitness", "name": "Physical fitness", "aliases": ["pt"]},
+      {"slug": "map-reading", "name": "Map reading and land navigation", "aliases": ["land navigation", "orienteering"]},
+      {"slug": "first-aid", "name": "First aid"},
+      {"slug": "something-else", "name": "Something else"}
     ]}
   ]
 }

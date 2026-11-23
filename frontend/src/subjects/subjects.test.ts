@@ -6,10 +6,12 @@ import { readFileSync } from "node:fs"
 import {
   NO_SUBJECT,
   choiceFrom,
+  fold,
   groupedSubjects,
   isSlug,
   matchLabel,
   searchSubjects,
+  searchSubtopics,
   subjectBody,
   subjectLabel,
 } from "./subjects.ts"
@@ -21,7 +23,7 @@ describe("the subject list", () => {
   it("has every subject under a group heading, in the file's order", () => {
     const groups = groupedSubjects(list)
     assert.equal(groups.length, list.groups.length)
-    assert.equal(groups.reduce((n, g) => n + g.subjects.length, 0), 60)
+    assert.equal(groups.reduce((n, g) => n + g.subjects.length, 0), 67)
     assert.equal(groups[0].group.name, "Math and data")
     assert.equal(groups[0].subjects[0].name, "Math")
   })
@@ -59,6 +61,40 @@ describe("picker search", () => {
     const results = searchSubjects(list, "spanish")
     assert.equal(results[0].kind, "subject")
     assert.equal(results[0].subject.slug, "spanish")
+  })
+
+  it("finds what teens type: word by word, short course names, level numbers", () => {
+    const first = (text: string) => matchLabel(searchSubjects(list, text)[0])
+    assert.equal(first("us history"), "U.S. history")
+    assert.equal(first("u.s. history"), "U.S. history")
+    assert.equal(first("history us"), "U.S. history")
+    assert.equal(first("ap calc"), "Calculus · Math")
+    assert.equal(first("calc bc"), "Calculus · Math")
+    assert.equal(first("ap stats"), "Statistics and data science")
+    assert.equal(first("ap lang"), "English language arts")
+    assert.equal(first("ap art history"), "Art history · Art and design")
+    assert.equal(first("spanish 2"), "Spanish")
+    assert.equal(first("chem honors"), "Chemistry")
+    assert.equal(first("integrated math"), "Integrated math I, II and III · Math")
+    assert.equal(first("ap seminar"), "AP Seminar and AP Research · English language arts")
+    assert.equal(first("holocaust"), "The Holocaust and genocide · World history")
+    assert.equal(first("texas history"), "State history (Texas, California and more) · U.S. history")
+    assert.equal(first("trig"), "Trigonometry · Math")
+    assert.equal(first("geo"), "Geometry · Math")
+    assert.equal(first("italian"), "Italian")
+  })
+
+  it("hides retired subtopics (Italian moved to its own subject)", () => {
+    assert.ok(!searchSubjects(list, "italian").some((m) => m.kind === "subtopic" && m.subject.slug === "more-languages"))
+    const more = list.subjects.find((s) => s.slug === "more-languages")!
+    assert.ok(!searchSubtopics(more, "").some((t) => t.slug === "italian"))
+    assert.deepEqual(searchSubtopics(more, "navajo").map((t) => t.slug), ["navajo"])
+  })
+
+  it("folds marks the way the server does", () => {
+    assert.equal(fold("U.S. History"), "us history")
+    assert.equal(fold("Newton's  laws"), "newtons laws")
+    assert.equal(fold("pre-algebra/ratios"), "pre algebra ratios")
   })
 
   it("finds nothing for words on no list, and nothing for an empty box", () => {

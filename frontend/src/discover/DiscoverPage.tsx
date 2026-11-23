@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { MagnifyingGlass } from "@phosphor-icons/react"
+import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react"
 
 import { api, getErrorCode, getErrorMessage } from "../api"
 import { useAuth } from "../auth"
@@ -68,6 +68,8 @@ export function DiscoverPage() {
   }
   const [answer, setAnswer] = useState<{ key: string; data: SearchAnswer } | null>(null)
   const [showAllSubjects, setShowAllSubjects] = useState(false)
+  // Phones: the chip rows fold under a "Filters" button so the results stay on the first screen.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [moreBusy, setMoreBusy] = useState(false)
   const [people, setPeople] = useState<SharedPerson[]>([])
   // The last people search that was sent, or null before the first one (or after one that was too short).
@@ -77,6 +79,8 @@ export function DiscoverPage() {
   const [busy, setBusy] = useState<Record<Tab, Busy>>({ topics: "idle", people: "idle" })
   // Each request gets a number per panel, so an older answer that arrives late is ignored.
   const latest = useRef<Record<Tab, number>>({ topics: 0, people: 0 })
+  // A new search stops the one still on its way, so quick taps never pile up on the server.
+  const inFlight = useRef<AbortController | null>(null)
   const searchInput = useRef<HTMLInputElement>(null)
 
   const setBusyFor = useCallback((which: Tab, value: Busy) => {
@@ -99,6 +103,9 @@ export function DiscoverPage() {
       const key = paramsFromFilters(wanted).toString()
       const ticket = ++latest.current.topics
       const current = () => ticket === latest.current.topics
+      inFlight.current?.abort()
+      const controller = new AbortController()
+      inFlight.current = controller
       setBusyFor("topics", "loading")
       setNoticeFor("topics", null)
       const timer = window.setTimeout(() => {
@@ -107,6 +114,7 @@ export function DiscoverPage() {
       try {
         const response = await api.get<SearchAnswer>("/public/search", {
           params: { q: wanted.q || undefined, subject: wanted.subject ?? undefined, subtopic: wanted.subtopic ?? undefined, type: wanted.type ?? undefined },
+          signal: controller.signal,
         })
         if (current()) setAnswer({ key, data: response.data })
       } catch (error: unknown) {
@@ -119,6 +127,7 @@ export function DiscoverPage() {
         setNoticeFor("topics", { type: "error", text: getErrorMessage(error, "We couldn't load shared notes. Try again.") })
       } finally {
         window.clearTimeout(timer)
+        if (inFlight.current === controller) inFlight.current = null
         if (current()) setBusyFor("topics", "idle")
       }
     },
@@ -191,6 +200,8 @@ export function DiscoverPage() {
   useEffect(() => {
     if (tab === "topics") void findTopics(filters)
   }, [filters, findTopics, tab])
+  // Leaving the page stops a search still on its way.
+  useEffect(() => () => inFlight.current?.abort(), [])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -238,9 +249,9 @@ export function DiscoverPage() {
       <header className="page-head">
         <div>
           <h1>
-            Discover <Scribble type="underline">notes</Scribble>
+            <Scribble type="underline">Discover</Scribble>
           </h1>
-          <p className="lede">Notes and flashcards other students shared. Only people signed in to Luma can see them.</p>
+          <p className="lede">Notes, flashcards and summaries other students shared. Only people signed in to Luma can see them.</p>
         </div>
       </header>
 
@@ -269,7 +280,7 @@ export function DiscoverPage() {
       {/* A simple switch of what to search, so plain toggle buttons (aria-pressed), not tabs. */}
       <div className="tabs" role="group" aria-label="What to find">
         <button type="button" className="tab" aria-pressed={tab === "topics"} onClick={() => chooseTab("topics")}>
-          Notes and cards
+          Shared work
         </button>
         <button type="button" className="tab" aria-pressed={tab === "people"} onClick={() => chooseTab("people")}>
           People
@@ -286,13 +297,20 @@ export function DiscoverPage() {
       {tab === "topics" ? (
         <section className="search-results" aria-labelledby="discover-list-title" aria-busy={topicsBusy}>
           <div className="section-head">
-            <h2 id="discover-list-title">{filters.q ? `Shared notes about “${filters.q}”` : "Newest shared"}</h2>
+            <h2 id="discover-list-title">{filters.q ? `Shared about “${filters.q}”` : "Newest shared"}</h2>
             {filters.q || filtered ? (
               <button type="button" className="text-button" onClick={showNewest}>
                 Show newest
               </button>
             ) : null}
           </div>
+
+          {/* How many, right under the search, before the chips (the status line says it to screen readers). */}
+          {shown && !topicsBusy && shown.total > 0 ? (
+            <p className="result-line" aria-hidden="true">
+              {status}
+            </p>
+          ) : null}
 
           {shown && (shown.total > 0 || filtered) ? (
             <Filters
@@ -301,14 +319,10 @@ export function DiscoverPage() {
               answer={shown}
               showAllSubjects={showAllSubjects}
               onShowAllSubjects={setShowAllSubjects}
+              open={filtersOpen}
+              onOpen={setFiltersOpen}
               onChange={(next) => go(next)}
             />
-          ) : null}
-
-          {shown && !topicsBusy && shown.total > 0 ? (
-            <p className="result-line" aria-hidden="true">
-              {status}
-            </p>
           ) : null}
 
           {topicsBusy ? (
@@ -387,7 +401,8 @@ export function DiscoverPage() {
 /**
  * Where the filters stand ("All › Math › Algebra 1 › Flashcards"), then chips with counts:
  * subject, its subtopics (once a subject is chosen) and type. Each tap is one request.
- * The chips wrap onto new lines; nothing scrolls sideways.
+ * The chips wrap onto new lines; nothing scrolls sideways. On a phone the chip rows fold under
+ * a "Filters (2)" button, so the first results show on the first screen.
  */
 function Filters({
   list,
@@ -395,6 +410,8 @@ function Filters({
   answer,
   showAllSubjects,
   onShowAllSubjects,
+  open,
+  onOpen,
   onChange,
 }: {
   list: SubjectList | null
@@ -402,6 +419,8 @@ function Filters({
   answer: SearchAnswer
   showAllSubjects: boolean
   onShowAllSubjects: (value: boolean) => void
+  open: boolean
+  onOpen: (value: boolean) => void
   onChange: (next: DiscoverFilters) => void
 }) {
   const { chips: subjects, more } = subjectChips(answer.facets.subjects, filters.subject, showAllSubjects)
@@ -412,9 +431,10 @@ function Filters({
   const nothingToPick = subjects.length === 0 && types.length === 0 && !hasFilters(filters)
 
   if (nothingToPick) return null
+  const chosen = [filters.subject, filters.subject ? filters.subtopic : null, filters.type].filter(Boolean).length
 
   return (
-    <div className="discover-filters">
+    <div className={open ? "discover-filters open" : "discover-filters"}>
       {hasFilters(filters) ? (
         <nav aria-label="Filters">
           <ol className="filter-trail">
@@ -461,6 +481,17 @@ function Filters({
         </nav>
       ) : null}
 
+      <button
+        type="button"
+        className="secondary-button filters-toggle"
+        aria-expanded={open}
+        aria-controls="discover-filter-rows"
+        onClick={() => onOpen(!open)}
+      >
+        <FunnelSimple weight="bold" aria-hidden="true" /> Filters{chosen > 0 ? ` (${chosen})` : ""}
+      </button>
+
+      <div className="filter-rows" id="discover-filter-rows">
       {subjects.length > 0 ? (
         <fieldset className="filter-row">
           <legend>Subject</legend>
@@ -534,9 +565,10 @@ function Filters({
               )
             })}
           </ul>
-          <p className="filter-note">Every deck can be a quiz.</p>
+          <p className="filter-note">Want a quiz? Open one of your decks and tap Quiz yourself.</p>
         </fieldset>
       ) : null}
+      </div>
     </div>
   )
 }

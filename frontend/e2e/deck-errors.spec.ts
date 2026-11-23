@@ -46,7 +46,8 @@ test("a new deck with empty cards is not sent; the box points at each card and e
   await expect(field(page, "Answer 1")).not.toHaveAttribute("aria-invalid", "true")
   await expect(page.locator(".card-editor-row.has-problem")).toHaveCount(3)
   await expect(page.getByText("Not filled in")).toHaveCount(5)
-  await expect(page.locator(".sticky-save")).toContainText("3 cards need words")
+  // One wording in the box and the sticky bar (on a phone the bar says "Fix 3").
+  await expect(page.locator(".sticky-save .sticky-long")).toHaveText("3 cards aren't filled in.")
   await page.waitForTimeout(500)
   expect(posts.count).toBe(0)
   await expect(page).toHaveURL(/\/flashcards\/new$/)
@@ -85,6 +86,8 @@ test("a saved deck: Save deck with an empty answer stays put and says which card
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+\/edit$/)
   await expect(page.getByText(/^Saved at /)).toBeVisible()
+  // A new item: "Share with the crowd?" asks right after its first save. Not now keeps it private.
+  await answerSharePrompt(page)
 
   await field(page, "Answer 2").fill("")
   await expect(page.locator(".save-status-text")).toHaveText("Not saved yet. Finish card 2.", { timeout: 10_000 })
@@ -98,8 +101,6 @@ test("a saved deck: Save deck with an empty answer stays put and says which card
   await field(page, "Answer 2").fill("Dos")
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
-  // A new item: "Share with the crowd?" asks once. Not now keeps it private.
-  await answerSharePrompt(page)
   await expect(page.getByRole("heading", { level: 1, name: "Saved errors deck" })).toBeVisible()
 })
 

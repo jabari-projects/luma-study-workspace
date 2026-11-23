@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react"
+import { Fragment, useEffect, useLayoutEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { Toaster, toast } from "sonner"
 import {
@@ -7,6 +7,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useParams,
 } from "react-router-dom"
 
 import { useAuth, useProfile } from "./auth"
@@ -125,6 +126,16 @@ function AccountLimitRedirect() {
 }
 
 /** Sends an old address to its new place, keeping its ?query and #hash. */
+/**
+ * A fresh page for each item. React Router keeps a page when only :itemId changes (one note
+ * straight to another), so its state, like the one-time "Share with the crowd?" check, would
+ * belong to the wrong item.
+ */
+function OnePagePerItem({ children }: { children: ReactNode }) {
+  const { itemId } = useParams()
+  return <Fragment key={itemId ?? ""}>{children}</Fragment>
+}
+
 function KeepQueryRedirect({ to }: { to: string }) {
   const { search, hash } = useLocation()
   return <Navigate to={redirectTarget(to, search, hash)} replace />
@@ -194,7 +205,7 @@ function AppLayout() {
           <Route path={DISCOVER} element={<DiscoverPage />} />
           <Route path="/flashcards" element={<DecksPage />} />
           <Route path="/flashcards/new" element={<DeckEditorPage />} />
-          <Route path="/flashcards/:itemId" element={<DeckPage />} />
+          <Route path="/flashcards/:itemId" element={<OnePagePerItem><DeckPage /></OnePagePerItem>} />
           <Route path="/flashcards/:itemId/edit" element={<DeckEditorPage />} />
           <Route path="/flashcards/:itemId/study" element={<StudyPage />} />
           <Route path="/quizzes" element={<QuizPage />} />
@@ -206,12 +217,20 @@ function AppLayout() {
           <Route path="/notes/image" element={<ImagePage />} />
           <Route
             path="/notes/:itemId"
-            element={<NotePage endpoint="/notes" studyType="note" backTo="/notes" kindLabel="Note" />}
+            element={
+              <OnePagePerItem>
+                <NotePage endpoint="/notes" studyType="note" backTo="/notes" kindLabel="Note" />
+              </OnePagePerItem>
+            }
           />
           <Route path="/notes/:itemId/edit" element={<NoteEditorPage kind="note" />} />
           <Route
             path="/summaries/:itemId"
-            element={<NotePage endpoint="/summaries" studyType="summary" backTo={SUMMARIES_TAB} kindLabel="Summary" />}
+            element={
+              <OnePagePerItem>
+                <NotePage endpoint="/summaries" studyType="summary" backTo={SUMMARIES_TAB} kindLabel="Summary" />
+              </OnePagePerItem>
+            }
           />
           <Route path="/summaries/:itemId/edit" element={<NoteEditorPage kind="summary" />} />
           {/* Old addresses keep working, with their ?query (like /import?from=link). */}

@@ -28,6 +28,8 @@ const MIN_AI_CHARS = 20
 const LIST_LINES = 3
 const ID_PREFIX = "make"
 let panelCounter = 0
+/** The "Add N cards" button, so the deck editor can send the student to it. */
+export const MAKE_CARDS_ADD_ID = "make-cards-add"
 
 const MAKE_CARDS_MESSAGES = {
   limit: "You used today's free AI turns. You can still find cards for free or add them yourself.",
@@ -52,6 +54,12 @@ function aiProblem(error: unknown): Notice {
   return { type: "error", text: MAKE_CARDS_MESSAGES.down }
 }
 
+/** The first words of a note, so two notes with the same title can be told apart. */
+function notePreview(content?: string | null): string {
+  const words = (content ?? "").replace(/\s+/g, " ").trim()
+  return words.length > 90 ? `${words.slice(0, 87).trimEnd()}...` : words
+}
+
 function shortDate(value?: string | null): string {
   if (!value) return ""
   const date = new Date(value)
@@ -63,6 +71,7 @@ export function MakeCardsPanel({
   deckCards,
   onAdd,
   onClose,
+  onWaiting,
 }: {
   accountId: string | null
   /** Cards already in the deck with words (suggestions that repeat them are left out). */
@@ -70,6 +79,8 @@ export function MakeCardsPanel({
   /** The kept cards, and the AI's title for the deck (if the AI was used). */
   onAdd: (cards: Words[], aiTitle: string | null) => void
   onClose: () => void
+  /** How many kept suggestions wait here, not in the deck yet (the editor's Save deck says so). */
+  onWaiting?: (count: number) => void
 }) {
   const [mode, setMode] = useState<"paste" | "pick">("paste")
   const [text, setText] = useState("")
@@ -84,6 +95,9 @@ export function MakeCardsPanel({
   const [showProblems, setShowProblems] = useState(false)
   const focusField = useFocusField()
   const mounted = useRef(true)
+  const reviewHeading = useRef<HTMLHeadingElement>(null)
+  // Goes up each time new suggestions arrive, so the view moves to them (once per arrival).
+  const [arrivals, setArrivals] = useState(0)
 
   const source = mode === "paste" ? text : (picked?.content ?? "")
   const label = mode === "pick" && picked ? (picked.title?.trim() || "My note") : "Pasted notes"
@@ -100,6 +114,23 @@ export function MakeCardsPanel({
       mounted.current = false
     }
   }, [])
+
+  // New suggestions: bring "Cards Luma suggests" into view and move focus there, so on a phone
+  // they are never hidden under the bottom bars and it never looks like nothing happened.
+  useEffect(() => {
+    if (arrivals === 0) return
+    const heading = reviewHeading.current
+    heading?.scrollIntoView?.({ block: "start" })
+    heading?.focus({ preventScroll: true })
+  }, [arrivals])
+
+  const waitingRef = useRef(onWaiting)
+  useEffect(() => {
+    waitingRef.current = onWaiting
+  }, [onWaiting])
+  useEffect(() => {
+    waitingRef.current?.(kept.length)
+  }, [kept.length])
 
   // Cards waiting here count as unsaved work: leaving the page asks first. Nothing is kept in the tab.
   const latest = useRef(suggestions)
@@ -152,6 +183,7 @@ export function MakeCardsPanel({
 
   const addSuggestions = (fresh: FoundCard[]) => {
     setSuggestions((current) => [...current, ...newCardsOnly(fresh, current)])
+    setArrivals((count) => count + 1)
   }
 
   const findFree = () => {
@@ -215,17 +247,24 @@ export function MakeCardsPanel({
     onAdd(cards, aiTitle)
   }
 
+  // Once there are suggestions, "Add N cards" is the main button: a second AI tap is a choice.
+  const hasSuggestions = suggestions.length > 0
   const aiButton = (
     <div className="make-cards-choice">
-      <button type="button" className={looksLikeList ? "secondary-button" : "primary-button"} onClick={() => void askAi()} disabled={busy}>
-        <MagicWand weight="bold" aria-hidden="true" /> {busy ? "Making cards..." : "Make cards with AI"}
+      <button
+        type="button"
+        className={looksLikeList || hasSuggestions ? "secondary-button" : "primary-button"}
+        onClick={() => void askAi()}
+        disabled={busy}
+      >
+        <MagicWand weight="bold" aria-hidden="true" /> {busy ? "Making cards..." : hasSuggestions ? "Make more with AI" : "Make cards with AI"}
       </button>
       <p className="small-print">Uses 1 of your free AI turns today.</p>
     </div>
   )
   const freeButton = (
     <div className="make-cards-choice">
-      <button type="button" className={looksLikeList ? "primary-button" : "secondary-button"} onClick={findFree} disabled={busy}>
+      <button type="button" className={looksLikeList && !hasSuggestions ? "primary-button" : "secondary-button"} onClick={findFree} disabled={busy}>
         <MagnifyingGlass weight="bold" aria-hidden="true" /> Find cards for free
       </button>
       <p className="small-print">Works on lines like Question - Answer.</p>
@@ -303,6 +342,7 @@ export function MakeCardsPanel({
                   <button type="button" className="make-cards-note" onClick={() => setPicked(note)}>
                     <span>{note.title?.trim() || "Untitled"}</span>
                     <small>{shortDate(note.updated_at ?? note.created_at)}</small>
+                    <span className="make-cards-note-preview">{notePreview(note.content)}</span>
                   </button>
                 </li>
               ))}
@@ -335,7 +375,9 @@ export function MakeCardsPanel({
       {suggestions.length > 0 ? (
         <div className="make-cards-review card-tray">
           <div className="tray-head">
-            <h3>Cards Luma suggests</h3>
+            <h3 ref={reviewHeading} tabIndex={-1}>
+              Cards Luma suggests
+            </h3>
             <p className="tray-count" aria-live="polite">
               Keeping {kept.length} of {suggestions.length}
             </p>
@@ -350,8 +392,8 @@ export function MakeCardsPanel({
             />
           ) : null}
           <CardReviewList cards={suggestions} onChange={changeSuggestions} editing={editing} onEditing={setEditing} idPrefix={ID_PREFIX} problems={shownProblems} />
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={addKept} disabled={kept.length === 0}>
+          <div className="button-row make-cards-add-row">
+            <button id={MAKE_CARDS_ADD_ID} type="button" className="primary-button" onClick={addKept} disabled={kept.length === 0}>
               Add {kept.length} card{kept.length === 1 ? "" : "s"}
             </button>
           </div>

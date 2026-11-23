@@ -170,13 +170,53 @@ def test_like_wildcards_are_escaped_before_they_reach_the_database(db, signed_in
     _search(signed_in, q="50%_\\")
     name, params = db.rpc_calls[-1]
     assert name == "public_study_search"
-    assert params["p_pattern"] == "%50\\%\\_\\\\%"
+    # A word with marks is matched only as typed, never as a subject.
+    assert params["p_terms"] == [{"like": "%50\\%\\_\\\\%", "word": None, "pairs": []}]
     assert _search(signed_in, q="__")["total"] == 0
 
 
 def test_a_leading_hash_is_dropped(db, signed_in):
     _search(signed_in, q="#cells")
-    assert db.rpc_calls[-1][1]["p_pattern"] == "%cells%"
+    term = db.rpc_calls[-1][1]["p_terms"][0]
+    assert (term["like"], term["word"]) == ("%cells%", "% cells%")
+    assert {"subject": "biology", "subtopic": "cells"} in term["pairs"]
+
+
+def test_words_match_in_any_order_not_only_as_one_phrase(db, signed_in):
+    db.tables["notes"].append(_row("add", LEE, "Adding small numbers", 20, "math", "basic-math", content="SYNTH 2 + 3 = 5"))
+    db.tables["notes"].append(_row("ush", SAM, "U.S. history review", 21, "us-history", "civil-war", content="SYNTH the war"))
+    db.tables["notes"].append(_row("bus", SAM, "Business plan", 22, None, None, content="SYNTH focus"))
+
+    def found(q):
+        return {item["id"] for item in _search(signed_in, q=q)["items"]}
+
+    assert found("small numbers") == {"add"}
+    assert found("adding numbers") == {"add"}
+    assert found("numbers adding") == {"add"}
+    # "math" names the subject, "adding" is in the title.
+    assert found("math adding") == {"add"}
+    # "U.S." folds to "us"; a short word must be a whole word, so "business" and "focus" don't count.
+    assert found("us history") == {"ush"}
+    assert found("u.s. history") == {"ush"}
+    assert "bus" not in found("us")
+    # Small words are dropped when other words are there.
+    assert found("the cells") == {f"b{n}" for n in range(6)}
+
+
+def test_each_word_becomes_one_term(db, signed_in):
+    _search(signed_in, q="  U.S.  history 1+1 ")
+    terms = db.rpc_calls[-1][1]["p_terms"]
+    assert [term["word"] for term in terms] == ["% us %", "% history%", None]
+    assert terms[0]["like"] is None  # 2 letters: whole word only
+    assert terms[1]["like"] == "%history%"
+    assert terms[2] == {"like": "%1+1%", "word": None, "pairs": []}
+    assert {"subject": "us-history", "subtopic": None} in terms[0]["pairs"]
+    assert {"subject": "us-history", "subtopic": None} in terms[1]["pairs"]
+
+
+def test_a_search_looks_at_eight_words_at_most(db, signed_in):
+    _search(signed_in, q=" ".join(f"word{n}" for n in range(12)))
+    assert len(db.rpc_calls[-1][1]["p_terms"]) == public_search.MAX_SEARCH_WORDS == 8
 
 
 @pytest.mark.parametrize(
@@ -211,6 +251,16 @@ def test_paging(db, signed_in, monkeypatch):
 def test_items_are_newest_shared_first(db, signed_in):
     dates = [item["published_at"] for item in _search(signed_in)["items"]]
     assert dates == sorted(dates, reverse=True)
+
+
+def test_ties_are_newest_made_first_then_id_a_to_z_like_the_sql(db, signed_in):
+    db.tables["notes"] = [
+        _row("t2", SAM, "Tie b", 25, created_at="2026-01-02T00:00:00"),
+        _row("t1", SAM, "Tie a", 25, created_at="2026-01-02T00:00:00"),
+        _row("t0", SAM, "Tie c", 25, created_at="2026-01-03T00:00:00"),
+    ]
+    db.tables["flashcards"], db.tables["summaries"] = [], []
+    assert [item["id"] for item in _search(signed_in)["items"]] == ["t0", "t1", "t2"]
 
 
 def test_counts_are_never_per_person(db, signed_in):

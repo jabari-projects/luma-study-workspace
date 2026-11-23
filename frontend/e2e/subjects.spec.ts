@@ -120,16 +120,16 @@ test("a new deck saves its subject; the deck page and the shelf show it", async 
   await page.getByRole("button", { name: "Save deck" }).click()
   expect((await created).postDataJSON()).toMatchObject({ subject_slug: "math", subtopic_slug: "geometry" })
   await expect(page).toHaveURL(/\/flashcards\/[^/]+\/edit$/)
+  await answerSharePrompt(page)
   await expect(pickerButton(page)).toHaveAccessibleName("Subject (optional) Math › Geometry")
   await page.getByRole("button", { name: "Save deck" }).click()
   await expect(page).toHaveURL(/\/flashcards\/[^/]+$/)
-  await answerSharePrompt(page)
   await expect(page.locator("header.page-head .lede")).toHaveText("Math › Geometry · Your deck")
   await page.goto("/flashcards")
   await expect(page.locator("li.deck-tile").filter({ hasText: "Shapes" }).locator(".subject-line")).toHaveText("Subject: Math › Geometry")
 })
 
-test("phones get a sheet from the bottom with a Done button; wide screens a pop-up under the button", async ({ page }, info) => {
+test("phones get a sheet from the bottom with a Close button; wide screens a pop-up under the button", async ({ page }, info) => {
   const { email } = await makeAccount(page, info, "subjph")
   await loginAndWait(page, email)
   await page.goto("/notes/new")
@@ -141,11 +141,14 @@ test("phones get a sheet from the bottom with a Done button; wide screens a pop-
     await expect(panel(page)).toHaveCSS("position", "fixed")
     expect(Math.abs(box!.y + box!.height - viewport.height)).toBeLessThan(2)
     expect(box!.height).toBeLessThanOrEqual(viewport.height * 0.85 + 1)
-    await page.getByRole("button", { name: "Done", exact: true }).click()
+    // The sheet shows its title, stays at least 60% tall, and closes with Close.
+    await expect(panel(page).getByText("Pick a subject", { exact: true })).toBeVisible()
+    expect(box!.height).toBeGreaterThanOrEqual(viewport.height * 0.6 - 1)
+    await panel(page).getByRole("button", { name: "Close", exact: true }).click()
     await expect(panel(page)).toHaveCount(0)
   } else {
     await expect(panel(page)).toHaveCSS("position", "absolute")
-    await expect(page.getByRole("button", { name: "Done", exact: true })).toBeHidden()
+    await expect(panel(page).getByRole("button", { name: "Close", exact: true })).toBeHidden()
     // A tap outside closes it.
     await page.locator("h1").click()
     await expect(panel(page)).toHaveCount(0)

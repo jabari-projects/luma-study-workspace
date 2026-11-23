@@ -31,7 +31,7 @@ def test_subjects_list_needs_no_sign_in_and_has_an_etag():
     assert response.status_code == 200
     body = response.json()
     assert set(body) == {"version", "groups", "subjects"}
-    assert len(body["subjects"]) == 60
+    assert len(body["subjects"]) == 67
     assert response.headers["etag"] == f'"{subjects.SUBJECTS_ETAG}"'
     assert "max-age=86400" in response.headers["cache-control"]
 

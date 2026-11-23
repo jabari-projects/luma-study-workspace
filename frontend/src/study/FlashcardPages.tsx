@@ -17,12 +17,13 @@ import {
   Plus,
   Sparkle,
   Trash,
+  WarningCircle,
 } from "@phosphor-icons/react"
 
 import { api, getErrorMessage, getTabAccountId } from "../api"
 import { studyIntroKey } from "../accounts"
 import { NoticeBanner, PageHeader } from "../ui/common"
-import { ShareControl } from "../ui/Share"
+import { ShareAskAfterMaking, ShareControl } from "../ui/Share"
 import { forgetShareAsk, markJustMade, shouldAskToShare } from "../ui/shareAsk"
 import { sharedLine, useShareName } from "../ui/sharing"
 import { SubjectLine } from "../subjects/SubjectLine"
@@ -57,7 +58,7 @@ import {
 import type { CardProblem, Deck, DeckCard, Mastery } from "./deck"
 import { FieldProblem, ProblemBox } from "./CardProblems"
 import { useFocusField } from "./useFocusField"
-import { MakeCardsPanel } from "./MakeCardsPanel"
+import { MAKE_CARDS_ADD_ID, MakeCardsPanel } from "./MakeCardsPanel"
 import { GlowBar, GlowChip, GlowLegend } from "./glow"
 import { celebrate, recordStudy } from "./celebrate"
 import { useDeck, useDecks, useProgressSaver } from "./useDecks"
@@ -512,9 +513,18 @@ function DeckForm({
   const navigate = useNavigate()
   const [fields, setFields] = useState<DeckFields>(initial)
   const { title, tags, subject, cards } = fields
-  const [makeOpen, setMakeOpen] = useState(false)
+  // "Make cards from my notes": opened from the big button above the cards (an empty deck) or
+  // from the link under them. Closed: null.
+  const [makeAt, setMakeAt] = useState<"top" | "bottom" | null>(null)
+  // Kept suggestions in that panel that aren't in the deck yet.
+  const [madeWaiting, setMadeWaiting] = useState(0)
+  const [showWaiting, setShowWaiting] = useState(false)
   // The red marks show after "Save deck" was pressed, until everything is filled in.
   const [showProblems, setShowProblems] = useState(false)
+  // Made a moment ago in this tab: ask "Share with the crowd?" here, right after "Saved at".
+  // The mark is forgotten at once, so the deck's page never asks later (ui/shareAsk.ts).
+  const [askShare, setAskShare] = useState(() => !isNew && shouldAskToShare(accountId, "flashcards", itemId))
+  useEffect(() => forgetShareAsk(accountId, "flashcards", itemId), [accountId, itemId])
   const focusField = useFocusField()
   const [notice, setNotice] = useState<Notice | null>(null)
   const [saving, setSaving] = useState(false)
@@ -576,6 +586,15 @@ function DeckForm({
   const shown = showProblems && !check.ok ? check : null
   const problemFor = new Map((shown?.problems ?? []).map((problem) => [problem.id, problem]))
   const blankCount = shown && !shown.noCards ? shown.problems.filter((problem) => problem.blank).length : 0
+  // One wording everywhere: the box, the sticky bar and (on phones) "Fix 2".
+  const problemLines = shown
+    ? [shown.noCards ? NO_CARDS : shown.problems.length > 0 ? problemSummary(shown.problems) : null, shown.titleMissing ? NO_TITLE : null].filter(
+        (line): line is string => line !== null,
+      )
+    : []
+  const fixCount = shown ? (shown.titleMissing ? 1 : 0) + (shown.noCards ? 1 : shown.problems.length) : 0
+  const deckEmpty = withoutBlankCards(cards).length === 0
+  const waitingLine = `You have ${madeWaiting} suggested card${madeWaiting === 1 ? "" : "s"}. Tap Add ${madeWaiting} card${madeWaiting === 1 ? "" : "s"} first.`
 
   const update = (next: DeckFields) => {
     if (showProblems && deckCheck(next).ok) setShowProblems(false)
@@ -608,11 +627,17 @@ function DeckForm({
     else focusField(SAVE_BUTTON_ID)
   }
 
+  const closeMake = () => {
+    setMakeAt(null)
+    setMadeWaiting(0)
+    setShowWaiting(false)
+  }
+
   const addMadeCards = (made: { front: string; back: string }[], aiTitle: string | null) => {
     const kept = withoutBlankCards(cards)
     const added = made.map((card): DraftCard => ({ id: newCardId(), front: card.front, back: card.back, review: null }))
     update({ ...fields, title: fields.title.trim() || !aiTitle ? fields.title : aiTitle.slice(0, 200), cards: [...kept, ...added] })
-    setMakeOpen(false)
+    closeMake()
     toast.success(added.length === 1 ? "Added 1 card." : `Added ${added.length} cards.`)
     if (added[0]) focusField(cardFieldId(added[0].id, "front"))
   }
@@ -626,6 +651,13 @@ function DeckForm({
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setNotice(null)
+    // Suggested cards still waiting in "Make cards from my notes": say so, instead of pointing
+    // at an empty card (the student would think the suggestions were lost).
+    if (madeWaiting > 0) {
+      setShowWaiting(true)
+      focusField(MAKE_CARDS_ADD_ID)
+      return
+    }
     // Nothing is sent until every card is filled in (the box above the cards says which).
     if (!checkBeforeSave()) return
     setSaving(true)
@@ -740,6 +772,22 @@ function DeckForm({
           }}
         />
       ) : null}
+      {askShare && itemId ? (
+        <ShareAskAfterMaking<Deck>
+          endpoint="/flashcards"
+          studyType="flashcards"
+          noun="deck"
+          latest={async () => {
+            if (!(await autosave.flush())) return null
+            const now = autosave.peek()
+            return now?.itemId && typeof now.version === "number" ? { id: now.itemId, title: fields.title, version: now.version, is_public: false } : null
+          }}
+          onShared={(row) => autosave.adopt(row)}
+          setNotice={setNotice}
+          onClose={() => setAskShare(false)}
+          returnFocus={() => document.getElementById(SAVE_BUTTON_ID)}
+        />
+      ) : null}
       <form className="deck-editor" onSubmit={save} onBlur={onBlur}>
         <section className="editor-head">
           <div className="editor-field">
@@ -764,12 +812,36 @@ function DeckForm({
           </label>
         </section>
 
+        {deckEmpty || makeAt === "top" ? (
+          <div className="make-cards-start">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => (makeAt === "top" ? closeMake() : setMakeAt("top"))}
+              aria-expanded={makeAt === "top"}
+              aria-controls={makeAt === "top" ? "make-cards" : undefined}
+            >
+              <Sparkle weight="fill" aria-hidden="true" /> Make cards from my notes
+            </button>
+            <p className="field-hint">Paste notes and Luma suggests cards. Or type your own cards below.</p>
+          </div>
+        ) : null}
+        {makeAt === "top" ? (
+          <MakeCardsPanel
+            accountId={accountId}
+            deckCards={withoutBlankCards(cards)}
+            onAdd={addMadeCards}
+            onClose={closeMake}
+            onWaiting={(count) => {
+              setMadeWaiting(count)
+              if (count === 0) setShowWaiting(false)
+            }}
+          />
+        ) : null}
+
         {shown ? (
           <ProblemBox
-            lines={[
-              shown.noCards ? NO_CARDS : shown.problems.length > 0 ? problemSummary(shown.problems) : null,
-              shown.titleMissing ? NO_TITLE : null,
-            ].filter((line): line is string => line !== null)}
+            lines={problemLines}
             jumps={[
               ...(shown.titleMissing ? [{ key: "title", label: "Title", onJump: () => focusField(TITLE_ID) }] : []),
               ...shown.problems.map((problem) => ({ key: problem.id, label: problemLabel(problem), onJump: () => goToProblem(problem) })),
@@ -836,27 +908,54 @@ function DeckForm({
           <button type="button" className="secondary-button" onClick={() => setFields({ ...fields, cards: [...cards, emptyCard()] })}>
             <Plus weight="bold" aria-hidden="true" /> Add card
           </button>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => setMakeOpen((open) => !open)}
-            aria-expanded={makeOpen}
-            aria-controls={makeOpen ? "make-cards" : undefined}
-          >
-            <Sparkle weight="fill" aria-hidden="true" /> Make cards from my notes
-          </button>
+          {deckEmpty || makeAt === "top" ? null : (
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => (makeAt === "bottom" ? closeMake() : setMakeAt("bottom"))}
+              aria-expanded={makeAt === "bottom"}
+              aria-controls={makeAt === "bottom" ? "make-cards" : undefined}
+            >
+              <Sparkle weight="fill" aria-hidden="true" /> Make cards from my notes
+            </button>
+          )}
         </div>
 
-        {makeOpen ? (
-          <MakeCardsPanel accountId={accountId} deckCards={withoutBlankCards(cards)} onAdd={addMadeCards} onClose={() => setMakeOpen(false)} />
+        {makeAt === "bottom" ? (
+          <MakeCardsPanel
+            accountId={accountId}
+            deckCards={withoutBlankCards(cards)}
+            onAdd={addMadeCards}
+            onClose={closeMake}
+            onWaiting={(count) => {
+              setMadeWaiting(count)
+              if (count === 0) setShowWaiting(false)
+            }}
+          />
         ) : null}
 
-        <div className="sticky-save">
+        {showWaiting && madeWaiting > 0 ? (
+          <ProblemBox
+            lines={[waitingLine]}
+            jumps={[{ key: "add", label: `Go to Add ${madeWaiting} card${madeWaiting === 1 ? "" : "s"}`, onJump: () => focusField(MAKE_CARDS_ADD_ID) }]}
+            removeLabel="Skip them"
+            onRemove={closeMake}
+          />
+        ) : null}
+
+        {/* On a phone the bar steps aside while "Make cards from my notes" is open (it has its own Add button). */}
+        <div className={`sticky-save${shown ? " has-problem" : ""}${makeAt ? " is-making" : ""}`}>
           {shown ? (
             <span className="sticky-problem">
-              {shown.problems.length === 0
-                ? "Your deck needs a title"
-                : `${shown.problems.length} card${shown.problems.length === 1 ? " needs" : "s need"} words`}
+              <WarningCircle weight="fill" aria-hidden="true" />
+              <span className="sticky-long">{problemLines.join(" ")}</span>
+              <span className="sticky-short" aria-hidden="true">
+                Fix {fixCount}
+              </span>
+            </span>
+          ) : madeWaiting > 0 ? (
+            <span>
+              {madeWaiting} suggested card{madeWaiting === 1 ? "" : "s"} not added yet
             </span>
           ) : (
             <span>{cards.filter((card) => card.front.trim() && card.back.trim()).length} cards ready</span>

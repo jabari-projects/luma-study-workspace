@@ -71,19 +71,41 @@ function updateSubject(body, item) {
   }
   return { changes: {} }
 }
-/** Like subjects_matching: (subject, subtopic) pairs whose name or alias holds the words (3+ letters). */
-function subjectsMatching(text) {
-  const wanted = text.toLowerCase().split(/\s+/).filter(Boolean).join(" ")
-  if (wanted.length < 3) return []
+/** Like subjects.fold: lower case, "." and "'" dropped, any other mark a space. */
+const fold = (text) => text.toLowerCase().replace(/[.'\u2019]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+/** Like subjects.STOP_WORDS: small words that mean no subject on their own. */
+const STOP_WORDS = new Set(["a", "an", "and", "at", "by", "for", "in", "is", "of", "on", "or", "the", "to", "with"])
+/** Like subjects.word_needle: a whole word under 3 letters, else the start of a word. */
+const wordNeedle = (folded) => (folded.length < 3 ? ` ${folded} ` : ` ${folded}`)
+const foldedWords = (entry) => [entry.name, ...(entry.aliases || [])].map((text) => ` ${fold(text)} `).join("")
+/** Like subjects_matching: the (subject, subtopic) pairs one search word points at, by name or alias. */
+function subjectsMatching(word) {
+  const folded = fold(word)
+  if (!folded || STOP_WORDS.has(folded)) return []
+  const needle = wordNeedle(folded)
   const pairs = []
   for (const subject of SUBJECT_LIST.subjects) {
-    if ([subject.name.toLowerCase(), ...(subject.aliases || [])].some((word) => word.includes(wanted))) {
+    if (foldedWords(subject).includes(needle)) {
       pairs.push([subject.slug, null])
       continue
     }
-    for (const subtopic of subject.subtopics) if (subtopic.name.toLowerCase().includes(wanted)) pairs.push([subject.slug, subtopic.slug])
+    for (const subtopic of subject.subtopics) if (foldedWords(subtopic).includes(needle)) pairs.push([subject.slug, subtopic.slug])
   }
   return pairs
+}
+/** Like public_search.search_terms: one term per word (8 at most); an item must match every term. */
+function searchTerms(raw) {
+  const words = raw.split(/\s+/).map((part) => part.replace(/^#+/, "").toLowerCase()).filter(Boolean)
+  const kept = words.filter((word) => !STOP_WORDS.has(fold(word)))
+  return [...new Set(kept.length ? kept : words)].slice(0, 8).map((word) => {
+    const folded = fold(word)
+    const literal = !folded || /[^\p{L}\p{N}.'\u2019-]|_/u.test(word)
+    return {
+      like: literal || folded.length >= 4 ? word : null,
+      word: literal ? null : wordNeedle(folded),
+      pairs: literal ? [] : subjectsMatching(folded),
+    }
+  })
 }
 /** Every item answer carries both subject fields (null for old items), like the backend's normalizers. */
 const withSubject = (item) => ({ ...item, subject_slug: item.subject_slug ?? null, subtopic_slug: item.subtopic_slug ?? null })
@@ -737,7 +759,9 @@ http
     if (url.pathname === "/public/reports" && req.method === "POST") {
       const a = accountFor(req)
       if (!a) return send(res, 401, { detail: "Not authenticated" })
-      const item = [...decks, ...notes, ...summaries].find((d) => d.id === body.item_id && d.is_public)
+      // Like ITEM_TABLES in reports.py: only the store for the item_type sent.
+      const store = { note: notes, flashcards: decks, summary: summaries }[body.item_type] || []
+      const item = store.find((d) => d.id === body.item_id && d.is_public)
       if (!item) return send(res, 404, { detail: "We couldn't find that public item. It may have been removed." })
       if (!reports.some((r) => r.reporter === a.id && r.item_id === body.item_id && r.status === "open")) {
         reports.unshift({ id: randomUUID(), item_type: body.item_type, item_id: body.item_id, item_title: item.title,
@@ -899,8 +923,7 @@ http
       const deckText = (d) => [d.cards[0]?.front || "", d.cards[0]?.back || "", ...(d.cards || []).flatMap((c) => [c.front || "", c.back || ""])]
       /** One search, like public_study_search: words, subject pairs, filters, owners, page and counts. */
       const searchShared = ({ text = "", subject = null, subtopic = null, type = null, ownerIds = null, limit = 30, offset = 0 }) => {
-        const wanted = text.split(/\s+/).filter(Boolean).join(" ").replace(/^#+/, "").trim().toLowerCase()
-        const pairs = subjectsMatching(wanted)
+        const terms = searchTerms(text)
         const matched = [
           ...notes.filter((n) => n.is_public).map((n) => ({ row: n, study_type: "note", text: [n.content || ""], body: n.content || "" })),
           ...decks.filter((d) => d.is_public).map((d) => ({ row: d, study_type: "flashcards", text: deckText(d), body: d.cards[0]?.front || d.cards[0]?.back || "" })),
@@ -908,10 +931,14 @@ http
         ]
           .filter(({ row }) => String(row.title || "").trim() && (!ownerIds || ownerIds.has(row.user_id)))
           .map((found) => ({ ...found, subject: found.row.subject_slug ?? null, subtopic: found.row.subtopic_slug ?? null }))
-          .filter(({ row, text: words, subject: s, subtopic: t }) =>
-            !wanted ||
-            [row.title, ...words, ...(row.tags || [])].join(" ").toLowerCase().includes(wanted) ||
-            pairs.some(([ps, pt]) => ps === s && (pt === null || pt === t)))
+          .filter(({ row, text: words, subject: s, subtopic: t }) => {
+            const hay = [row.title, ...words, ...(row.tags || [])].join(" ").toLowerCase()
+            const folded = " " + fold(hay) + " "
+            return terms.every((term) =>
+              (term.like !== null && hay.includes(term.like)) ||
+              (term.word !== null && folded.includes(term.word)) ||
+              term.pairs.some(([ps, pt]) => ps === s && (pt === null || pt === t)))
+          })
         const tally = (rows, key) => {
           const counts = new Map()
           for (const r of rows) counts.set(r[key], (counts.get(r[key]) || 0) + 1)
@@ -919,7 +946,10 @@ http
         }
         const chosen = matched
           .filter((r) => (!subject || r.subject === subject) && (!subtopic || r.subtopic === subtopic) && (!type || r.study_type === type))
-          .sort((a, b) => String(b.row.published_at || "").localeCompare(String(a.row.published_at || "")) || String(b.row.id).localeCompare(String(a.row.id)))
+          // Like the SQL: newest shared first, then newest made, then id A to Z.
+          .sort((a, b) => String(b.row.published_at || "").localeCompare(String(a.row.published_at || "")) ||
+            String(b.row.created_at || "").localeCompare(String(a.row.created_at || "")) ||
+            (String(a.row.id) < String(b.row.id) ? -1 : String(a.row.id) > String(b.row.id) ? 1 : 0))
         const ofType = matched.filter((r) => !type || r.study_type === type)
         const inSubject = matched.filter((r) => (!subject || r.subject === subject) && (!subtopic || r.subtopic === subtopic))
         return {

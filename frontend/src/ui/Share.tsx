@@ -56,6 +56,82 @@ export function ShareDialog({
 }
 
 /**
+ * "Share with the crowd?" on an editor, right after the item's first save (the "Saved at" moment).
+ * The editor shows it when ui/shareAsk.ts says the item was just made in this tab, and forgets the
+ * mark at once, so the item's page never asks later. Share shares it right here; Not now keeps it
+ * private, and the Share button on the item's page stays as it is.
+ */
+export function ShareAskAfterMaking<T>({
+  endpoint,
+  studyType,
+  noun,
+  latest,
+  onShared,
+  setNotice,
+  onClose,
+  returnFocus,
+}: {
+  endpoint: string
+  studyType: StudyType
+  noun: string
+  /** Saves anything waiting first, then gives the item as stored now (id, title, version), or null. */
+  latest: () => Promise<ShareableItem | null>
+  /** The shared item as the server stored it (a new version: the editor keeps saving on top of it). */
+  onShared: (row: T) => void
+  setNotice: (notice: Notice | null) => void
+  onClose: () => void
+  returnFocus?: () => HTMLElement | null | undefined
+}) {
+  const username = useShareName()
+  const maintenance = useMaintenance()
+  const [busy, setBusy] = useState(false)
+  const copy = shareCopy(noun, username)
+  // No asking during a maintenance break (saving is paused).
+  if (breakIsOn(maintenance.status)) return null
+
+  const share = async () => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      const item = await latest()
+      if (!item) {
+        setNotice({ type: "error", text: `We couldn't share this ${noun} yet. Use Share on its page after it saves.` })
+        return
+      }
+      if (!hasTitle(item)) {
+        setNotice({ type: "error", text: copy.needsTitle })
+        return
+      }
+      onShared(await setSharing<T>(endpoint, item, true, studyType, username))
+      setNotice({ type: "success", text: copy.shared })
+    } catch (error: unknown) {
+      setNotice({
+        type: "error",
+        text:
+          getErrorCode(error) === "edit_conflict"
+            ? `This ${noun} changed somewhere else. Open it and use Share.`
+            : getErrorMessage(error, `We couldn't share this ${noun}. Try again with Share on its page.`),
+      })
+    } finally {
+      setBusy(false)
+      onClose()
+    }
+  }
+
+  return (
+    <ShareDialog
+      noun={noun}
+      username={username}
+      prompt
+      busy={busy}
+      onConfirm={() => void share()}
+      onCancel={onClose}
+      returnFocus={returnFocus}
+    />
+  )
+}
+
+/**
  * The Share / Stop sharing button for an item's page header.
  * Only mount this on the owner's view of a saved item, never on a creation form.
  */

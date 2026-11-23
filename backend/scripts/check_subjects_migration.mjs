@@ -16,9 +16,10 @@
 //  (d) checks every pre-existing row and value is unchanged and the new columns are null;
 //  (e) checks the slug shape checks (bad slug and a subtopic with no subject are refused);
 //  (f) runs public_study_search on synthetic shared rows across 5 subjects and 3 types:
-//      private rows and blank titles never show, "1+1" and "50%" match literally, subject
-//      names match through p_match_pairs, the facet counts follow the documented rules,
-//      paging and p_user_ids work;
+//      private rows and blank titles never show, "1+1" and "50%" match literally, every
+//      word must match (any order), "U.S." folds to "us", short words match whole words only,
+//      subject names match through each word's pairs, the facet counts follow the documented
+//      rules, paging and p_user_ids work;
 //  (g) checks only the service role may run the search;
 //  (h) injects a failure mid-file and proves nothing changed;
 //  (i) a hand-made column of another type stops the file (its guard) with nothing changed.
@@ -387,43 +388,48 @@ await insert(db, "notes", { user_id: U2, title: "Private 1+1", content: "SYNTH p
 await insert(db, "flashcards", { user_id: U2, title: "  ", front: "1+1", back: "2", tags: [], is_public: true, published_at: "2026-03-01T00:00:00Z", subject_slug: "math" })
 await insert(db, "summaries", { user_id: U2, title: "Percent", content: "SYNTH 50% off", tags: [], is_public: true, published_at: "2026-03-02T00:00:00Z", subject_slug: "math", subtopic_slug: "fractions" })
 await insert(db, "summaries", { user_id: U2, title: "Fifty", content: "SYNTH 50 percent", tags: [], is_public: true, published_at: "2026-03-03T00:00:00Z" })
-info(`seeded ${shared.length} shared rows for search, plus 1 private, 1 with a blank title and 2 percent rows`)
+await insert(db, "notes", { user_id: U2, title: "U.S. history review", content: "SYNTH Newton's laws", tags: [], is_public: true, published_at: "2025-12-01T00:00:00Z" })
+await insert(db, "notes", { user_id: U2, title: "Business plan", content: "SYNTH focus", tags: [], is_public: true, published_at: "2025-12-02T00:00:00Z" })
+info(`seeded ${shared.length} shared rows for search, plus 1 private, 1 with a blank title, 2 percent rows and 2 word rows`)
 
 const search = async (args = {}) => {
-  const a = { pattern: null, pairs: [], subject: null, subtopic: null, type: null, users: null, limit: 30, offset: 0, ...args }
+  const a = { terms: [], subject: null, subtopic: null, type: null, users: null, limit: 30, offset: 0, ...args }
   const r = await db.query(
-    "select public.public_study_search($1, $2::jsonb, $3, $4, $5, $6::uuid[], $7, $8) as answer",
-    [a.pattern, JSON.stringify(a.pairs), a.subject, a.subtopic, a.type, a.users, a.limit, a.offset],
+    "select public.public_study_search($1::jsonb, $2, $3, $4, $5::uuid[], $6, $7) as answer",
+    [JSON.stringify(a.terms), a.subject, a.subtopic, a.type, a.users, a.limit, a.offset],
   )
   return r.rows[0].answer
 }
+/** Terms like public_search.search_terms: a literal word, or a folded word (whole word under 3 letters). */
+const lit = (like) => ({ like, word: null, pairs: [] })
+const word = (w, pairs = []) => ({ like: w.length >= 4 ? `%${w}%` : null, word: w.length < 3 ? `% ${w} %` : `% ${w}%`, pairs })
 const want = (pred) => shared.filter(pred).length
 const count = (list, key, value) => list.find((f) => f[key] === value)?.count ?? 0
 const oldShared = 2 // the old shared note and old deck (the blank-title one never shows)
-const expectedAll = shared.length + 2 + oldShared
+const expectedAll = shared.length + 2 + 2 + oldShared
 const all = await search()
 check(`no filters: every shared item with a title (${expectedAll})`, all.total === expectedAll, String(all.total))
 check("a page holds 30 rows, newest shared first", all.rows.length === 30 && all.rows[0].title === "Fifty" && all.rows[1].title === "Percent", all.rows.slice(0, 2).map((r) => r.title).join(","))
-check("private rows never show", !all.rows.some((r) => r.title.startsWith("Private")) && (await search({ pattern: "%private%" })).total === 0)
-check("blank titles never show", (await search({ pattern: "%blank title%" })).total === 0 && (await search({ users: [U2], limit: 500 })).rows.every((r) => r.title.trim()))
+check("private rows never show", !all.rows.some((r) => r.title.startsWith("Private")) && (await search({ terms: [lit("%private%")] })).total === 0)
+check("blank titles never show", (await search({ terms: [lit("%blank title%")] })).total === 0 && (await search({ users: [U2], limit: 500 })).rows.every((r) => r.title.trim()))
 const rowKeys = Object.keys(all.rows[0]).sort().join(",")
 check("each row has exactly the planned fields (no published_by)", rowKeys === "body,created_at,id,published_at,study_type,subject_slug,subtopic_slug,tags,title,user_id", rowKeys)
 const page2 = await search({ offset: 30 })
 check("offset 30 gives the rest, with no repeats", page2.rows.length === expectedAll - 30 && !page2.rows.some((r) => all.rows.some((x) => x.id === r.id)))
-const onePlus = await search({ pattern: "%1+1%" })
+const onePlus = await search({ terms: [lit("%1+1%")] })
 const wantOnePlus = want((s) => s.words.includes("1+1")) + 1 // + the old shared note
 check(`q "1+1" finds only rows with 1+1 (${wantOnePlus})`, onePlus.total === wantOnePlus, String(onePlus.total))
 check("q matches a deck by a card other than the first", onePlus.rows.some((r) => r.study_type === "flashcards"))
-check("q never matches published_by", (await search({ pattern: "%spoof%" })).total === 0)
-const pct = await search({ pattern: "%50\\%%" })
+check("q never matches published_by", (await search({ terms: [word("spoof")] })).total === 0)
+const pct = await search({ terms: [lit("%50\\%%")] })
 check('q "50%" matches a literal % only', pct.total === 1 && pct.rows[0].title === "Percent", JSON.stringify(pct.rows.map((r) => r.title)))
-const underscore = await search({ pattern: "%\\_%" })
+const underscore = await search({ terms: [lit("%\\_%")] })
 check('q "_" matches a literal _ only (none here)', underscore.total === 0, String(underscore.total))
-const byName = await search({ pattern: "%algebra%", pairs: [{ subject: "math", subtopic: "algebra" }] })
+const byName = await search({ terms: [word("algebra", [{ subject: "math", subtopic: "algebra" }])] })
 check('q matching a subtopic name ("Algebra") also finds items in math/algebra', byName.total === want((s) => s.subtopic === "algebra"), String(byName.total))
-const bySubjectName = await search({ pattern: "%biology%", pairs: [{ subject: "biology", subtopic: null }] })
+const bySubjectName = await search({ terms: [word("biology", [{ subject: "biology", subtopic: null }])] })
 check('q matching a subject name ("Biology") finds every biology item', bySubjectName.total === want((s) => s.subject === "biology"), String(bySubjectName.total))
-check("subject counts (no filters) are per subject, with No subject as null", count(all.subjects, "slug", "math") === want((s) => s.subject === "math") + 1 && count(all.subjects, "slug", null) === want((s) => s.subject === null) + oldShared + 1, JSON.stringify(all.subjects))
+check("subject counts (no filters) are per subject, with No subject as null", count(all.subjects, "slug", "math") === want((s) => s.subject === "math") + 1 && count(all.subjects, "slug", null) === want((s) => s.subject === null) + oldShared + 1 + 2, JSON.stringify(all.subjects))
 check("no subtopic counts until a subject is chosen", all.subtopics.length === 0)
 check("type counts add up to the total", all.types.reduce((n, f) => n + f.count, 0) === all.total, JSON.stringify(all.types))
 check("counts are sorted high to low", all.subjects.every((f, i, list) => i === 0 || list[i - 1].count >= f.count))
@@ -440,8 +446,18 @@ check("type filter narrows to decks in math/algebra", mathAlgDecks.total === wan
 check("type filter: type counts ignore the chosen type", same(mathAlgDecks.types, mathAlg.types))
 const decksOnly = await search({ type: "flashcards" })
 check("type filter: subject counts follow the type", decksOnly.subjects.reduce((n, f) => n + f.count, 0) === decksOnly.total)
-const combined = await search({ pattern: "%1+1%", subject: "math" })
+const combined = await search({ terms: [lit("%1+1%")], subject: "math" })
 check("search words and filters combine", combined.total === want((s) => s.subject === "math" && s.words.includes("1+1")), String(combined.total))
+const anyOrder = await search({ terms: [lit("%1+1%"), word("what")] })
+const otherOrder = await search({ terms: [word("what"), lit("%1+1%")] })
+check("every word must match, in any order (the old note has 1+1 but not \"what\")", anyOrder.total === wantOnePlus - 1 && otherOrder.total === anyOrder.total, `${anyOrder.total} ${otherOrder.total}`)
+check("a word that matches nothing else makes the whole search empty", (await search({ terms: [lit("%1+1%"), word("plain")] })).total === 0)
+const usHistory = await search({ terms: [word("us"), word("history")] })
+check('"us history" finds "U.S. history review" ("U.S." folds to "us")', usHistory.total === 1 && usHistory.rows[0].title === "U.S. history review", JSON.stringify(usHistory.rows.map((r) => r.title)))
+const us = await search({ terms: [word("us")] })
+check('a short word is a whole word: "us" never finds "Business" or "focus"', us.total === 1 && !us.rows.some((r) => r.title === "Business plan"), JSON.stringify(us.rows.map((r) => r.title)))
+check("a longer word finds the start of a word (newtons, hist)", (await search({ terms: [word("newtons")] })).total === 1 && (await search({ terms: [word("hist")] })).total === 1)
+check("an empty term list finds everything", (await search({ terms: [] })).total === expectedAll)
 const mine = await search({ users: [U3], limit: 500 })
 check("p_user_ids limits to those owners", mine.total === want((s) => s.owner === U3) && mine.rows.every((r) => r.user_id === U3))
 const none = await search({ subject: "chemistry" })
@@ -454,7 +470,7 @@ check("a deck's body is its first card's question", typeof flashRow?.body === "s
 // (g) only the service role may run the search
 const roles = (await db.query("select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role') order by 1")).rows.map((r) => r.rolname)
 if (roles.length === 3) {
-  const can = async (role) => (await db.query(`select has_function_privilege('${role}', 'public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer)', 'execute') as ok`)).rows[0].ok
+  const can = async (role) => (await db.query(`select has_function_privilege('${role}', 'public.public_study_search(jsonb, text, text, text, uuid[], integer, integer)', 'execute') as ok`)).rows[0].ok
   check("anon can't run the search", (await can("anon")) === false)
   check("authenticated can't run the search", (await can("authenticated")) === false)
   check("service_role can run the search", (await can("service_role")) === true)

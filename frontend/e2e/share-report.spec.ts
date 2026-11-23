@@ -72,7 +72,7 @@ async function readDeck(request: APIRequestContext, owner: Owner, id: string): P
 
 async function searchTopics(page: Page, query: string) {
   await page.goto("/discover")
-  await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
+  await expect(page.getByRole("heading", { level: 1, name: "Discover", exact: true })).toBeVisible()
   await page.getByLabel("Search", { exact: true }).fill(query)
   const done = page.waitForResponse((r) => r.url().startsWith(`${API}/public/search`) && r.url().includes("q="))
   await page.getByRole("button", { name: "Search", exact: true }).click()
@@ -120,7 +120,7 @@ test.describe("Search entry point", () => {
     // The label says Search; the page it opens is Discover.
     await visibleSearch.click()
     await expect(page).toHaveURL(/\/discover$/)
-    await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Discover", exact: true })).toBeVisible()
     await expect(page.getByLabel("Search", { exact: true })).toBeVisible()
   })
 

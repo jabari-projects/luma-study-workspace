@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 MIGRATION = Path(__file__).resolve().parents[1] / "app" / "schemas" / "migrations" / "2026_11_24_subjects.sql"
-SIGNATURE = "public.public_study_search(text, jsonb, text, text, text, uuid[], integer, integer)"
+SIGNATURE = "public.public_study_search(jsonb, text, text, text, uuid[], integer, integer)"
 
 
 def _text() -> str:

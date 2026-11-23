@@ -528,6 +528,23 @@ describe("SaveClient: words that can't be saved yet wait instead of failing", ()
     assert.equal(last().held, null)
   })
 
+  it("drops the held reason as soon as the card is fixed, before the next try", async () => {
+    const { client, clock, server, last } = holdingClient([ok(2)])
+    client.change("half?")
+    await clock.advance(1500)
+    assert.equal(last().held, "Not saved yet. Finish card 2.")
+    client.change("whole")
+    assert.equal(last().state, "dirty")
+    assert.equal(last().held, null)
+    assert.equal(server.requests.length, 0)
+    // Typing a new unfinished card doesn't nag until the next try.
+    client.change("again?")
+    assert.equal(last().held, null)
+    await clock.advance(1500)
+    assert.equal(last().held, "Not saved yet. Finish card 2.")
+    assert.equal(server.requests.length, 0)
+  })
+
   it("answers a flush right away with not saved (leaving keeps the words in this tab)", async () => {
     const { client, server, last } = holdingClient([ok(2)])
     client.change("half?")

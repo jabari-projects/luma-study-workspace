@@ -36,7 +36,7 @@ async function signUpVerified(page: Page, info: TestInfo) {
   await page.getByLabel("6-number code").fill(code!)
   await page.getByRole("button", { name: "Check code" }).click()
   await expect(page).toHaveURL(/\/discover$/)
-  await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
+  await expect(page.getByRole("heading", { level: 1, name: "Discover", exact: true })).toBeVisible()
   return { email, username }
 }
 
@@ -115,7 +115,7 @@ test.describe("signup with an emailed code", () => {
     await page.getByRole("button", { name: "Check code" }).click()
     // A brand-new student lands on Discover first, never on Home.
     await expect(page).toHaveURL(/\/discover$/)
-    await expect(page.getByRole("heading", { level: 1, name: "Discover notes" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Discover", exact: true })).toBeVisible()
 
     // The new account can log in from a clean browser, and an ordinary login goes Home.
     const other = await newPage(page.context().browser()!)

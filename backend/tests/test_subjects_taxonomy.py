@@ -15,9 +15,9 @@ SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 def test_the_file_loads_and_has_every_subject_and_subtopic():
     assert subjects.SUBJECT_LIST["version"] == 1
-    assert len(DATA["subjects"]) == 60
-    assert sum(len(s["subtopics"]) for s in DATA["subjects"]) == 639
-    assert all(5 <= len(s["subtopics"]) <= 15 for s in DATA["subjects"])
+    assert len(DATA["subjects"]) == 67
+    assert sum(len(s["subtopics"]) for s in DATA["subjects"]) == 784
+    assert all(5 <= len(s["subtopics"]) <= 24 for s in DATA["subjects"])
 
 
 def test_slugs_are_short_lower_case_and_unique():
@@ -59,7 +59,7 @@ def test_every_locked_slug_still_exists():
         for line in subjects.LOCK_FILE.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.startswith("#")
     ]
-    assert len(locked) == 60 + 639
+    assert len(locked) == 67 + 784
     for entry in locked:
         subject, _, subtopic = entry.partition("/")
         assert subjects.subject_exists(subject), entry
@@ -120,4 +120,72 @@ def test_subject_names_and_aliases_turn_into_search_pairs():
     assert ("us-history", None) in subjects.subjects_matching("apush")
     assert ("biology", None) in subjects.subjects_matching("bio ")
     assert subjects.subjects_matching("1+1") == []
-    assert subjects.subjects_matching("ab") == []  # too short to mean a subject
+    assert subjects.subjects_matching("a") == []  # one letter means no subject
+
+
+def test_subject_search_matches_whole_words_or_word_starts_only():
+    art = subjects.subjects_matching("art")
+    assert ("art", None) in art
+    # Not "eARTh", "chARTs" or "pARTies".
+    assert not any(slug == "earth-space" for slug, _ in art)
+    assert ("statistics", "data-visualization") not in art
+    assert ("government", "parties") not in art
+    for small in ("the", "and", "of", "for", "in"):
+        assert subjects.subjects_matching(small) == [], small
+    assert subjects.subjects_matching("ion") == []
+    # Short words must be a whole word: "us" is U.S. history, not "focUS" or "bUSiness".
+    us = subjects.subjects_matching("us")
+    assert ("us-history", None) in us
+    assert not any(slug == "business" for slug, _ in us)
+    # "U.S." and "us" fold the same way.
+    assert subjects.subjects_matching("U.S.") == us
+
+
+def test_fold_drops_dots_and_apostrophes_and_spaces_other_marks():
+    assert subjects.fold("U.S. History") == "us history"
+    assert subjects.fold("Newton's  laws") == "newtons laws"
+    assert subjects.fold("pre-algebra/ratios") == "pre algebra ratios"
+
+
+def test_review_gaps_are_on_the_list():
+    # Review 2026-11-23: majors and courses that were missing.
+    def subs(slug):
+        return {t["slug"] for t in next(s for s in DATA["subjects"] if s["slug"] == slug)["subtopics"]}
+
+    slugs = {s["slug"] for s in DATA["subjects"]}
+    assert {"ethnic-studies", "agriculture", "family-consumer-sciences", "military-science", "library-science",
+            "italian", "portuguese"} <= slugs
+    assert {"state-history", "native-nations"} <= subs("us-history")
+    assert {"holocaust-genocide", "canada"} <= subs("world-history")
+    assert {"integrated-math", "business-math", "ratios", "functions"} <= subs("math")
+    assert {"rhetoric-argument", "ap-seminar-research"} <= subs("english")
+    assert {"game-development", "mobile-apps", "other-languages", "graphics-animation"} <= subs("computer-science")
+    assert {"occupational-therapy", "speech-language", "radiology", "respiratory-therapy", "nutrition-dietetics"} <= subs("medicine")
+    assert {"polish", "dutch", "bengali", "punjabi", "hmong", "somali", "navajo"} <= subs("more-languages")
+    assert "actuarial-science" in subs("statistics")
+    # Italian and Portuguese moved to their own subjects; the old entries stay valid but hidden.
+    more = {t["slug"]: t for t in next(s for s in DATA["subjects"] if s["slug"] == "more-languages")["subtopics"]}
+    assert more["italian"].get("retired") is True and more["portuguese"].get("retired") is True
+
+
+def test_every_subject_has_a_catch_all_subtopic():
+    for subject in DATA["subjects"]:
+        names = {t["name"] for t in subject["subtopics"]}
+        assert "Something else" in names or "Another language" in names, subject["slug"]
+
+
+def test_common_course_names_point_at_the_right_subtopic():
+    assert ("math", "calculus") in subjects.subjects_matching("calc")
+    assert ("math", "trigonometry") in subjects.subjects_matching("trig")
+    assert ("math", "precalculus") in subjects.subjects_matching("precalc")
+    assert ("math", "geometry") in subjects.subjects_matching("geo")
+    assert ("us-history", "state-history") in subjects.subjects_matching("texas")
+    assert ("world-history", "holocaust-genocide") in subjects.subjects_matching("holocaust")
+    assert ("ethnic-studies", None) in subjects.subjects_matching("afam")
+
+
+def test_subtopic_aliases_must_be_lower_case():
+    data = json.loads(json.dumps(DATA))
+    data["subjects"][0]["subtopics"][0]["aliases"] = ["Basic"]
+    with pytest.raises(subjects.SubjectListError):
+        subjects.load_subject_list(json.dumps(data).encode("utf-8"))
